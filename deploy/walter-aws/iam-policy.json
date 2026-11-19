@@ -1,0 +1,23 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DropReleaseObjects",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:GetObject"],
+      "Resource": "arn:aws:s3:::BUCKET/releases/*"
+    },
+    {
+      "Sid": "DropReleaseListing",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::BUCKET"
+    },
+    {
+      "Sid": "DropAppSecrets",
+      "Effect": "Allow",
+      "Action": ["ssm:PutParameter", "ssm:DeleteParameter", "ssm:GetParameter"],
+      "Resource": "arn:aws:ssm:eu-north-1:ACCOUNT:parameter/drop/apps/*"
+    }
+  ]
+}
