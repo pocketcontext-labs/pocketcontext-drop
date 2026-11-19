@@ -1,15 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addApp,
+  api,
+  connection,
   listApps,
   logout,
   pb,
-  query,
   refreshSession,
-  searchApps,
-  SearchChangedError,
-  SearchUnavailableError,
-  TruncatedQueryError,
   validName,
   validSlug,
   watchApps,
@@ -17,11 +14,9 @@ import {
 
 const user = { id: "user00000000001", collectionId: "_pb_users_auth_", collectionName: "users" };
 const token = `synthetic.${btoa(JSON.stringify({ exp: 4102444800 }))}.signature`;
-const generation = "a".repeat(64);
-function response(rows: Record<string, unknown>[], truncated = false) {
-  const columns = ["id", "name", "slug", "created"];
-  return { columns, rows: rows.map(row => columns.map(column => row[column])), truncated };
-}
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+const page = (items: Record<string, unknown>[]) => ({ page: 1, perPage: 100, totalItems: -1, totalPages: -1, items });
 const row = (id: string, name = `Hello ${id}`) => ({ id, name, slug: `app-${id}`, created: "2026-10-25 10:00:00.000Z" });
 
 beforeEach(() => pb.authStore.save(token, user));
@@ -30,38 +25,57 @@ afterEach(() => {
   pb.authStore.clear();
 });
 
-describe("SQL reads", () => {
-  it("maps columns to objects and refuses truncated results", async () => {
-    vi.spyOn(pb, "send").mockResolvedValueOnce(response([row("app000000000001")])).mockResolvedValueOnce(response([], true));
-    expect(await query("SELECT 1")).toEqual([row("app000000000001")]);
-    await expect(query("SELECT 1")).rejects.toBeInstanceOf(TruncatedQueryError);
-  });
-  it("lists the apps newest first through the SQL endpoint", async () => {
-    const send = vi.spyOn(pb, "send").mockResolvedValue(response([row("app000000000002"), row("app000000000001")]));
+describe("reads", () => {
+  it("lists the account's apps newest first through the records API", async () => {
+    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(json(page([row("app000000000002"), row("app000000000001")])));
     expect((await listApps()).map(g => g.id)).toEqual(["app000000000002", "app000000000001"]);
-    expect(send).toHaveBeenCalledWith("/api/context/query", {
-      method: "POST",
-      body: { sql: "SELECT id, name, slug, created FROM apps ORDER BY created DESC, id DESC LIMIT 100" },
-    });
+    const url = new URL(String(fetch.mock.calls[0][0]));
+    expect(url.pathname).toBe("/api/collections/apps/records");
+    expect(Object.fromEntries(url.searchParams)).toMatchObject({ page: "1", perPage: "100", sort: "-created,-id", fields: "id,name,slug,created", skipTotal: "true" });
+    expect(String(fetch.mock.calls[0][0])).not.toMatch(/context/);
   });
   it("refuses malformed rows and anonymous reads", async () => {
-    vi.spyOn(pb, "send").mockResolvedValue(response([{ id: "x' OR 1", name: "m", slug: "s", created: "c" }]));
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(json(page([{ id: "x' OR 1", name: "m", slug: "s", created: "c" }])));
     await expect(listApps()).rejects.toThrow(/Invalid app/);
     pb.authStore.clear();
     await expect(listApps()).rejects.toThrow(/sign in/);
   });
   it("clears the session when the server rejects its token", async () => {
-    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } }));
-    await expect(query("SELECT 1")).rejects.toMatchObject({ status: 401 });
-    expect(String(fetch.mock.calls[0][0])).toMatch(/\/api\/context\/query$/);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(json({ message: "Unauthorized" }, 401));
+    await expect(listApps()).rejects.toMatchObject({ status: 401 });
     expect(pb.authStore.token).toBe("");
   });
   it("discards a response that arrives after the account changed", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
       pb.authStore.save(token, { ...user, id: "user00000000002" });
-      return new Response(JSON.stringify(response([row("app000000000001")])), { status: 200, headers: { "Content-Type": "application/json" } });
+      return json(page([row("app000000000001")]));
     });
-    await expect(query("SELECT 1")).rejects.toThrow(/Session changed/);
+    await expect(listApps()).rejects.toThrow(/Session changed/);
+  });
+});
+
+describe("connection", () => {
+  beforeEach(() => vi.spyOn(api, "loginMode").mockResolvedValue("email"));
+  it("reads the MCP endpoint from the protected resource document", async () => {
+    const resource = `https://${location.host}/mcp`;
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(json({ resource }));
+    expect(await connection()).toEqual({ kind: "mcp", url: resource });
+  });
+  it("is local on the password-only local server, without asking for MCP", async () => {
+    vi.spyOn(api, "loginMode").mockResolvedValue("password");
+    const fetch = vi.spyOn(globalThis, "fetch");
+    expect(await connection()).toEqual({ kind: "local" });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it("refuses a hosted origin without MCP", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response("", { status: 404 }));
+    await expect(connection()).rejects.toThrow(/unavailable/);
+  });
+  it("refuses another origin or path", async () => {
+    for (const resource of ["https://evil.example.test/mcp", `http://${location.host}/mcp`, `https://${location.host}/other`, 42]) {
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(json({ resource }));
+      await expect(connection()).rejects.toThrow(/unavailable/);
+    }
   });
 });
 
@@ -97,60 +111,6 @@ describe("writes", () => {
     expect(notify).toHaveBeenCalledTimes(1);
     stop();
     expect(unsubscribe).toHaveBeenCalled();
-  });
-});
-
-describe("full-text search", () => {
-  const searchResult = (hits: { id: string; score: number; excerpt: string }[], hasMore = false) =>
-    ({ index: "apps", generation, hits, hasMore, truncated: hasMore });
-  it("posts the index alias without a scope and hydrates hits in ranking order", async () => {
-    const send = vi.spyOn(pb, "send").mockImplementation(async path => {
-      if (path === "/api/context/search")
-        return searchResult([{ id: "app000000000002", score: -2, excerpt: "hello there" }, { id: "app000000000001", score: -1, excerpt: "hello" }], true);
-      return response([row("app000000000001"), row("app000000000002")]);
-    });
-    const page = await searchApps(" hello ");
-    expect(send.mock.calls[0]).toEqual(["/api/context/search", { method: "POST", body: { index: "apps", query: "hello", offset: 0, limit: 20 } }]);
-    expect(send.mock.calls[1][1]?.body.sql).toBe(
-      "SELECT id, name, slug, created FROM apps WHERE id IN ('app000000000002','app000000000001') ORDER BY id LIMIT 20",
-    );
-    expect(page).toMatchObject({ generation, hasMore: true });
-    expect(page.hits.map(hit => [hit.id, hit.excerpt])).toEqual([["app000000000002", "hello there"], ["app000000000001", "hello"]]);
-  });
-  it("pins the generation when paging", async () => {
-    const send = vi.spyOn(pb, "send").mockResolvedValue(searchResult([]));
-    await searchApps("hello", 20, 20, generation);
-    expect(send.mock.calls[0][1]?.body).toEqual({ index: "apps", query: "hello", offset: 20, limit: 20, expectedGeneration: generation });
-    await expect(searchApps("hello", 20)).rejects.toThrow(/page/);
-  });
-  it("refuses invalid queries before sending", async () => {
-    const send = vi.spyOn(pb, "send");
-    await expect(searchApps(" ")).rejects.toThrow(/1 to 500/);
-    await expect(searchApps(Array(17).fill("w").join(" "))).rejects.toThrow(/16 words/);
-    expect(send).not.toHaveBeenCalled();
-  });
-  it.each([
-    [{ index: "other" }],
-    [{ generation: "short" }],
-    [{ scope: "space0000000001" }],
-  ])("treats a mismatched response as a changed search (%o)", async patch => {
-    vi.spyOn(pb, "send").mockResolvedValue({ ...searchResult([]), ...patch });
-    await expect(searchApps("hello")).rejects.toBeInstanceOf(SearchChangedError);
-  });
-  it("refuses out-of-order or duplicate hits", async () => {
-    vi.spyOn(pb, "send").mockResolvedValueOnce(searchResult([{ id: "app000000000001", score: -1, excerpt: "" }, { id: "app000000000002", score: -2, excerpt: "" }]));
-    await expect(searchApps("hello")).rejects.toThrow(/ranking/);
-    vi.spyOn(pb, "send").mockResolvedValueOnce(searchResult([{ id: "app000000000001", score: -1, excerpt: "" }, { id: "app000000000001", score: -1, excerpt: "" }]));
-    await expect(searchApps("hello")).rejects.toThrow(/hit/);
-  });
-  it("reports an app that vanished between search and hydration as changed", async () => {
-    vi.spyOn(pb, "send").mockImplementation(async path =>
-      path === "/api/context/search" ? searchResult([{ id: "app000000000001", score: -1, excerpt: "" }]) : response([]));
-    await expect(searchApps("hello")).rejects.toBeInstanceOf(SearchChangedError);
-  });
-  it.each([[409, SearchChangedError], [413, SearchUnavailableError], [503, SearchUnavailableError]])("maps status %i", async (status, kind) => {
-    vi.spyOn(pb, "send").mockRejectedValue(Object.assign(new Error("failed"), { status }));
-    await expect(searchApps("hello")).rejects.toBeInstanceOf(kind);
   });
 });
 

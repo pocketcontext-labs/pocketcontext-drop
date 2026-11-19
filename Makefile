@@ -1,4 +1,4 @@
-# build-tags.txt lists the SQLite features and the tailscale.com features the tunnel omits.
+# build-tags.txt is copied unchanged from pocketcontext-core: the SQLite features, plus tailscale.com tags Drop does not use.
 TAGS := $(shell cat build-tags.txt)
 VERSION ?= $(shell git describe --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X github.com/pocketcontext-labs/pocketcontext-drop/internal/buildinfo.Version=$(VERSION)

@@ -3,29 +3,22 @@ import { spawn as spawnProcess } from "node:child_process";
 import { access as accessPath, readFile, stat } from "node:fs/promises";
 import { createServer } from "node:net";
 import { dirname, join, resolve } from "node:path";
-import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 export const DEFAULT_PORT = 8100;
 const usage =
-  "Usage: node scripts/dev.mjs --db PATH [--binary PATH] [--vite-port 5173] [--tunnel]";
+  "Usage: node scripts/dev.mjs --db PATH [--binary PATH] [--vite-port 5173]";
 const valued = ["--db", "--binary", "--vite-port"];
 
 export function parseOptions(args) {
   const options = {
     binary: join(root, "bin", "drop"),
     vitePort: 5173,
-    tunnel: false,
   };
   for (let i = 0; i < args.length; i++) {
     const name = args[i];
-    if (name === "--tunnel") {
-      if (options.tunnel) throw new Error(usage);
-      options.tunnel = true;
-      continue;
-    }
     if (
       !valued.includes(name) ||
       !args[i + 1] ||
@@ -90,64 +83,6 @@ export async function assertPortAvailable(port) {
   });
 }
 
-/**
- * Instructions for the person on the other computer. The address is printed
- * here, on this terminal only; it is never written to a log or file.
- */
-export function tunnelInstructions({ address, port, code, expires }) {
-  const url = `http://127.0.0.1:${port}`;
-  const lines = [
-    "",
-    "Tunnel ready. Keep this address private: anyone with it can reach this port (sign-in is still required).",
-    "",
-    `  Tunnel address: ${address}`,
-    "",
-    "On the other computer, store the address without putting it in shell history (run `read -r ADDRESS` and paste it), then run:",
-    "",
-    `  printf '%s\\n' "$ADDRESS" | drop tunnel forward --address-stdin --url ${url}`,
-    "",
-    `The forward must use the same port, ${port}. The server accepts only the Host 127.0.0.1:${port} or localhost:${port}, and the development security policy pins the hot-reload WebSocket to ws://127.0.0.1:${port}; a forward on any other port is refused.`,
-  ];
-  if (code) {
-    lines.push(
-      "",
-      `Sign-in code (single use${expires ? `, expires ${expires}` : ""}):`,
-      "",
-      `  ${code}`,
-      "",
-      `With the forward running, open ${url}/bundle/login#${code} there, or choose "Use a sign-in code instead" at ${url} and paste the code.`,
-      "For a new code run: drop login-code --db PATH",
-    );
-  }
-  lines.push("");
-  return lines.join("\n");
-}
-
-/** Resolve with the first JSON line from tunnel serve that carries an address. */
-export function firstTunnelAddress(stream, onLine = () => {}) {
-  return new Promise((resolvePromise, reject) => {
-    const lines = createInterface({ input: stream });
-    let found = false;
-    lines.on("line", (line) => {
-      let data;
-      try {
-        data = JSON.parse(line);
-      } catch {
-        return;
-      }
-      if (typeof data?.address !== "string" || !data.address) return;
-      onLine(data);
-      if (!found) {
-        found = true;
-        resolvePromise(data);
-      }
-    });
-    lines.once("close", () => {
-      if (!found) reject(new Error("tunnel serve stopped without an address"));
-    });
-  });
-}
-
 function starter(spawn) {
   return function start(command, args, options = {}) {
     const child = spawn(command, args, { stdio: "inherit", ...options });
@@ -199,17 +134,6 @@ async function terminate(state, timeout = 5000) {
   }
 }
 
-async function collect(state) {
-  let output = "";
-  state.child.stdout.setEncoding("utf8");
-  state.child.stdout.on("data", (chunk) => {
-    output += chunk;
-  });
-  const result = await state.exited;
-  if (result !== "exit 0") throw new Error(result);
-  return output;
-}
-
 const defaults = {
   spawn: spawnProcess,
   fetch: (...args) => globalThis.fetch(...args),
@@ -217,7 +141,6 @@ const defaults = {
   assertPortAvailable,
   log: (text) => console.log(text),
   signals: process,
-  tunnelTimeout: 90_000,
 };
 
 export async function run(args, overrides = {}) {
@@ -250,7 +173,6 @@ export async function run(args, overrides = {}) {
   deps.signals.on("SIGTERM", onSignal);
   let frontend;
   let backend;
-  let tunnel;
   let backendReady = false;
   try {
     frontend = start(
@@ -305,76 +227,14 @@ export async function run(args, overrides = {}) {
       frontend.exited.then((value) => `Vite stopped (${value})`),
       backend.exited.then((value) => `Drop stopped (${value})`),
     ];
-    if (options.tunnel) {
-      // stdout carries the address: read it here, print it once to this
-      // terminal and nowhere else. stderr stays on the terminal.
-      tunnel = start(options.binary, ["tunnel", "serve", "--db", options.db], {
-        cwd: root,
-        stdio: ["ignore", "pipe", "inherit"],
-      });
-      stopped.push(tunnel.exited.then((value) => `Tunnel stopped (${value})`));
-      let printed = "";
-      const ready = firstTunnelAddress(tunnel.child.stdout, (data) => {
-        if (printed && data.address !== printed) {
-          printed = data.address;
-          deps.log(
-            `\nThe tunnel address changed. New address: ${data.address}\n`,
-          );
-        }
-      }).catch(() => new Promise(() => {})); // The exit below reports its status.
-      const failed = Promise.race([
-        tunnel.exited.then(
-          (value) => `Tunnel stopped before it reported an address (${value})`,
-        ),
-        delay(deps.tunnelTimeout, undefined, {
-          ref: false,
-          signal: controller.signal,
-        }).then(
-          () =>
-            `The tunnel did not report an address within ${deps.tunnelTimeout / 1000} seconds; check the network`,
-        ),
-      ]).then((reason) => {
-        throw new Error(reason);
-      });
-      const served = await Promise.race([ready, failed, interrupted]);
-      if (controller.signal.aborted || !served) return;
-      printed = served.address;
-      let code;
-      try {
-        const issued = start(
-          options.binary,
-          ["login-code", "--db", options.db],
-          { cwd: root, stdio: ["ignore", "pipe", "inherit"] },
-        );
-        code = JSON.parse(await collect(issued));
-        if (typeof code?.code !== "string" || !code.code)
-          throw new Error("no code in the response");
-      } catch (error) {
-        code = undefined;
-        deps.log(
-          `Could not issue a sign-in code (${error.message}). Run drop login-code --db PATH.`,
-        );
-      }
-      if (controller.signal.aborted) return;
-      deps.log(
-        tunnelInstructions({
-          address: served.address,
-          port: options.port,
-          code: code?.code,
-          expires: code?.expires,
-        }),
-      );
-    }
     deps.log(
-      `Edit ui/src for hot updates. Press Ctrl-C to stop all development processes${options.tunnel ? ", including the tunnel" : ""}.\n`,
+      "Edit ui/src for hot updates. Press Ctrl-C to stop all development processes.\n",
     );
     const result = await Promise.race(stopped);
     if (result) throw new Error(result);
   } catch (error) {
     if (!controller.signal.aborted) throw error;
   } finally {
-    // The tunnel goes first so nobody reaches a server that is shutting down.
-    await terminate(tunnel);
     if (backendReady && !backend.done) {
       // The authenticated stop endpoint flushes the database snapshot.
       const stop = start(options.binary, ["stop", "--db", options.db], {

@@ -23,8 +23,8 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY = "pocketcontext-labs/pocketcontext-drop"
 PLATFORMS = ("linux_amd64", "linux_arm64")
-# build-tags.txt is the one list of Go build tags: SQLite features and the
-# tailscale.com features the tunnel omits.
+# build-tags.txt is the one list of Go build tags: SQLite features and
+# tailscale.com tags that Drop does not use (copied from pocketcontext-core).
 TAGS = (ROOT / "build-tags.txt").read_text(encoding="utf-8").strip()
 GO_VERSION = "go1.27.3"
 GO_IMAGE = "golang:1.27.3-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb"

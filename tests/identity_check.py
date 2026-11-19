@@ -4,7 +4,7 @@
 In a derived product it scans the paths and contents (text and binary) of every
 tracked or new, non-ignored file, case-insensitively, for the template's
 lowercase id, its repository name, its hello-world collection and its default
-port, requires every identity field in internal/appconfig/appconfig.go to differ
+port, requires every identity field in internal/droppolicy/policy.go to differ
 from the template's value (including the skill, profile registry, app id, port and
 executable, whose folder cmd/<Command> must exist), and fails on any occurrence outside the explicit allowlist below. With
 --binary PATH it also scans the bytes of a built executable.
@@ -53,7 +53,6 @@ ALLOWED = [
 # (string, reason). A match is allowed when it lies inside an occurrence of one
 # of these strings (compared case-sensitively).
 ALLOWED_BINARY = [
-    ('invalid server ' + TEMPLATE_COLLECTION, 'tailscale.com/derp client error, linked in by the tailcat tunnel'),
     ('bogus ' + TEMPLATE_COLLECTION + ' %q', 'Go standard library net/http HTTP/2 server error'),
     ('{"' + TEMPLATE_COLLECTION + '": "Hello world"}', 'PocketBase jsvm types.d.ts example, embedded by the jsvm plugin'),
 ]
@@ -62,10 +61,10 @@ ALLOWED_BINARY = [
 # inverted check proves the scanner still sees what a derived product renames.
 TEMPLATE_PATHS = ['cmd/' + TEMPLATE_ID, 'skills/' + TEMPLATE_ID, 'pb_migrations/1810000100_' + TEMPLATE_COLLECTION + 's.js']
 
-# Every field of the application identity (internal/appconfig/appconfig.go) that
+# Every field of the application identity (internal/droppolicy/policy.go) that
 # names the template, with the template's value. A derived product must set its
 # own value for each; LocalAccountEmail is a reserved address that names nothing.
-IDENTITY_FILE = 'internal/appconfig/appconfig.go'
+IDENTITY_FILE = 'internal/droppolicy/policy.go'
 DISPLAY_NAME = 'Template' + 'Context'
 IDENTITY_FIELDS = {
     'AppID': TEMPLATE_ID, 'DisplayName': DISPLAY_NAME, 'Command': TEMPLATE_ID, 'SkillName': TEMPLATE_ID,

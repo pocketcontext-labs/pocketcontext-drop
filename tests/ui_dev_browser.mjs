@@ -250,7 +250,7 @@ try {
   assert.equal(hmr.host, `127.0.0.1:${port}`);
   assert.equal(hmr.origin, origin);
   assert.equal(hmr.upgrade?.toLowerCase(), 'websocket');
-  for (const pathname of ['/', '/@vite/client', '/api/bundle/redeem', '/api/context/query', '/api/realtime'])
+  for (const pathname of ['/', '/@vite/client', '/api/bundle/auth-mode', '/api/bundle/redeem', '/api/collections/apps/records', '/api/realtime'])
     assert(forward.carried.some(item => item.path.split('?')[0] === pathname), `${pathname} must cross the forward`);
   assert(forward.carried.every(item => item.host === `127.0.0.1:${port}` && item.via === port), 'every forwarded request keeps Host 127.0.0.1:P');
   ok('page, modules, API, realtime and HMR WebSocket all cross the forward with Host 127.0.0.1:P');
@@ -267,12 +267,9 @@ try {
   await remote.getByLabel('Slug').fill('forwarded-app');
   await remote.getByRole('button', { name: 'Add' }).click();
   await remote.getByText('Hello across the forward', { exact: true }).waitFor();
-  await remote.getByRole('searchbox', { name: 'Search apps' }).fill('forward');
-  await remote.getByRole('button', { name: 'Search' }).click();
-  await remote.getByRole('list', { name: 'Search results' }).getByText('Hello across the forward').waitFor();
   assert.equal(remoteErrors.length, 0, `forwarded reader must have no runtime errors: ${remoteErrors.join('; ')}`);
   assert.equal(server.pid, initialPID);
-  ok('hot reload, add and search work through the same-port forward');
+  ok('hot reload and add work through the same-port forward');
 
   // Negative: a forward listening on another port still delivers bytes to P, but the Host check refuses it.
   const wrong = `http://127.0.0.1:${otherPort}`;

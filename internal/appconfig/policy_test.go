@@ -1,8 +1,6 @@
 package appconfig
 
 import (
-	"errors"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,33 +9,34 @@ import (
 	"ganigeorgiev.com/pocketbase/pocketbase/plugins/jsvm"
 )
 
-// TestRealHooksRefuseSecondAccount: account_access.js allows the one account and
-// refuses a second one or its deletion, whatever saved it.
-func TestRealHooksRefuseSecondAccount(t *testing.T) {
+// TestRealHooksAllowAccountsButKeepSignedIn: account_access.js accepts more
+// than one account (hosted Multi) and lets core prune accounts that never
+// signed in, but refuses to delete one that has, whatever deletes it.
+func TestRealHooksAllowAccountsButKeepSignedIn(t *testing.T) {
 	app := newHookApp(t)
 	users, err := app.FindCollectionByNameOrId("users")
 	if err != nil {
 		t.Fatal(err)
 	}
-	account := func(email string) *core.Record {
+	account := func(email string, verified bool) *core.Record {
 		record := core.NewRecord(users)
 		record.SetEmail(email)
-		record.SetPassword("synthetic-password")
+		record.SetRandomPassword()
+		record.SetVerified(verified)
+		if err := app.Save(record); err != nil {
+			t.Fatalf("%s: %v", email, err)
+		}
 		return record
 	}
-	first := account(Identity.LocalAccountEmail)
-	if err := app.Save(first); err != nil {
-		t.Fatal(err)
+	owner := account("owner@example.test", true)
+	pending := account("pending@example.test", false)
+	if err := app.Delete(owner); err == nil || !strings.Contains(err.Error(), "cannot be deleted") {
+		t.Fatalf("deleting a signed-in account: %v", err)
 	}
-	err = app.Save(account("second@example.test"))
-	if err == nil || !strings.Contains(err.Error(), "exactly one") {
-		t.Fatalf("second account: %v", err)
+	if err := app.Delete(pending); err != nil {
+		t.Fatalf("pruning an account that never signed in: %v", err)
 	}
-	if err := app.Delete(first); err == nil || errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("deleting the account: %v", err)
-	}
-	count, err := app.CountRecords("users")
-	if err != nil || count != 1 {
+	if count, err := app.CountRecords("users"); err != nil || count != 1 {
 		t.Fatalf("accounts = %d, %v", count, err)
 	}
 }

@@ -5,29 +5,19 @@ import PocketBase, {
   type SendOptions,
 } from "pocketbase";
 
-/** An app as the reader shows it. Reading it requires the project's account. */
+/** An app as the reader shows it. Each account reads only its own apps. */
 export interface App {
   id: string;
   name: string;
   slug: string;
   created: string;
 }
-export interface SearchHit extends App {
-  score: number;
-  excerpt: string;
-}
-export interface SearchPage {
-  generation: string;
-  hits: SearchHit[];
-  hasMore: boolean;
-}
-
 // The SDK synchronizes this application's credentials across same-origin tabs.
 // The single-use sign-in page (/bundle/login) writes the same key.
 export const sessionKey = "drop.reader.auth";
 /**
  * The sign-in identity of the project's one account (Identity.LocalAccountEmail in
- * internal/appconfig/appconfig.go). Nobody types or sees it: the reader asks only for
+ * internal/droppolicy/policy.go). Nobody types or sees it: the reader asks only for
  * the password.
  */
 export const ACCOUNT_EMAIL = "account@drop.invalid";
@@ -84,7 +74,7 @@ export const pb = new PocketBase(
   typeof window === "undefined" ? "http://localhost" : window.location.origin,
   authStore,
 );
-// Concurrent list and search reads share an endpoint but must not cancel each other.
+// Concurrent reads share an endpoint but must not cancel each other.
 pb.autoCancellation(false);
 // Reject fully parsed responses from a previous identity before callers see them.
 const send = pb.send.bind(pb);
@@ -113,48 +103,8 @@ pb.send = async <T = unknown>(
   }
 };
 
-export class TruncatedQueryError extends Error {
-  constructor() {
-    super(
-      "The response exceeded the query limit. Narrow the request and retry.",
-    );
-  }
-}
 const validID = (value: unknown): value is string =>
   typeof value === "string" && /^[a-z0-9]{15}$/.test(value);
-/** Quote a record id for SQL; anything else is refused before it reaches SQL. */
-function identity(value: unknown): string {
-  if (!validID(value)) throw new Error("Invalid record identity");
-  return `'${value}'`;
-}
-
-interface SQLResult {
-  columns: string[];
-  rows: unknown[][];
-  truncated: boolean;
-}
-/** Authenticated read-only SQL over the server's readable tables and columns. */
-export async function query<T>(sql: string): Promise<T[]> {
-  const generation = sessionGeneration;
-  try {
-    const result = await pb.send<SQLResult>("/api/context/query", {
-      method: "POST",
-      body: { sql },
-    });
-    if (generation !== sessionGeneration) throw new Error("Session changed");
-    if (result.truncated) throw new TruncatedQueryError();
-    return result.rows.map(
-      (row) =>
-        Object.fromEntries(
-          result.columns.map((column, index) => [column, row[index]]),
-        ) as T,
-    );
-  } catch (error) {
-    if ((error as { status?: number })?.status === 413)
-      throw new TruncatedQueryError();
-    throw error;
-  }
-}
 
 function requireSession(): void {
   if (!pb.authStore.isValid || !pb.authStore.record?.id)
@@ -172,15 +122,19 @@ function app(row: Partial<App>): App {
 }
 
 export const LIST_LIMIT = 100;
-/** The apps, newest first. */
+/** The signed-in account's apps, newest first. */
 export async function listApps(limit = LIST_LIMIT): Promise<App[]> {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200)
     throw new Error("Invalid list size");
   requireSession();
-  const rows = await query<App>(
-    `SELECT id, name, slug, created FROM apps ORDER BY created DESC, id DESC LIMIT ${limit}`,
-  );
-  return rows.map(app);
+  // The records API: the apps rules return only the account's own apps. The
+  // SQL and search reads stay local (the owner's key) and are never public.
+  const page = await pb.collection("apps").getList<App>(1, limit, {
+    sort: "-created,-id",
+    fields: "id,name,slug,created",
+    skipTotal: true,
+  });
+  return page.items.map(app);
 }
 
 export const NAME_LIMIT = 80;
@@ -217,149 +171,6 @@ export async function watchApps(notify: () => void): Promise<() => void> {
     if (generation === sessionGeneration) notify();
   });
   return () => void unsubscribe().catch(() => {});
-}
-
-export class SearchChangedError extends Error {
-  constructor() {
-    super("Apps changed. Search again to see consistent results.");
-  }
-}
-export class SearchUnavailableError extends Error {
-  constructor(readonly reason: "too-large" | "unavailable") {
-    super(
-      {
-        "too-large": "There are too many apps to search right now.",
-        unavailable: "Search is temporarily unavailable. Please retry shortly.",
-      }[reason],
-    );
-  }
-}
-export const SEARCH_INDEX = "apps";
-export function validSearch(term: string): string {
-  const trimmed = term.trim();
-  if (
-    !trimmed ||
-    term.length > 500 ||
-    term.includes("\0") ||
-    trimmed.split(/\s+/).length > 16
-  )
-    throw new Error(
-      "Search must contain 1 to 500 characters and at most 16 words",
-    );
-  return trimmed;
-}
-/**
- * Full-text search over the apps through the vendored search endpoint.
- * The index has no scope; paging past the first page pins the generation so
- * results stay consistent.
- */
-export async function searchApps(
-  term: string,
-  offset = 0,
-  limit = 20,
-  expectedGeneration?: string,
-): Promise<SearchPage> {
-  if (
-    !Number.isSafeInteger(offset) ||
-    offset < 0 ||
-    offset > 10000 ||
-    !Number.isSafeInteger(limit) ||
-    limit < 1 ||
-    limit > 100 ||
-    (offset > 0 && !expectedGeneration)
-  )
-    throw new Error("Invalid search page");
-  const text = validSearch(term);
-  requireSession();
-  const session = sessionGeneration;
-  const active = () => {
-    if (session !== sessionGeneration || !pb.authStore.isValid)
-      throw new Error("Session changed");
-  };
-  let result: {
-    index: string;
-    scope?: string;
-    generation: string;
-    hits: Array<{ id: string; score: number; excerpt: string }>;
-    hasMore: boolean;
-    truncated: boolean;
-  };
-  try {
-    result = await pb.send("/api/context/search", {
-      method: "POST",
-      body: {
-        index: SEARCH_INDEX,
-        query: text,
-        offset,
-        limit,
-        ...(expectedGeneration ? { expectedGeneration } : {}),
-      },
-    });
-  } catch (error) {
-    const status = (error as { status?: number })?.status;
-    if (status === 409) throw new SearchChangedError();
-    if (status === 413) throw new SearchUnavailableError("too-large");
-    if (status === 503 || status === 429)
-      throw new SearchUnavailableError("unavailable");
-    throw error;
-  }
-  active();
-  if (
-    result.index !== SEARCH_INDEX ||
-    (result.scope !== undefined && result.scope !== "") ||
-    typeof result.generation !== "string" ||
-    !/^[a-f0-9]{64}$/.test(result.generation) ||
-    (expectedGeneration && result.generation !== expectedGeneration)
-  )
-    throw new SearchChangedError();
-  if (
-    !Array.isArray(result.hits) ||
-    result.hits.length > limit ||
-    typeof result.hasMore !== "boolean" ||
-    result.hasMore !== result.truncated ||
-    (result.hasMore && !result.hits.length)
-  )
-    throw new Error("Invalid search response");
-  const seen = new Set<string>();
-  result.hits.forEach((hit, n) => {
-    if (
-      !validID(hit.id) ||
-      seen.has(hit.id) ||
-      !Number.isFinite(hit.score) ||
-      typeof hit.excerpt !== "string"
-    )
-      throw new Error("Invalid search hit");
-    seen.add(hit.id);
-    const previous = result.hits[n - 1];
-    if (
-      previous &&
-      (previous.score > hit.score ||
-        (previous.score === hit.score && previous.id >= hit.id))
-    )
-      throw new Error("Invalid search ranking");
-  });
-  if (!result.hits.length)
-    return { generation: result.generation, hits: [], hasMore: result.hasMore };
-  // Hydrate fixed columns by validated ids; search text never becomes SQL.
-  const ids = result.hits.map((hit) => identity(hit.id)).join(",");
-  const rows = (
-    await query<App>(
-      `SELECT id, name, slug, created FROM apps WHERE id IN (${ids}) ORDER BY id LIMIT ${limit}`,
-    )
-  ).map(app);
-  active();
-  const byID = new Map(rows.map((row) => [row.id, row]));
-  // An app deleted between the search and this read is a changed result set.
-  if (byID.size !== result.hits.length) throw new SearchChangedError();
-  return {
-    generation: result.generation,
-    hasMore: result.hasMore,
-    hits: result.hits.map((hit) => ({
-      ...byID.get(hit.id)!,
-      score: hit.score,
-      excerpt: hit.excerpt,
-    })),
-  };
 }
 
 let pendingSignIn: { cancel: (message?: string) => void } | null = null;
@@ -445,14 +256,118 @@ export async function loginCode(input: string): Promise<void> {
   );
 }
 
+export type AuthMode = "email" | "password";
+/** How this server signs people in: email on the hosted origin, the password locally. */
+export async function loginMode(): Promise<AuthMode> {
+  const client = new PocketBase(pb.baseURL, new BaseAuthStore());
+  const result = await client.send<{ mode: AuthMode }>(
+    "/api/bundle/auth-mode",
+    { method: "GET" },
+  );
+  if (result.mode !== "email" && result.mode !== "password")
+    throw new Error("Unable to load sign-in options. Please try again.");
+  return result.mode;
+}
+/** Returns the login request id that the emailed code is bound to. */
+export async function requestEmailLogin(email: string): Promise<string> {
+  const client = new PocketBase(pb.baseURL, new BaseAuthStore());
+  const result = await client.collection("users").requestOTP(email.trim());
+  return result.otpId;
+}
+/** Redeems the link of a sign-in email. */
+export async function loginEmail(
+  otpId: string,
+  password: string,
+): Promise<void> {
+  await signIn((client) =>
+    client.collection("users").authWithOTP(otpId, password),
+  );
+}
+/** Redeems the 6-digit code from the sign-in email, for the app that asked for it. */
+export async function loginEmailCode(
+  otpId: string,
+  code: string,
+): Promise<void> {
+  await signIn((client) =>
+    client.send<RecordAuthResponse>(
+      "/api/collections/users/auth-with-otp-code",
+      { method: "POST", body: { otpId, code } },
+    ),
+  );
+}
+
+/** Where MCP clients connect: the hosted endpoint, or none locally. */
+export type Connection = { kind: "mcp"; url: string } | { kind: "local" };
+/**
+ * Only the hosted origin (email sign-in) serves MCP; the local server never
+ * does, so it is not asked (a 404 would be a console error). MCP clients
+ * discover the endpoint from the same public document read here; any answer
+ * other than this origin's /mcp proves nothing, so it throws.
+ */
+export async function connection(): Promise<Connection> {
+  if ((await api.loginMode()) === "password") return { kind: "local" };
+  const response = await fetch("/.well-known/oauth-protected-resource", {
+    cache: "no-store",
+    credentials: "omit",
+  });
+  if (!response.ok) throw new Error("Connection details unavailable");
+  const { resource } = (await response.json()) as { resource?: unknown };
+  if (typeof resource !== "string")
+    throw new Error("Connection details unavailable");
+  const url = new URL(resource);
+  if (
+    url.protocol !== "https:" ||
+    url.host !== location.host ||
+    url.pathname !== "/mcp"
+  )
+    throw new Error("Connection details unavailable");
+  return { kind: "mcp", url: resource };
+}
+/** An MCP client the signed-in account connected through OAuth. */
+export type ConnectedApp = { id: string; name: string; created: number };
+async function connectionsRequest<T>(body?: { id: string }): Promise<T> {
+  const response = await fetch("/oauth/connections", {
+    method: body ? "POST" : "GET",
+    credentials: "omit",
+    redirect: "error",
+    headers: {
+      Authorization: `Bearer ${pb.authStore.token}`,
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!response.ok) throw new Error("Connected apps are unavailable.");
+  return response.json() as Promise<T>;
+}
+export async function connectedApps(): Promise<ConnectedApp[]> {
+  const { connections } = await connectionsRequest<{
+    connections: ConnectedApp[];
+  }>();
+  if (!Array.isArray(connections))
+    throw new Error("Connected apps are unavailable.");
+  return connections;
+}
+/** Disconnect one app: its tokens stop working at once. */
+export async function revokeConnectedApp(id: string): Promise<void> {
+  await connectionsRequest({ id });
+}
+
 let refreshedAt = 0;
 let refreshedToken = "";
-/** Renew the token at most every five minutes; a rejected token signs out. */
-export async function refreshSession(): Promise<void> {
+/**
+ * Renew the token at most every five minutes; a rejected token signs out.
+ * `force` asks the server even when this token was renewed moments ago.
+ */
+export async function refreshSession(force = false): Promise<void> {
   const initiatingToken = pb.authStore.token;
   if (!initiatingToken) throw new Error("Please sign in to continue");
   const generation = sessionGeneration;
-  if (initiatingToken === refreshedToken && Date.now() - refreshedAt < 300000)
+  if (
+    !force &&
+    initiatingToken === refreshedToken &&
+    Date.now() - refreshedAt < 300000
+  )
     return;
   // Save explicitly: the SDK authRefresh helper saves even after a user signs out.
   const result = await pb.send<RecordAuthResponse>(
@@ -481,8 +396,14 @@ export const api = {
   loginCode,
   refreshSession,
   logout,
+  loginMode,
+  requestEmailLogin,
+  loginEmail,
+  loginEmailCode,
   listApps,
   addApp,
   watchApps,
-  searchApps,
+  connection,
+  connectedApps,
+  revokeConnectedApp,
 };

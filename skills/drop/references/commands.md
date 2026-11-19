@@ -1,6 +1,6 @@
 # Commands
 
-`drop` below means the command line given in SKILL.md (the absolute binary path with its `--db` or `--url` option). Output is JSON on standard output (`--pretty` indents it); errors go to standard error. Exit codes: 0 ok, 1 HTTP or transport error, 2 usage, 4 conflict (HTTP 409 or a changed search generation). Never paste tokens, codes, passwords or the tunnel address into examples or files.
+`drop` below means the command line given in SKILL.md (the absolute binary path with its `--db` or `--url` option). Output is JSON on standard output (`--pretty` indents it); errors go to standard error. Exit codes: 0 ok, 1 HTTP or transport error, 2 usage, 4 conflict (HTTP 409 or a changed search generation). Never paste tokens, codes or passwords into examples or files.
 
 ## Schema
 
@@ -53,7 +53,6 @@ One read-only `SELECT` (alias `query`). Prints `{"columns", "rows", "truncated"}
 - `whoami`: `{"id", "url"}` of the project's account (and `db` locally); it confirms the session works.
 - `status`: locally, paths, port, lease, write-back conflicts and `running`; with `--url`, `reachable` and `loggedIn`.
 - `open [--no-browser]`: the reader. Locally it prints a single-use `signInLink` valid for 2 minutes.
-- `open --public`: on the host of a service started with `--domain`, a sign-in link for the public origin. It never starts a server.
-- Local only: `ensure-running` (alias `start`), `stop`, `flush`, `recover --keep local|synced` (only on the user's decision), `login-code`, `password`, `init`, `serve`, `tunnel serve`. `serve --headless --domain HOST [--acme-email EMAIL] [--mcp]` is opt-in public mode, only when the user asks; it needs a password saved with at least 12 characters, at least 5 of them different, and while it runs data commands and `open` without `--public` cannot reach the server.
-- Remote only: `login --url URL --code-stdin` (or the user's own `login --url URL` with the password), `logout --url URL`, `tunnel forward --address-stdin`.
+- Local only: `ensure-running` (alias `start`), `stop`, `flush`, `recover --keep local|synced` (only on the user's decision), `login-code`, `password`, `init`, `serve`. `serve --hosted --headless --domain HOST --mcp` is the hosted service (`docs/hosting.md`), only when the user asks; data commands cannot reach a hosted server.
+- Remote only: `login --url URL --code-stdin` (or the user's own `login --url URL` with the password), `logout --url URL`.
 - `skill [--agent claude-code|codex|antigravity|all] [--dir DIR]` reinstalls this skill with the current paths.

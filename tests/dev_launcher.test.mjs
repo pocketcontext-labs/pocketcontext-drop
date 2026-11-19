@@ -8,14 +8,10 @@ import { PassThrough } from "node:stream";
 import { test } from "node:test";
 import {
   assertPortAvailable,
-  firstTunnelAddress,
   parseOptions,
   projectOptions,
   run,
-  tunnelInstructions,
 } from "../scripts/dev.mjs";
-
-const address = "tc1-synthetic-address-for-tests";
 
 test("launcher requires an explicit database and valid port", () => {
   assert.throws(() => parseOptions([]), /explicit development database/);
@@ -33,12 +29,9 @@ test("launcher requires an explicit database and valid port", () => {
   );
 });
 
-test("launcher parses --tunnel as a flag and has no account option", () => {
-  assert.equal(parseOptions(["--db", "example.db"]).tunnel, false);
-  assert.equal(parseOptions(["--tunnel", "--db", "example.db"]).tunnel, true);
-  assert.throws(() => parseOptions(["--db", "example.db", "--tunnel", "--tunnel"]), /Usage/);
-  assert.throws(() => parseOptions(["--db", "example.db", "--tunnel", "yes"]), /Usage/);
-  assert.throws(() => parseOptions(["--db", "example.db", "--tunnel", "--email", "you@example.localhost"]), /Usage/);
+test("launcher has no tunnel or account option", () => {
+  assert.throws(() => parseOptions(["--db", "example.db", "--tunnel"]), /Usage/);
+  assert.throws(() => parseOptions(["--db", "example.db", "--email", "you@example.localhost"]), /Usage/);
 });
 
 test("launcher reads only explicit project settings and refuses missing databases", async () => {
@@ -56,9 +49,8 @@ test("launcher reads only explicit project settings and refuses missing database
       join(folder, "drop.json"),
       JSON.stringify({ port: 18123 }),
     );
-    const options = await projectOptions(parseOptions(["--db", db, "--tunnel"]));
+    const options = await projectOptions(parseOptions(["--db", db]));
     assert.equal(options.port, 18123);
-    assert.equal(options.tunnel, true);
     await assert.rejects(
       projectOptions(parseOptions(["--db", db, "--vite-port", "18123"])),
       /different ports/,
@@ -91,40 +83,8 @@ test("launcher refuses an occupied port without touching its listener", async ()
   await assertPortAvailable(port);
 });
 
-test("tunnel instructions name the same port, the stdin forward and the code", () => {
-  const text = tunnelInstructions({ address, port: 18123, code: "c0de0123456789", expires: "2026-10-25T10:10:00Z" });
-  assert.match(text, new RegExp(`Tunnel address: ${address}`));
-  assert(text.includes(`printf '%s\\n' "$ADDRESS" | drop tunnel forward --address-stdin --url http://127.0.0.1:18123`));
-  assert.equal(text.split(address).length, 2, "the address appears exactly once");
-  assert.match(text, /must use the same port, 18123/);
-  assert.match(text, /Host 127\.0\.0\.1:18123/);
-  assert.match(text, /ws:\/\/127\.0\.0\.1:18123/);
-  assert.match(text, /read -r ADDRESS/);
-  assert.match(text, /Sign-in code \(single use, expires 2026-10-25T10:10:00Z\)/);
-  assert.match(text, /^ {2}c0de0123456789$/m);
-  assert(text.includes("http://127.0.0.1:18123/bundle/login#c0de0123456789"));
-  assert.doesNotMatch(tunnelInstructions({ address, port: 18123 }), /Sign-in code/);
-});
-
-test("the first address line wins; other output is ignored", async () => {
-  const stream = new PassThrough();
-  const seen = [];
-  const first = firstTunnelAddress(stream, (data) => seen.push(data.address));
-  stream.write("not json\n");
-  stream.write(`${JSON.stringify({ warning: "no address yet" })}\n`);
-  stream.write(`${JSON.stringify({ address, port: 18123 })}\n`);
-  stream.end(`${JSON.stringify({ address: "second" })}\n`);
-  assert.equal((await first).address, address);
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(seen, [address, "second"]);
-  const empty = new PassThrough();
-  const none = firstTunnelAddress(empty);
-  empty.end("{}\n");
-  await assert.rejects(none, /without an address/);
-});
-
 /** A project folder and fake child processes; nothing real is started. */
-async function harness({ tunnelLines = [JSON.stringify({ address, port: 18123, serverRunning: true })], loginCode = { code: "c0de0123456789", expires: "2026-10-25T10:10:00Z" }, tunnelExits = false } = {}) {
+async function harness() {
   const folder = await mkdtemp(join(tmpdir(), "drop-launcher-run-"));
   const db = join(folder, "drop.db");
   await writeFile(db, "synthetic");
@@ -157,18 +117,10 @@ async function harness({ tunnelLines = [JSON.stringify({ address, port: 18123, s
     const isVite = command === process.execPath;
     const child = fakeChild(isVite ? ["vite", ...argv.slice(1)] : argv);
     child.options = options;
-    const name = isVite ? "vite" : argv[0] === "tunnel" ? "tunnel" : argv[0];
+    const name = isVite ? "vite" : argv[0];
     events.push(`spawn ${name}`);
     setImmediate(() => {
       if (name === "serve") backend = child;
-      if (name === "tunnel") {
-        for (const line of tunnelLines) child.stdout.write(`${line}\n`);
-        if (tunnelExits) child.exit(1);
-      }
-      if (name === "login-code") {
-        if (loginCode) child.stdout.end(JSON.stringify(loginCode));
-        child.exit(loginCode ? 0 : 1);
-      }
       if (name === "stop") {
         child.exit(0);
         backend?.exit(0);
@@ -190,7 +142,6 @@ async function harness({ tunnelLines = [JSON.stringify({ address, port: 18123, s
     access: async () => {},
     assertPortAvailable: async () => {},
     log: (text) => output.push(text),
-    tunnelTimeout: 2000,
   };
   return {
     db, events, children, output, signals, deps,
@@ -206,38 +157,7 @@ async function waitFor(check, what) {
   }
 }
 
-test("--tunnel runs tunnel serve, prints the address once with a code, and Ctrl-C stops everything", async () => {
-  const repeated = JSON.stringify({ address, port: 18123, serverRunning: true });
-  const h = await harness({ tunnelLines: [repeated, repeated] });
-  try {
-    const running = run(["--db", h.db, "--tunnel"], h.deps);
-    await waitFor(() => h.text().includes("Edit ui/src"), "instructions");
-    const tunnel = h.children.find((child) => child.argv[0] === "tunnel");
-    assert.deepEqual(tunnel.argv, ["tunnel", "serve", "--db", h.db]);
-    assert.deepEqual(tunnel.options.stdio, ["ignore", "pipe", "inherit"], "the address is read from stdout, never logged by the launcher elsewhere");
-    const issued = h.children.find((child) => child.argv[0] === "login-code");
-    assert.deepEqual(issued.argv, ["login-code", "--db", h.db]);
-    const vite = h.children.find((child) => child.argv[0] === "vite");
-    assert.equal(vite.options.env.DROP_DEV_PORT, "18123");
-    const text = h.text();
-    assert.equal(text.split(address).length, 2, "a repeated address line is printed once");
-    assert(text.includes(`printf '%s\\n' "$ADDRESS" | drop tunnel forward --address-stdin --url http://127.0.0.1:18123`));
-    assert.match(text, /must use the same port, 18123/);
-    assert.match(text, /^ {2}c0de0123456789$/m);
-    assert.match(text, /including the tunnel/);
-    h.signals.emit("SIGINT");
-    await running;
-    assert.deepEqual(h.events.filter((event) => event.startsWith("spawn")), ["spawn vite", "spawn serve", "spawn tunnel", "spawn login-code", "spawn stop"]);
-    assert(h.events.indexOf("kill tunnel SIGTERM") < h.events.indexOf("spawn stop"), "the tunnel stops before the server");
-    assert(h.events.includes("kill vite SIGTERM"));
-    assert(h.children.every((child) => child.ended), "no child process survives Ctrl-C");
-    assert.equal(h.signals.listenerCount("SIGINT"), 0);
-  } finally {
-    await h.cleanup();
-  }
-});
-
-test("without --tunnel no tunnel or code is started", async () => {
+test("the launcher runs Vite and the server, and Ctrl-C stops both", async () => {
   const h = await harness();
   try {
     const running = run(["--db", h.db], h.deps);
@@ -245,33 +165,10 @@ test("without --tunnel no tunnel or code is started", async () => {
     h.signals.emit("SIGTERM");
     await running;
     assert.deepEqual(h.events.filter((event) => event.startsWith("spawn")), ["spawn vite", "spawn serve", "spawn stop"]);
-    assert.doesNotMatch(h.text(), /Tunnel/);
-  } finally {
-    await h.cleanup();
-  }
-});
-
-test("a failed login code still prints the address and how to issue a code", async () => {
-  const h = await harness({ loginCode: null });
-  try {
-    const running = run(["--db", h.db, "--tunnel"], h.deps);
-    await waitFor(() => h.text().includes("Edit ui/src"), "ready");
-    assert.match(h.text(), /Could not issue a sign-in code/);
-    assert.match(h.text(), new RegExp(address));
-    assert.doesNotMatch(h.text(), /Sign-in code for/);
-    h.signals.emit("SIGINT");
-    await running;
-  } finally {
-    await h.cleanup();
-  }
-});
-
-test("a tunnel that stops without an address fails the launcher and stops the others", async () => {
-  const h = await harness({ tunnelLines: [], tunnelExits: true });
-  try {
-    await assert.rejects(run(["--db", h.db, "--tunnel"], h.deps), /Tunnel stopped before it reported an address/);
-    assert(h.children.every((child) => child.ended));
-    assert(h.events.includes("spawn stop"), "the server is stopped through its authenticated endpoint");
+    const vite = h.children.find((child) => child.argv[0] === "vite");
+    assert.equal(vite.options.env.DROP_DEV_PORT, "18123");
+    assert(h.children.every((child) => child.ended), "no child process survives Ctrl-C");
+    assert.equal(h.signals.listenerCount("SIGTERM"), 0);
   } finally {
     await h.cleanup();
   }

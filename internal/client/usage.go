@@ -1,7 +1,10 @@
 package client
 
 // Usage is the help text.
-const Usage = `drop — a local application in one binary (placeholder app model)
+const Usage = `drop — PocketContext Drop in one binary (placeholder app model)
+
+People use Drop on its hosted origin (serve --hosted: several accounts, email
+sign-in, remote MCP). The local project below is for developing the reader.
 
 The project is the database file (default: drop.db beside this binary,
 or --db PATH, or DROP_DB), the storage/ folder and drop.json
@@ -13,17 +16,17 @@ Setup and server:
                        reader password), start the server
   ensure-running       start the server in the background unless it runs (alias: start)
   serve [--ui-dev URL]  run in the foreground; optionally proxy a loopback Vite UI
-  serve --headless --domain HOST [--acme-email EMAIL] [--mcp]
-                       public mode: also serve the web app on HOST with native
-                       HTTPS (ports 443 and 80); --mcp adds remote MCP with OAuth.
-                       Needs a strong account password; refused otherwise
+  serve --hosted --headless --domain HOST --mcp [--hosted-init | --hosted-restore]
+        [--hosted-http-address IP:PORT]
+        [--hosted-proxy-header HEADER --hosted-proxy-networks CIDR[,CIDR]]
+                       hosted mode: plain HTTP behind a TLS-terminating proxy
+                       for HOST, email sign-in for the owner (DROP_OWNER_EMAIL,
+                       DROP_SMTP_*) and invited people, remote MCP with OAuth
   stop                 write back the database and stop the server
   status               show paths, port, lease and whether the server runs
   open [--no-browser]  open the reader signed in (single-use link, valid for
                        2 minutes); --no-browser prints the link, e.g. to open
                        it on a computer that uses --url
-  open --public        print a sign-in link for the public origin; the server
-                       must already run with --domain
   password [--password-stdin]
                        change the reader password
   login-code [--ttl SECONDS]
@@ -44,18 +47,8 @@ Apps (reads use SQL and full-text search; every request needs a sign-in):
   sql|query SQL|-                    run one read-only SELECT
   whoami | schema                    the session's account ID; the readable schema
 
-Tunnel (carry the server's port to another computer; foreground, Ctrl-C stops):
-  tunnel serve [--new-address]
-                       on the agent computer: expose only the project's port
-                       through tailcat and print the private tunnel address
-                       (stable across restarts; --new-address replaces it)
-  tunnel forward (ADDRESS | --address-stdin) [--url URL]
-                       on the person's computer: listen on the same loopback
-                       port (default http://127.0.0.1:8100) and carry it to
-                       the agent computer; never uses a local database
-
-Remote client (the server runs on another computer, reached through
-` + "`tunnel forward`" + ` or an SSH forward of the same port; --url URL or DROP_URL):
+Remote client (the server runs on another computer, reached through an SSH
+forward of the same port; --url URL or DROP_URL):
   login --url URL --code-stdin
                        sign in with a one-time code from ` + "`login-code`" + ` on the
                        agent computer, read from standard input; stores only

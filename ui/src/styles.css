@@ -251,3 +251,31 @@ label {
 label input {
   font-weight: 400;
 }
+.nav {
+  display: flex;
+  gap: 4px;
+}
+.nav a {
+  color: var(--muted);
+  text-decoration: none;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-weight: 600;
+}
+.nav a[aria-current="page"] {
+  color: var(--text);
+  background: var(--accent-soft);
+}
+.endpoint {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.login-code {
+  font-size: 20px;
+  letter-spacing: 4px;
+}
+.apps li.row {
+  justify-content: space-between;
+}

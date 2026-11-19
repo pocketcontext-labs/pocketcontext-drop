@@ -218,7 +218,7 @@ def main():
             earlier_release_scenario(pc)
             remote = Remote(binary, Path(temp) / 'other-computer', pc.url)
             remote_scenario(pc, remote)
-            tunnel_scenario(pc, remote)
+            hosted_scenario(pc, remote)
             codes_scenario(pc, remote)
             pc.json('stop')
             leftovers = retired_names(pc.root)
@@ -284,7 +284,7 @@ def scenario(pc):
     check(pc.json('list') == [], 'a new project has no apps')
     schema = pc.json('schema')
     tables = {t['name']: sorted(c['name'] for c in t['columns']) for t in schema['tables']}
-    check(tables == {'apps': ['created', 'id', 'name', 'slug', 'updated']}, f'the SQL schema exposes only apps: {tables}')
+    check(tables == {'apps': ['created', 'id', 'name', 'owner', 'slug', 'updated']}, f'the SQL schema exposes only apps: {tables}')
     check(schema['permissionModel'] == 'shared' and schema['search']['indexes'] == ['apps'] and 'isolation' not in schema['search']
           and 'snapshotLimits' not in schema, 'reads use the live database and a shared apps index')
 
@@ -439,10 +439,10 @@ def single_user_scenario(pc):
         accounts = db.execute('SELECT id, email FROM users').fetchall()
     check(accounts == [(me, ACCOUNT_EMAIL)], f'the database holds exactly one account: {accounts}')
 
-    # Every app belongs to the project: the account reads, edits and deletes them all.
-    status, body = pc.http('POST', '/api/collections/apps/records', {'name': 'Through the records API', 'slug': 'records-api', 'owner': me}, headers={'Authorization': mine})
+    # Every app belongs to the account that created it; a request cannot choose another owner.
+    status, body = pc.http('POST', '/api/collections/apps/records', {'name': 'Through the records API', 'slug': 'records-api', 'owner': 'aaaaaaaaaaaaaaa'}, headers={'Authorization': mine})
     created = json.loads(body)
-    check(status == 200 and 'owner' not in created and created['name'] == 'Through the records API', 'the records API creates an app without an owner')
+    check(status == 200 and created.get('owner') == me and created['name'] == 'Through the records API', 'the records API creates an app owned by the requester')
     status, body = pc.http('GET', '/api/collections/apps/records?perPage=100', headers={'Authorization': mine})
     listed = {item['id'] for item in json.loads(body)['items']}
     check(status == 200 and created['id'] in listed and len(listed) == pc.json('sql', 'SELECT count(*) FROM apps')['rows'][0][0],
@@ -683,24 +683,81 @@ def remote_scenario(pc, r):
     check(sorted(p.name for p in r.work.iterdir()) == [], 'remote mode writes nothing to the working folder')
 
 
-def tunnel_scenario(pc, r):
-    """Offline checks of `tunnel`: its help and every refusal that comes before any network access."""
-    help_text = r.run('tunnel', '--help', url=False).stdout
-    check('tunnel serve' in help_text and 'tunnel forward' in help_text and '--address-stdin' in help_text, 'tunnel --help documents both sides')
-    check('tunnel serve' in r.run('help', url=False).stdout, 'the overview lists the tunnel')
-    for args, url in ((['tunnel', 'serve'], None), (['tunnel', 'forward', '--address-stdin', '--db', str(pc.db)], False),
-                      (['tunnel', 'forward', '--address-stdin', '--new-address'], None), (['tunnel'], False), (['tunnel', 'open'], False)):
-        r.run(*args, url=url, stdin='tcSyntheticButInvalid\n', expect=2)
-    check(True, 'tunnel refuses serve with --url, forward with --db, --new-address on forward and unknown subcommands')
-    for text in ('tcSyntheticButInvalidSecret', 'not-an-address'):
-        refused = r.run('tunnel', 'forward', '--address-stdin', stdin=text + '\n', expect=2)
-        check('not a valid tailcat address' in refused.stderr and text not in refused.stderr + refused.stdout,
-              'an invalid tunnel address is refused without being echoed')
-    refused = r.run('tunnel', 'forward', 'tcSyntheticButInvalidSecret', url=False, expect=2)
-    check('tcSyntheticButInvalidSecret' not in refused.stderr, 'an invalid address argument is not echoed')
-    missing = r.run('tunnel', 'serve', '--db', str(r.work / 'none.db'), url=False, expect=2)
-    check('no Drop database' in missing.stderr and not (r.work / 'none.db').exists(), 'tunnel serve never creates a database')
-    check(not list(user_cache(r.home).rglob('tunnel.json')), 'refused tunnel commands keep no tunnel identity')
+HOSTED_DOMAIN = 'drop.example.test'
+
+
+def hosted_request(port, method, path, body=None, host=HOSTED_DOMAIN):
+    import http.client
+    connection = http.client.HTTPConnection('127.0.0.1', port, timeout=30)
+    data = None if body is None else json.dumps(body).encode()
+    headers = {'Host': host, 'Accept': 'application/json'}
+    if data is not None:
+        headers['Content-Type'] = 'application/json'
+    try:
+        connection.request(method, path, body=data, headers=headers)
+        response = connection.getresponse()
+        return response.status, response.read()
+    finally:
+        connection.close()
+
+
+def hosted_scenario(pc, r):
+    """Hosted Multi serving with the real binary: refusals, startup, and the public boundary."""
+    check(r.run('tunnel', 'serve', url=False, expect=2).returncode == 2, 'there is no tunnel command')
+    check('tunnel' not in r.run('help', url=False).stdout, 'the overview has no tunnel')
+    for args in (['serve', '--headless', '--domain', HOSTED_DOMAIN], ['serve', '--mcp'],
+                 ['serve', '--hosted', '--headless', '--domain', HOSTED_DOMAIN],
+                 ['serve', '--hosted-http-address', '127.0.0.1:1']):
+        pc.run(*args, expect=2)
+    check(True, 'native public mode is gone; hosted options require --hosted --headless --domain --mcp')
+    hosted = r.root / 'hosted'
+    hosted.mkdir()
+    db = hosted / 'drop.db'
+    port = free_port()
+    command = [str(pc.binary), '--db', str(db), 'serve', '--hosted', '--hosted-init', '--headless', '--mcp',
+               '--domain', HOSTED_DOMAIN, '--hosted-http-address', f'127.0.0.1:{port}',
+               '--hosted-proxy-header', 'X-Forwarded-For', '--hosted-proxy-networks', '127.0.0.0/8']
+    refused = subprocess.run(command, capture_output=True, text=True, encoding='utf-8', env=r.env, timeout=60)
+    check(refused.returncode != 0 and 'OWNER_EMAIL' in refused.stderr and not db.exists(),
+          'hosted serving refuses a missing owner and SMTP configuration and creates nothing')
+    env = {**r.env, 'DROP_OWNER_EMAIL': 'owner@example.test', 'DROP_SMTP_FROM': 'login@example.test',
+           'DROP_SMTP_HOST': '127.0.0.1', 'DROP_SMTP_PORT': '9', 'DROP_SMTP_USERNAME': 'synthetic',
+           'DROP_SMTP_PASSWORD': 'synthetic'}
+    output = open(hosted / 'serve.log', 'w+', encoding='utf-8')
+    server = subprocess.Popen(command, stdout=output, stderr=subprocess.STDOUT, env=env)
+    try:
+        deadline = time.time() + 60
+        while not listening(port):
+            if server.poll() is not None or time.time() > deadline:
+                output.seek(0)
+                raise AssertionError(f'hosted server did not start: {output.read()[-2000:]}')
+            time.sleep(0.2)
+        check(hosted_request(port, 'GET', '/up', host='127.0.0.1')[0] == 200, 'the hosted server answers /up')
+        check(hosted_request(port, 'GET', '/', host='other.example.test')[0] == 403, 'another Host is refused')
+        status, body = hosted_request(port, 'GET', '/api/bundle/auth-mode')
+        check(status == 200 and json.loads(body).get('mode') == 'email', 'hosted sign-in is by email')
+        check(hosted_request(port, 'GET', '/')[0] == 200, 'the reader is served on the hosted origin')
+        for method, path in (('POST', '/api/context/query'), ('POST', '/api/context/search'), ('GET', '/api/context/schema'),
+                             ('POST', '/api/collections/users/auth-with-password'), ('POST', '/api/bundle/token'),
+                             ('POST', '/api/collections/apps/records'), ('GET', '/_/')):
+            check(hosted_request(port, method, path, {} if method == 'POST' else None)[0] == 404, f'{method} {path} is 404 publicly')
+        status, body = hosted_request(port, 'GET', '/.well-known/oauth-protected-resource')
+        check(status == 200 and json.loads(body).get('resource') == f'https://{HOSTED_DOMAIN}/mcp', 'remote MCP is announced')
+        check(hosted_request(port, 'POST', '/mcp', {})[0] == 401, 'MCP requires OAuth')
+        status, body = hosted_request(port, 'POST', '/api/collections/users/request-otp', {'email': 'stranger@example.test'})
+        check(status == 200 and 'otpId' in json.loads(body), 'an unknown address gets the ordinary sign-in answer')
+    finally:
+        server.send_signal(signal.SIGTERM)
+        try:
+            server.wait(timeout=60)
+        except subprocess.TimeoutExpired:
+            server.kill()
+            server.wait()
+        output.close()
+    check(server.returncode == 0, 'the hosted server stops cleanly')
+    with closing(sqlite3.connect(db)) as conn:
+        users = conn.execute('SELECT email FROM users').fetchall()
+    check(users == [('owner@example.test',)], 'hosted initialization created only the owner, and nobody else got an account')
 
 
 def codes_scenario(pc, r):

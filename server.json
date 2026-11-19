@@ -3,15 +3,11 @@
   "tables": {
     "apps": [
       "id",
+      "owner",
       "name",
       "slug",
       "created",
       "updated"
-    ]
-  },
-  "public": {
-    "collections": [
-      "apps"
     ]
   },
   "timeoutMs": 2000,

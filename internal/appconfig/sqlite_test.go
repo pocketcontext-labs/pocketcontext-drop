@@ -121,11 +121,11 @@ func TestSQLReaderDeniesSQLiteInternals(t *testing.T) {
 	defer db.Close()
 	if _, err := db.Exec(`PRAGMA journal_mode=WAL;
 		CREATE TABLE users(id TEXT PRIMARY KEY, email TEXT, password TEXT, tokenKey TEXT);
-		CREATE TABLE apps(id TEXT PRIMARY KEY, name TEXT, slug TEXT, created TEXT, updated TEXT);
+		CREATE TABLE apps(id TEXT PRIMARY KEY, owner TEXT, name TEXT, slug TEXT, created TEXT, updated TEXT);
 		CREATE VIRTUAL TABLE apps_fts USING fts5(name);
 		INSERT INTO users VALUES ('account00000001','account@example.localhost','hash-a','key-a');
-		INSERT INTO apps VALUES ('record000000001','Hello','hello','2026-01-01','2026-01-01'),
-			('record000000002','Hello again','hello-again','2026-01-02','2026-01-02');
+		INSERT INTO apps VALUES ('record000000001','account00000001','Hello','hello','2026-01-01','2026-01-01'),
+			('record000000002','account00000001','Hello again','hello-again','2026-01-02','2026-01-02');
 		INSERT INTO apps_fts(name) SELECT name FROM apps;`); err != nil {
 		t.Fatal(err)
 	}

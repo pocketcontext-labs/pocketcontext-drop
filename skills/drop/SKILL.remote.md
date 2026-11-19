@@ -8,7 +8,7 @@ description: Add, list and search the apps in the user's Drop through its CLI, a
 Binary: `{{BINARY}}`
 Server: `{{URL}}`
 
-The Drop server runs on the agent computer. This computer reaches it through a forward of the same port (`drop tunnel forward`, or SSH) and runs the binary only as a client. Always run the binary by its absolute path with `--url`. In the references, `drop` means:
+The Drop server runs on the agent computer. This computer reaches it through an SSH forward of the same port and runs the binary only as a client. Always run the binary by its absolute path with `--url`. In the references, `drop` means:
 
 ```sh
 "{{BINARY}}" --url "{{URL}}"
@@ -28,7 +28,7 @@ Use this skill when the user asks to record, list, find or count the apps in Dro
 
 It reports whether the server is reachable (`reachable`) and whether this computer is signed in (`loggedIn`). Every other command checks the server first.
 
-- Not reachable: do not continue; report it to the user. The server runs on the agent computer; ask the user to check that it runs there and that the port forward is active (`tunnel serve` on the agent computer and `tunnel forward` here, both in the foreground). Never restart a forward on a different local port and never print or store the tunnel address: it is a secret. Never start a server and never create a database on this computer.
+- Not reachable: do not continue; report it to the user. The server runs on the agent computer; ask the user to check that it runs there and that the SSH forward of the same port is active. Never restart a forward on a different local port. Never start a server and never create a database on this computer.
 - Not signed in, or the session expired: do not continue and do not ask the user for a password. Sign-in uses a one-time code: the operator (or the agent controlling the agent computer) runs `drop login-code` there, and the code is passed on standard input to `printf '%s\n' "$CODE" | "{{BINARY}}" login --url "{{URL}}" --code-stdin`. Never put a code on a command line, and never print, log or store it beyond passing it to `login`. A used or expired code needs a new one. The user may instead sign in with the reader password by running `login --url "{{URL}}"` themselves; never ask for the password, print it or store it.
 - A different Drop: do not continue; report it to the user; only the user signs in again.
 

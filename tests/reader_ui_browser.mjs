@@ -136,21 +136,14 @@ try {
   assert.equal((cliList.rows ?? cliList).length, 4, 'the CLI sees the apps added in the reader, and no duplicate slug');
   ok('apps added in the reader appear newest first as plain text; a duplicate slug is refused');
 
-  await page.getByRole('searchbox', { name: 'Search apps' }).fill('synthetic hello');
-  await page.getByRole('button', { name: 'Search' }).click();
-  const results = page.getByRole('list', { name: 'Search results' });
-  await results.waitFor();
-  const found = await results.locator('li > p:first-child > span').allTextContents();
-  assert.deepEqual(found.sort(), [messages[0], messages[1]].sort());
-  await page.getByText(/2 matches for/).waitFor();
-  await page.getByRole('searchbox', { name: 'Search apps' }).fill('telescopes');
-  await page.getByRole('button', { name: 'Search' }).click();
-  await results.getByText(messages[2], { exact: true }).waitFor();
-  await page.getByRole('searchbox', { name: 'Search apps' }).fill('nonexistentword');
-  await page.getByRole('button', { name: 'Search' }).click();
-  await page.getByText(/No apps match/).waitFor();
-  await page.getByRole('button', { name: 'Clear' }).click();
-  ok('full-text search finds apps and reports no matches');
+  await page.getByRole('link', { name: 'Connect' }).click();
+  await page.getByRole('heading', { name: 'Connect an assistant' }).waitFor();
+  await page.getByText(/hosted Drop only/).waitFor();
+  assert.equal(new URL(page.url()).hash, '#/connect');
+  assert.equal(await page.getByText('account@drop.invalid').count(), 0, 'the local account address is never shown');
+  await page.getByRole('link', { name: 'Apps' }).click();
+  await page.getByRole('heading', { name: 'Your apps' }).waitFor();
+  ok('the Connect page says remote MCP is hosted only, and the Apps link returns');
   await page.screenshot({ path: path.join(screenshots, 'reader-light.png'), fullPage: true });
 
   const lightBackground = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
@@ -177,10 +170,7 @@ try {
   await page.getByLabel('Sign-in code').fill(code.code);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.getByText('Third app about telescopes', { exact: true }).waitFor();
-  await page.getByRole('searchbox', { name: 'Search apps' }).fill('synthetic');
-  await page.getByRole('button', { name: 'Search' }).click();
-  await page.getByText(/2 matches for/).waitFor();
-  ok('a login code signs in the same account, which sees and finds the same apps');
+  ok('a login code signs in the same account, which sees the same apps');
   await page.getByRole('button', { name: 'Sign out' }).click();
   await page.getByLabel('Password').fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
