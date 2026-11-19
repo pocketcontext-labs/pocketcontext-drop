@@ -1,0 +1,85 @@
+{
+  "checkpoints": [],
+  "exports": [],
+  "hostId": "walter-dev",
+  "instances": [
+    {
+      "access": {
+        "kind": "public"
+      },
+      "activation": {
+        "sleepWhen": {
+          "kind": "traffic-idle",
+          "timeoutMs": 300000
+        }
+      },
+      "appId": "d-crewdev00000001",
+      "config": {
+        "command": {
+          "args": [],
+          "environment": {
+            "HOME": "/app/data",
+            "NIBRUN_DATA_DIR": "/app/data",
+            "NIBRUN_HOSTNAME": "${NIBRUN_HOSTNAME}",
+            "POCKETCONTEXT_OWNER_EMAIL": "owner@example.com",
+            "POCKETCONTEXT_OWNER_PASSWORD": "<secret:owner_password>",
+            "POCKETCONTEXT_SMTP_FROM": "Crew <crew@example.com>",
+            "POCKETCONTEXT_SMTP_HOST": "smtp.resend.com",
+            "POCKETCONTEXT_SMTP_PASSWORD": "<secret:smtp_password>",
+            "POCKETCONTEXT_SMTP_PORT": "465",
+            "POCKETCONTEXT_SMTP_TLS": "tls",
+            "POCKETCONTEXT_SMTP_USERNAME": "resend"
+          },
+          "program": "/app/crew",
+          "workingDirectory": "/app"
+        },
+        "healthCheck": {
+          "gracePeriodMs": 60000,
+          "healthyThreshold": 1,
+          "intervalMs": 2000,
+          "kind": "tcp",
+          "timeoutMs": 2000,
+          "unhealthyThreshold": 3
+        },
+        "httpPort": 8090,
+        "resources": {
+          "memoryMib": 512,
+          "vcpuCount": 1
+        },
+        "restartPolicy": {
+          "backoffFactor": 2,
+          "initialBackoffMs": 500,
+          "maxBackoffMs": 30000,
+          "maxRestarts": 3,
+          "resetAfterMs": 60000
+        }
+      },
+      "deploymentId": "d-crewdev00000001-dep-1",
+      "desiredState": "on-request",
+      "hostnames": [
+        {
+          "hostname": "crew-dev.bigconfig.space",
+          "kind": "platform"
+        }
+      ],
+      "layers": [
+        {
+          "destinationPath": "/app/crew",
+          "digest": "1ae3cb5471536bead6b9395b86d154c64db1233d6f56ae4896c58f3fcdc98715",
+          "kind": "executable",
+          "objectKey": "1ae3cb5471536bead6b9395b86d154c64db1233d6f56ae4896c58f3fcdc98715"
+        }
+      ],
+      "volumeId": "d-crewdev00000001-vol"
+    }
+  ],
+  "revision": "drop-1-85595f79cd8c",
+  "volumes": [
+    {
+      "appId": "d-crewdev00000001",
+      "desiredState": "present",
+      "sizeBytes": 4294967296,
+      "volumeId": "d-crewdev00000001-vol"
+    }
+  ]
+}

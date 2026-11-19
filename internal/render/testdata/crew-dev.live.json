@@ -1,0 +1,77 @@
+{
+  "volume": {
+    "volumeId": "crew-dev-vol",
+    "appId": "crew-dev",
+    "sizeBytes": 4294967296,
+    "desiredState": "present"
+  },
+  "instance": {
+    "appId": "crew-dev",
+    "deploymentId": "crew-dev-dep-1",
+    "volumeId": "crew-dev-vol",
+    "desiredState": "on-request",
+    "activation": {
+      "sleepWhen": {
+        "kind": "traffic-idle",
+        "timeoutMs": 300000
+      }
+    },
+    "layers": [
+      {
+        "kind": "executable",
+        "destinationPath": "/app/crew",
+        "digest": "1ae3cb5471536bead6b9395b86d154c64db1233d6f56ae4896c58f3fcdc98715",
+        "objectKey": "crew-0.30.1-drop"
+      }
+    ],
+    "config": {
+      "httpPort": 8090,
+      "command": {
+        "program": "/app/crew",
+        "args": [],
+        "workingDirectory": "/app",
+        "environment": {
+          "NIBRUN_HOSTNAME": "${NIBRUN_HOSTNAME}",
+          "NIBRUN_DATA_DIR": "/app/data",
+          "HOME": "/app/data",
+          "POCKETCONTEXT_OWNER_PASSWORD": "<secret:owner_password>",
+          "POCKETCONTEXT_SMTP_FROM": "Crew <crew@example.com>",
+          "POCKETCONTEXT_SMTP_HOST": "smtp.resend.com",
+          "POCKETCONTEXT_SMTP_PORT": "465",
+          "POCKETCONTEXT_SMTP_USERNAME": "resend",
+          "POCKETCONTEXT_OWNER_EMAIL": "owner@example.com",
+          "POCKETCONTEXT_SMTP_TLS": "tls",
+          "POCKETCONTEXT_SMTP_PASSWORD": "<secret:smtp_password>"
+        }
+      },
+      "resources": {
+        "vcpuCount": 1,
+        "memoryMib": 512
+      },
+      "healthCheck": {
+        "kind": "tcp",
+        "intervalMs": 2000,
+        "timeoutMs": 2000,
+        "gracePeriodMs": 60000,
+        "healthyThreshold": 1,
+        "unhealthyThreshold": 3
+      },
+      "restartPolicy": {
+        "maxRestarts": 3,
+        "initialBackoffMs": 500,
+        "maxBackoffMs": 30000,
+        "backoffFactor": 2,
+        "resetAfterMs": 60000
+      }
+    },
+    "hostnames": [
+      {
+        "hostname": "crew-dev.bigconfig.space",
+        "kind": "platform"
+      }
+    ],
+    "access": {
+      "kind": "public"
+    }
+  }
+}

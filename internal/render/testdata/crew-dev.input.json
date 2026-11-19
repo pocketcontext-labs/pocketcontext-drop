@@ -1,0 +1,65 @@
+{
+  "hostId": "walter-dev",
+  "desiredSeq": 1,
+  "apps": [
+    {
+      "appId": "d-crewdev00000001",
+      "deploymentId": "d-crewdev00000001-dep-1",
+      "desiredState": "on-request",
+      "idleTimeoutMs": 300000,
+      "volume": {
+        "volumeId": "d-crewdev00000001-vol",
+        "sizeBytes": 4294967296
+      },
+      "release": {
+        "sha256": "1ae3cb5471536bead6b9395b86d154c64db1233d6f56ae4896c58f3fcdc98715",
+        "s3Key": "releases/1ae3cb5471536bead6b9395b86d154c64db1233d6f56ae4896c58f3fcdc98715",
+        "sizeBytes": 41943040
+      },
+      "executableName": "crew",
+      "httpPort": 8090,
+      "args": [],
+      "resources": {
+        "vcpu": 1,
+        "memoryMib": 512
+      },
+      "healthCheck": {
+        "kind": "tcp"
+      },
+      "hostnames": [
+        {
+          "hostname": "crew-dev.bigconfig.space",
+          "kind": "platform"
+        }
+      ],
+      "env": {
+        "POCKETCONTEXT_SMTP_FROM": "Crew <crew@example.com>",
+        "POCKETCONTEXT_SMTP_HOST": "smtp.resend.com",
+        "POCKETCONTEXT_SMTP_PORT": "465",
+        "POCKETCONTEXT_SMTP_USERNAME": "resend",
+        "POCKETCONTEXT_OWNER_EMAIL": "owner@example.com",
+        "POCKETCONTEXT_SMTP_TLS": "tls"
+      },
+      "secrets": [
+        {
+          "name": "POCKETCONTEXT_OWNER_PASSWORD",
+          "parameter": "/drop/apps/crewdev00000001/POCKETCONTEXT_OWNER_PASSWORD",
+          "version": 1,
+          "value": "<secret:owner_password>"
+        },
+        {
+          "name": "POCKETCONTEXT_SMTP_PASSWORD",
+          "parameter": "/drop/apps/crewdev00000001/POCKETCONTEXT_SMTP_PASSWORD",
+          "version": 1,
+          "value": "<secret:smtp_password>"
+        }
+      ]
+    }
+  ],
+  "limits": {
+    "allowedHostSuffix": ".bigconfig.space",
+    "ssmPrefix": "/drop",
+    "allocatableVcpu": 2,
+    "allocatableMemoryMib": 7136
+  }
+}
