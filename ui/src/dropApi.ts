@@ -6,6 +6,7 @@ import { pb } from "./api";
 // order: internal/dropapi's TestReaderKnowsEveryOperation compares them.
 export const OPS = [
   "me",
+  "event.list",
   "user.list",
   "user.set",
   "invite.create",

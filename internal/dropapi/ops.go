@@ -73,6 +73,11 @@ type Spec struct {
 	// operation again is safe (secret.set stores the same value as a new
 	// version).
 	SecretInput bool
+	// MCP offers the operation through the MCP tool drop_write: its op enum
+	// and op table are generated from the specs with MCP set (admins see every
+	// such operation, users those of RoleUser). Only mutating operations take
+	// it; reads reach MCP through drop_read's own table (internal/client).
+	MCP bool
 }
 
 var opName = regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`)
@@ -83,27 +88,29 @@ var opName = regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`)
 var specs = []Spec{
 	{Name: "me", Role: RoleUser, Read: true, Input: &MeInput{},
 		Summary: "The signed-in account: id, email, role, app quota and whether it is the owner."},
+	{Name: "event.list", Role: RoleUser, Read: true, Input: &EventListInput{},
+		Summary: "Events (who changed what, newest first) of your apps, or of one app; all:true (admins) lists every event. Details never hold secret values."},
 	{Name: "user.list", Role: RoleAdmin, Read: true, Input: &UserListInput{},
 		Summary: "Every account, newest first, with role, quota, suspension and whether it has signed in."},
-	{Name: "user.set", Role: RoleAdmin, Input: &UserSetInput{},
+	{Name: "user.set", Role: RoleAdmin, MCP: true, Input: &UserSetInput{},
 		Summary: "Change an account's role, app quota or suspension. Nobody changes their own role or suspension, or the owner's."},
-	{Name: "invite.create", Role: RoleAdmin, Input: &InviteCreateInput{},
+	{Name: "invite.create", Role: RoleAdmin, MCP: true, Input: &InviteCreateInput{},
 		Summary: "Invite an email address (role user or admin, app quota, 1-30 days, default 7). Returns the invite and a sign-in URL to share; no email is sent."},
 	{Name: "invite.list", Role: RoleAdmin, Read: true, Input: &InviteListInput{},
 		Summary: "Invites, newest first, with their state (open, used, revoked or expired)."},
-	{Name: "invite.revoke", Role: RoleAdmin, Input: &InviteRevokeInput{},
+	{Name: "invite.revoke", Role: RoleAdmin, MCP: true, Input: &InviteRevokeInput{},
 		Summary: "Revoke an open invite; the address can no longer get an account."},
 	{Name: "app.list", Role: RoleUser, Read: true, Input: &AppListInput{},
 		Summary: "Your apps, newest first, with your app quota; archived:true lists archived apps; all:true (admins) lists everyone's."},
 	{Name: "app.get", Role: RoleUser, Read: true, Input: &AppGetInput{},
 		Summary: "One app by id or slug, with the names of its secrets (never their values)."},
-	{Name: "app.create", Role: RoleUser, Input: &AppCreateInput{},
+	{Name: "app.create", Role: RoleUser, MCP: true, Input: &AppCreateInput{},
 		Summary: "Create an app: name, unique slug (its hostname), and optional settings (state, idle timeout, vCPU, memory, disk, port, executable, args, env, health check). Counts against your app quota."},
-	{Name: "app.set", Role: RoleUser, Input: &AppSetInput{},
+	{Name: "app.set", Role: RoleUser, MCP: true, Input: &AppSetInput{},
 		Summary: "Change an app's settings (env as {set, unset}); a change to the instance configuration starts a new deployment. The slug cannot change; the disk cannot change once the app is placed."},
-	{Name: "app.start", Role: RoleUser, Input: &AppStartInput{},
+	{Name: "app.start", Role: RoleUser, MCP: true, Input: &AppStartInput{},
 		Summary: "Start a stopped app in the state it had before it stopped (running or on-request)."},
-	{Name: "app.stop", Role: RoleUser, Input: &AppStopInput{},
+	{Name: "app.stop", Role: RoleUser, MCP: true, Input: &AppStopInput{},
 		Summary: "Stop an app; its data stays."},
 	{Name: "app.archive", Role: RoleUser, Input: &AppArchiveInput{},
 		Summary: "Archive an app: it stops running and no longer counts against your quota. Its data, secrets and slug stay; app.restore brings it back."},
@@ -111,22 +118,22 @@ var specs = []Spec{
 		Summary: "Restore an archived app (it counts against your quota again)."},
 	{Name: "secret.list", Role: RoleUser, Read: true, Input: &SecretListInput{},
 		Summary: "An app's secrets: name, version, length, when and how each was set. Values are never returned."},
-	{Name: "secret.set", Role: RoleUser, Input: &SecretSetInput{}, SecretInput: true,
+	{Name: "secret.set", Role: RoleUser, MCP: true, Input: &SecretSetInput{}, SecretInput: true,
 		Summary: "Set an app secret (an environment variable kept in AWS SSM, never stored, logged or returned) and start a new deployment. Through MCP the value passes through the assistant's conversation: prefer the reader for real secrets."},
-	{Name: "secret.delete", Role: RoleUser, Input: &SecretDeleteInput{},
+	{Name: "secret.delete", Role: RoleUser, MCP: true, Input: &SecretDeleteInput{},
 		Summary: "Delete an app secret (every version) and start a new deployment."},
 	{Name: "release.list", Role: RoleUser, Read: true, Input: &ReleaseListInput{},
 		Summary: "An app's releases (uploaded executables), newest first: id, sha256, size, note, and which one is current."},
-	{Name: "release.upload_link", Role: RoleUser, Input: &ReleaseUploadLinkInput{}, OnceResult: true,
+	{Name: "release.upload_link", Role: RoleUser, MCP: true, Input: &ReleaseUploadLinkInput{}, OnceResult: true,
 		Summary: "A one-time upload link for a new release of an app: PUT a static linux/amd64 ELF executable (at most 90 MiB) to the returned URL within 15 minutes, for example with curl -fT FILE URL. activate:true deploys it once uploaded. The URL is shown once."},
-	{Name: "release.deploy", Role: RoleUser, Input: &ReleaseDeployInput{},
+	{Name: "release.deploy", Role: RoleUser, MCP: true, Input: &ReleaseDeployInput{},
 		Summary: "Make one of an app's releases (by id) its current release and start a new deployment."},
 }
 
 func init() {
 	seen := map[string]bool{}
 	for _, s := range specs {
-		if !opName.MatchString(s.Name) || seen[s.Name] || (s.Role != RoleUser && s.Role != RoleAdmin) || s.Input == nil || s.Summary == "" || (s.Read && s.SecretInput) {
+		if !opName.MatchString(s.Name) || seen[s.Name] || (s.Role != RoleUser && s.Role != RoleAdmin) || s.Input == nil || s.Summary == "" || (s.Read && (s.SecretInput || s.MCP)) {
 			panic(fmt.Sprintf("dropapi: invalid operation spec %q", s.Name))
 		}
 		seen[s.Name] = true
@@ -144,6 +151,18 @@ func Lookup(name string) (Spec, bool) {
 		}
 	}
 	return Spec{}, false
+}
+
+// MCPWriteNames returns the operations drop_write offers a role, in registry
+// order: those with MCP set that the role may call.
+func MCPWriteNames(role Role) []string {
+	var names []string
+	for _, s := range specs {
+		if s.MCP && (role == RoleAdmin || s.Role == RoleUser) {
+			names = append(names, s.Name)
+		}
+	}
+	return names
 }
 
 // Names returns the operation names a role may call, sorted.

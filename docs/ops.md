@@ -1,6 +1,6 @@
 # Operations
 
-Every write in Drop goes through one route, `POST /api/drop/op`, from the reader, the CLI and (later) the MCP tool `drop_write`. The server checks the caller's account, its role and the input in one place, runs the operation in one transaction and records one row in `events`. `GET /api/drop/me` answers the `me` operation.
+Every write in Drop goes through one route, `POST /api/drop/op`, from the reader, the CLI and the MCP tool `drop_write` ([MCP](mcp.md)). The server checks the caller's account, its role and the input in one place, runs the operation in one transaction and records one row in `events`. `GET /api/drop/me` answers the `me` operation.
 
 The wire contract (request, result and error shapes, the registry of operation names, roles and input types) is `internal/dropapi`; the framework and the operations are `internal/dropserver` (`ops.go`, `ops_*.go`).
 
@@ -45,6 +45,7 @@ Every account has a role, `admin` or `user` (decision 4); admins may call every 
 | Operation | Role | Input | Result |
 | --- | --- | --- | --- |
 | `me` | user | `{}` | `{id, email, role, admin, owner, app_quota}` |
+| `event.list` | user | `{app?, all?, limit?, offset?}` | `{events, has_more}`, newest first |
 | `user.list` | admin | `{limit?, offset?}` | `{users, has_more}`, newest first |
 | `user.set` | admin | `{user, role?, app_quota?, suspended?}` | `{user}` |
 | `invite.create` | admin | `{email, role?, app_quota?, expires_days?}` | `{invite, sign_in_url}` |
@@ -95,7 +96,7 @@ The name, `app.start`/`app.stop` (only the desired state, which nibrunner applie
 
 A secret is an environment variable whose value lives only in SSM, at `<prefix>/apps/<app id>/<NAME>` (`awsx.SecretParameter`; the app id without `d-`). The server holds the store as an `awsx.SecretWriter` (put and delete, no read; `TestServerNeverReadsSecrets`), handed over by `serve` (`internal/client/serve_aws.go`, `dropserver.UseServices`). The database keeps `app_secret_names`: name, SSM version, the value's length, `set_via` and who set it ([Data model](data-model.md#app-secret-names)).
 
-- **`secret.set`** checks the name and value (above), stores the value as a new version, records the name and bumps the deployment. The value is never stored, logged, returned or written to an event; a store error is logged with the value redacted and answers 502 `secret_store_failed` with nothing changed. `set_via` is `mcp` when the MCP tool `drop_write` (M6) made the call (it marks its in-process request with `dropserver.WithVia`), else `ui`; the reader marks secrets set through MCP, whose values passed through an assistant's conversation (decision 9).
+- **`secret.set`** checks the name and value (above), stores the value as a new version, records the name and bumps the deployment. The value is never stored, logged, returned or written to an event; a store error is logged with the value redacted and answers 502 `secret_store_failed` with nothing changed. `set_via` is `mcp` when the MCP tool `drop_write` made the call (it marks its in-process request with `dropserver.WithVia`), else `ui`; the reader marks secrets set through MCP, whose values passed through an assistant's conversation (decision 9).
 - **`secret.list`** returns `{name, version, length, set_via, updated_by, updated}` per secret, never a value.
 - **`secret.delete`** removes the name and every SSM version, and bumps the deployment; an unknown name is 404.
 - The store call runs inside the operation's transaction (at most 15 s): a refused call changes nothing; a version stored by a call whose transaction then fails is never referenced.
@@ -126,9 +127,11 @@ The answer is 200 `{release, created, deployed, deployment_id}`: `created` is fa
 
 Each successful mutating operation writes one `events` row in its transaction: `actor` (the caller), `action` (the operation name unless the operation says otherwise), `app` and `subject_user` when it acts on one, and `detail`, a JSON object of at most 8 KiB that never holds a secret value (names, lengths and before/after values of plain fields only). App events name what changed: `app.create` `{name, slug}`; `app.set` `{changed, env_set?, env_unset?, deployment_bumped, deployment_seq}` (environment names, never values); `app.start`/`app.stop` `{desired_state}`; `app.archive`/`app.restore` `{slug}`; `secret.set` `{name, version, set_via, deployment_seq}`; `secret.delete` `{name, deployment_seq}`; `release.upload_link` `{link, expires_at, activate}` (never the token); `release.upload` (written by the upload route, actor the link's account) `{release, sha256, size_bytes, link, created, stored, activate, deployed, deployment_seq}`; `release.deploy` `{release, sha256, deployment_bumped, deployment_seq}`. Read operations write nothing. Collection rules show admins every event and other accounts the events of their own apps.
 
+**`event.list`** reads them the same way: without input, the events of the caller's own apps; with `app` (id or slug), that app's events (admins may name any app; another account's app is 404); with `all: true` (admins only, else 403; not with `app`), every event, account events included. Each entry is `{id, action, actor, actor_email, app, subject_user, detail, created}`; `actor_email` is filled for the caller's own actions and, for admins, everyone's.
+
 ## Adding an operation
 
-1. **Contract.** Add a `Spec` to `specs` in `internal/dropapi/ops.go` (`Name` like `app.create`, `Role`, a one-line `Summary` that MCP shows, `Read` for operations that change nothing, `Input: &YourInput{}`, `OnceResult` for results shown only once, `SecretInput` for an input holding a secret value) and its input and result types beside it (JSON names in `snake_case`; pointer fields for optional changes).
+1. **Contract.** Add a `Spec` to `specs` in `internal/dropapi/ops.go` (`Name` like `app.create`, `Role`, a one-line `Summary` that MCP shows, `Read` for operations that change nothing, `Input: &YourInput{}`, `OnceResult` for results shown only once, `SecretInput` for an input holding a secret value, `MCP` to offer a mutating operation through the MCP tool `drop_write`, whose op enum and table are generated from these specs; reads reach MCP through `drop_read`'s `what` table in `internal/client/drop_mcp.go`) and its input and result types beside it (JSON names in `snake_case`; pointer fields for optional changes).
 2. **Handler.** In `internal/dropserver/ops_<area>.go`, register it in an `init` function:
 
    ```go
@@ -148,5 +151,5 @@ Each successful mutating operation writes one `events` row in its transaction: `
 3. **Errors.** Return `Invalid(field, message)` (400), `NotFound(what)` (404, also for other accounts' records), `Forbidden(message)` (403) or `Conflict(code, message)` (409, with a new `Code…` constant in `dropapi`). Any other error is a 500 whose text goes only to the log. Returning an error rolls the transaction back.
 4. **Ownership.** `c.LoadOwned(collection, id, ownerField, what)` returns the record only to its owner; `c.LoadVisible` also to admins. Both answer 404 otherwise.
 5. **Events outside operations.** Routes that are not operations (uploads, the agent) call `dropserver.WriteEvent(app, dropserver.EventRecord{…})` themselves.
-6. **Clients.** Add the name to `OPS` in `ui/src/dropApi.ts` (`TestReaderKnowsEveryOperation` compares the lists), a CLI command if people need one (`internal/client`, building the request with `dropapi.Build`), and the operation to this page and the skill.
+6. **Clients.** Add the name to `OPS` in `ui/src/dropApi.ts` (`TestReaderKnowsEveryOperation` compares the lists), a CLI command if people need one (`internal/client`, building the request with `dropapi.Build`), and the operation to this page, [MCP](mcp.md) and the skill. A write for assistants sets `MCP: true` (`TestMCPWriteOpsFollowTicket` lists the operations decision 11 expects there); a new read for assistants gets a row in `dropReads` (`internal/client/drop_mcp.go`), never a new tool.
 7. **Tests.** Cover the role (a user calling an admin operation gets 403), ownership (another account's record is 404), validation, the event and isolation with the `internal/droptest` helpers (`h.User`, `h.Invite`, `h.Op`, `h.MustOp`).

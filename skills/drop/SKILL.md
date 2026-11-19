@@ -1,6 +1,6 @@
 ---
 name: drop
-description: Create and configure apps and their secrets in the user's local Drop, list and search them, and invite people and manage accounts as an admin, through its CLI, authenticated read-only SQL and full-text search. Use for any Drop operation.
+description: Create and configure apps and their secrets in the user's Drop, list and search them, read their events, and invite people and manage accounts as an admin, through Drop's two MCP tools (drop_read, drop_write) on a hosted Drop or its CLI, authenticated read-only SQL and full-text search on the local project. Use for any Drop operation.
 ---
 
 # Drop (local)
@@ -19,6 +19,19 @@ Do not use another `drop` from PATH, and do not start the server any other way.
 ## When to use
 
 Use this skill when the user asks to create, configure, start, stop, list, find or count the apps in Drop, set their environment or secrets, or open its reader. Drop is authoritative for its apps; answer from it, not from memory.
+
+## Drop's MCP tools
+
+When this assistant has Drop's MCP connector (a hosted Drop at `https://HOST/mcp`, added by the user and approved in their browser; you cannot approve it for them), it has exactly two tools, acting with the account that approved the connection:
+
+- `drop_read {what, app?, all?, limit?, offset?}` reads: start with `what: "me"` (the account and its role), then `apps`, `app` (with `app`, an id or slug), `secrets`, `events`; admins also `users` and `invites`. `all: true` gives admins everyone's apps or events. A `what` marked "not available yet" answers `not_available`: say so rather than retrying.
+- `drop_write {op, input, idempotency_key?}` calls one of Drop's operations, listed with their inputs in the tool's description (users: `app.create`, `app.set`, `app.start`, `app.stop`, `secret.set`, `secret.delete`; admins also `invite.create`, `invite.revoke`, `user.set`). The result is `{op, result}`; reuse the same `idempotency_key` when you retry a write whose result you did not see.
+
+The server checks the account's role and ownership on every call: another account's app answers `not_found`, an admin operation from a user `forbidden`. Do not try operations the tool does not list. Errors come back as `{"error": {status, code, message, field}}`: fix the input named by `field`, and stop on `forbidden`.
+
+`secret.set` through `drop_write` puts the value in this conversation. Prefer that the user sets secrets in Drop's reader (the app's Env & secrets tab); use `secret.set` only when the user gives you the value for that purpose, never repeat it, and tell them the reader marks it "Set through MCP" so they can Replace it there. No tool ever returns a secret value: `drop_read what=secrets` shows only name, length, updated and set_via.
+
+The MCP tools and this CLI reach Drop differently: the tools act as the connected account on the hosted origin; the CLI below acts on the local project, or as the owner on a hosted server running on this machine. Use the tools for the user's hosted apps, and the CLI for this machine's Drop.
 
 ## Before every use
 
@@ -81,7 +94,7 @@ Only when the user asks for access from another computer: `login-code` prints a 
 
 ## Hosted Drop
 
-People use Drop on its hosted origin (`serve --hosted`: several accounts, email sign-in, remote MCP), configured by the operator as the project's `docs/hosting.md` describes. Do not start, change or suggest a hosted service unless the user asks. Its MCP endpoint, `https://HOST/mcp`, is for external assistants and lists no tools yet; each connection needs the user's browser consent, which you cannot give for them. Use this CLI here, not MCP. A hosted server has no loopback TCP port, so `search` and `sql` fail against it with a connection error; tell the user rather than retrying. The `app`, `secret`, `invite`, `user` and `op` commands reach a hosted server running on this machine as its owner through the server's private socket.
+People use Drop on its hosted origin (`serve --hosted`: several accounts, email sign-in, remote MCP), configured by the operator as the project's `docs/hosting.md` describes. Do not start, change or suggest a hosted service unless the user asks. Its MCP endpoint, `https://HOST/mcp`, serves the two tools above to assistants the user connects; each connection needs the user's browser consent, which you cannot give for them. A hosted server has no loopback TCP port, so `search` and `sql` fail against it with a connection error; tell the user rather than retrying. The `app`, `secret`, `invite`, `user` and `op` commands reach a hosted server running on this machine as its owner through the server's private socket.
 
 ## Backup and switching computers
 

@@ -79,12 +79,13 @@ var HostedBudget = appserver.HostedBudget{Label: "drop_requests", Burst: 600, Pe
 // just above it.
 const ReleaseMaxBytes = dropapi.MaxReleaseBytes
 
-// Observe lists the diagnostic labels of the MCP tools and the API routes they
-// call; anything else is reported as unknown. Drop's tools (drop_read and
-// drop_write over /api/drop/op) arrive in a later milestone.
+// Observe lists the diagnostic labels of the MCP tools and the API route they
+// call; anything else is reported as unknown. Diagnostics carry these fixed
+// labels, statuses and counts only: never an argument, an operation's input
+// or result, or an error message (a secret.set value never reaches them).
 var Observe = mcpobserve.Policy{
-	Tools:     []string{},
-	APIRoutes: []string{},
+	Tools:     []string{"drop_read", "drop_write"},
+	APIRoutes: []string{"/api/drop/op"},
 }
 
 // Policy returns the accounts mode, public routes, maintenance reads, budgets

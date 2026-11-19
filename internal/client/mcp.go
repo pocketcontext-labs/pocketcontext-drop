@@ -1,11 +1,12 @@
 package client
 
-// The MCP adapter serves Drop's tools through the ordinary authenticated API,
-// with the caller's own session: no shell, no filesystem, no administration.
-// Drop's two tools (drop_read and drop_write over /api/drop/op, one MCP
-// server per role) arrive in a later milestone; until then the endpoint
-// authenticates, answers the protocol and lists no tools. The transport below
-// is what those tools will call.
+// The MCP adapter serves Drop's two tools, drop_read and drop_write
+// (drop_mcp.go), through the ordinary authenticated API with the caller's own
+// session: no shell, no filesystem, no administration. Each tool call reaches
+// only POST /api/drop/op, in-process, so the server checks the account, its
+// role and ownership on every call. There are two MCP servers, one per role,
+// with the same two tools and role-specific enums and descriptions; each
+// request picks one through GET /api/drop/me with the caller's token.
 import (
 	"bytes"
 	"context"
@@ -21,8 +22,9 @@ import (
 	"github.com/pocketcontext-labs/pocketcontext-core/appserver"
 	"github.com/pocketcontext-labs/pocketcontext-core/mcpobserve"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/appconfig"
-	"github.com/pocketcontext-labs/pocketcontext-drop/internal/buildinfo"
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/droppolicy"
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropserver"
 )
 
 const (
@@ -33,8 +35,6 @@ const (
 	mcpByteBudget    = 32 << 20
 )
 
-const mcpInstructions = `Drop runs people's apps on PocketContext-managed hosts. This server has no tools yet. There is no shell, file access or administration.`
-
 type mcpRequestContextKey struct{}
 type mcpCaller struct {
 	ctx   context.Context
@@ -43,11 +43,14 @@ type mcpCaller struct {
 }
 
 func newMCPHandler(api http.Handler) http.Handler {
-	server := mcp.NewServer(&mcp.Implementation{Name: appconfig.Identity.DisplayName, Version: buildinfo.Version}, &mcp.ServerOptions{
-		Instructions: mcpInstructions, Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}},
-	})
-	server.AddReceivingMiddleware(observeMCPMethods)
-	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{
+	servers := map[dropapi.Role]*mcp.Server{
+		dropapi.RoleUser:  newDropMCPServer(api, dropapi.RoleUser),
+		dropapi.RoleAdmin: newDropMCPServer(api, dropapi.RoleAdmin),
+	}
+	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		caller, _ := r.Context().Value(mcpRequestContextKey{}).(*mcpCaller)
+		return servers[mcpCallerRole(api, caller)]
+	}, &mcp.StreamableHTTPOptions{
 		Stateless: true, JSONResponse: true, MaxRequestBodyBytes: mcpInputLimit, PropagateRequestCancellation: true,
 		// The wrapper below requires the stronger exact-origin boundary and OAuth.
 		DisableLocalhostProtection: true,
@@ -66,6 +69,39 @@ func newMCPHandler(api http.Handler) http.Handler {
 		caller := &mcpCaller{ctx: r.Context(), host: r.Host, token: token}
 		handler.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), mcpRequestContextKey{}, caller)))
 	})
+}
+
+// mcpCallerRole asks GET /api/drop/me, with the caller's own token, which
+// server to show. Anything but a confirmed admin gets the user server; the
+// role only shapes what is listed, since every call is checked again.
+func mcpCallerRole(api http.Handler, caller *mcpCaller) dropapi.Role {
+	if caller == nil || caller.token == "" {
+		return dropapi.RoleUser
+	}
+	r, err := http.NewRequestWithContext(caller.ctx, http.MethodGet, "https://"+caller.host+dropapi.MeRoute, http.NoBody)
+	if err != nil {
+		return dropapi.RoleUser
+	}
+	out := &mcpResponse{header: make(http.Header)}
+	api.ServeHTTP(out, mcpInnerRequest(r, caller))
+	var me dropapi.Me
+	if out.err != nil || out.status != http.StatusOK || json.Unmarshal(out.body.Bytes(), &me) != nil || !me.Admin {
+		return dropapi.RoleUser
+	}
+	return dropapi.RoleAdmin
+}
+
+// mcpInnerRequest makes an in-process API request carry only the caller's
+// own token, from an address that never qualifies for local administration,
+// marked as coming through MCP (a secret's set_via).
+func mcpInnerRequest(inner *http.Request, caller *mcpCaller) *http.Request {
+	inner.URL.Scheme, inner.URL.Host = "https", caller.host
+	inner.Host = caller.host
+	inner.RequestURI = inner.URL.RequestURI()
+	inner.RemoteAddr = "192.0.2.1:0" // never qualifies for local administration
+	inner.Header.Set("Authorization", caller.token)
+	inner.Header.Del(appconfig.Identity.LocalKeyHeader)
+	return dropserver.WithVia(inner, dropapi.SetViaMCP)
 }
 
 // mcpResponse bounds API output before it is buffered.
@@ -142,12 +178,7 @@ func (t *mcpTransport) RoundTrip(req *http.Request) (response *http.Response, er
 	if inner.Body == nil {
 		inner.Body = http.NoBody
 	}
-	inner.URL.Scheme, inner.URL.Host = "https", t.caller.host
-	inner.Host = t.caller.host
-	inner.RequestURI = inner.URL.RequestURI()
-	inner.RemoteAddr = "192.0.2.1:0" // never qualifies for local administration
-	inner.Header.Set("Authorization", t.caller.token)
-	inner.Header.Del(appconfig.Identity.LocalKeyHeader)
+	inner = mcpInnerRequest(inner, t.caller)
 	out := &mcpResponse{header: make(http.Header)}
 	dispatched = true
 	t.api.ServeHTTP(out, inner)
@@ -171,7 +202,7 @@ func (t *mcpTransport) RoundTrip(req *http.Request) (response *http.Response, er
 // entry of droppolicy.Observe.APIRoutes), or "unknown" for anything else.
 // Labels contain no record IDs or content.
 func mcpAPIRoute(method, path string) string {
-	if (method == http.MethodGet || method == http.MethodPost) && slices.Contains(droppolicy.Observe.APIRoutes, path) {
+	if method == http.MethodPost && slices.Contains(droppolicy.Observe.APIRoutes, path) {
 		return path
 	}
 	return "unknown"
@@ -185,39 +216,4 @@ func mcpClient(ctx context.Context, api http.Handler) (*Client, error) {
 	// Remote tools never inherit host configuration or local administration keys.
 	return &Client{Base: "https://" + caller.host, token: caller.token,
 		http: &http.Client{Transport: &mcpTransport{api: api, caller: caller, ctx: ctx}, Timeout: 45 * time.Second, CheckRedirect: noRedirect}}, nil
-}
-
-// addMCPTool declares both hints explicitly: clients may treat an omitted
-// destructiveHint as true even for reads.
-func addMCPTool[I any](server *mcp.Server, api http.Handler, name, description string, readOnly bool, fn func(*Client, I) (any, error)) {
-	closed, destructive := false, !readOnly
-	mcp.AddTool(server, &mcp.Tool{Name: name, Description: description, Annotations: &mcp.ToolAnnotations{ReadOnlyHint: readOnly, DestructiveHint: &destructive, OpenWorldHint: &closed}}, func(ctx context.Context, _ *mcp.CallToolRequest, input I) (result *mcp.CallToolResult, structured any, err error) {
-		ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
-		defer cancel()
-		observation := mcpObservationFrom(ctx)
-		if observation != nil {
-			observation.startedTool()
-		}
-		defer func() {
-			if observation != nil {
-				observation.toolError(err, ctx.Err())
-			}
-		}()
-		c, err := mcpClient(ctx, api)
-		if err != nil {
-			return nil, nil, err
-		}
-		data, err := fn(c, input)
-		if err != nil {
-			return nil, nil, err
-		}
-		raw, err := json.Marshal(data)
-		if err != nil {
-			return nil, nil, &mcpClassifiedError{reason: "internal_error", err: err}
-		}
-		if len(raw) > mcpResultLimit {
-			return nil, nil, mcpDiagnosticError("limit_exceeded", "result exceeds MCP limit; narrow the read. A write may already have succeeded: read the record before retrying")
-		}
-		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(raw)}}}, nil, nil
-	})
 }

@@ -4,7 +4,51 @@ Hosted Drop offers a remote Model Context Protocol (MCP) endpoint at `https://HO
 
 ## Tools
 
-Drop's tools are not there yet: the endpoint authenticates, answers the protocol and lists no tools. A later release adds exactly two, `drop_read` and `drop_write`, which call Drop's operations ([Operations](ops.md), `POST /api/drop/op`) with the caller's own account, so every call is checked against that account's role and ownership on the server; `drop_write`'s op enum and table come from the registry in `internal/dropapi`. No tool runs shell commands, reads host files or administers the server. A new tool needs the owner's approval.
+Drop has exactly two tools, `drop_read` and `drop_write` (decision 11). Both act with the account that approved the connection and reach Drop only through its operation route, `POST /api/drop/op` ([Operations](ops.md)), in-process: the server checks the account, its role and ownership on every call, exactly as for the reader and the CLI. No tool runs shell commands, reads host files or administers the server. Future features add operations or `what` values, not tools; a new tool needs the owner's approval.
+
+There are two MCP servers, one per role, with the same two tools and different enums and descriptions. Each MCP request picks one by calling `GET /api/drop/me` with the caller's token: an admin sees the admin server, anyone else the user server. The role only decides what is listed: a user who sends an admin operation or read anyway gets 403 `forbidden` from the server.
+
+### drop_read
+
+`drop_read {what, app?, all?, limit?, offset?}`, annotated `readOnlyHint`. Each `what` is one read operation (the table `dropReads` in `internal/client/drop_mcp.go`); `app` is an app's id or slug, `all: true` asks for admins' everyone-wide lists, and lists page with `limit` (1-500, default 100) and `offset` and answer `has_more`. An argument the operation does not take, or a missing required one, is refused before any call.
+
+| `what` | Role | Operation | Reads |
+| --- | --- | --- | --- |
+| `me` | user | `me` | the account: email, role, app quota, admin, owner |
+| `apps` | user | `app.list` | the caller's apps and quota; `all` (admins) everyone's |
+| `app` | user | `app.get` | one app (`app`) with its secret names |
+| `releases` | user | `release.list` | an app's releases (`app`); not available until releases exist |
+| `secrets` | user | `secret.list` | an app's secrets (`app`): `name`, `length`, `updated`, `set_via` only |
+| `status` | user | `status` | an app's runtime status (`app`); not available until nodes exist |
+| `events` | user | `event.list` | events of the caller's apps or of one app (`app`); `all` (admins) every event |
+| `users` | admin | `user.list` | every account |
+| `invites` | admin | `invite.list` | invites and their state |
+| `nodes` | admin | `node.list` | hosts; not available until nodes exist |
+
+A `what` whose operation is not registered yet stays listed, marked "(not available yet)" in the description, and answers `not_available`. Registering the operation under that name, as a read, makes it work with no MCP change.
+
+### drop_write
+
+`drop_write {op, input?, idempotency_key?}`, annotated `destructiveHint` (the enum includes `app.stop` and `secret.delete`): a thin pass-through to `POST /api/drop/op`. `op` is an enum of the caller's operations, `input` the operation's object (default `{}`), and `idempotency_key` replays the first result of a retried write for 24 hours (`secret.set` ignores keys). The answer is `{op, result, replayed?}`.
+
+The op enum and the op table in the tool description (name, role, input signature such as `{app, name?, env?: {set?, unset?}}` and summary) are generated from the registry in `internal/dropapi`: the operations whose `Spec` has `MCP: true`, all of them for admins and those of role `user` for users. `TestMCPWriteTableMatchesRegistry` checks the enum and table against the registry, and `TestMCPWriteOpsFollowTicket` checks the set against decision 11's list:
+
+- users: `app.create`, `app.set`, `app.start`, `app.stop`, `release.upload_link`, `release.deploy`, `secret.set`, `secret.delete`;
+- admins also: `invite.create`, `invite.revoke`, `user.set`, `node.create`, `node.rotate_secret`, `node.set_state`, `placement.set`, `placement.clear`.
+
+Operations not registered yet (releases, nodes and placements) join the enum when their specs land with `MCP: true`. Reads sent to `drop_write` are refused (use `drop_read`), and so are operations not offered through MCP (`app.archive`, `app.restore`).
+
+### Errors
+
+A refused call is a tool error whose text is `{"error": {"status", "code", "message", "field"}}`: the server's status, stable code and message (for example 404 `not_found` for another account's app, 403 `forbidden` for an admin operation from a user), or a local `invalid_arguments`, `not_available`, `limit_exceeded` or `timeout`. A protocol error of `tools/call` (an unknown tool, malformed arguments) has a fixed message.
+
+### Secrets (decision 9)
+
+`secret.set` through `drop_write` is write-only. The tool marks its in-process request with `dropserver.WithVia(req, "mcp")`, so the secret's `set_via` is `mcp` and the reader marks it "Set through MCP" with Replace. The value passes through the assistant's conversation, which the `drop_write` description and the server instructions say, preferring the reader's Env & secrets tab. It never comes back: results keep only a secret's `name`, `length`, `updated` and `set_via` (`drop_read what=secrets`, `what=app` and the `secret.set` result alike); tool errors carry only Drop's own error fields, which never quote an input; tools decode their own arguments, so no argument is echoed in an error; and the observe diagnostics hold only fixed labels. `TestMCPSecretSentinel` sets a random value through MCP, along with refusals, argument errors and a failing store whose error echoes the value, and checks that it appears in no MCP answer, no diagnostic line, no log line and no database table.
+
+## Diagnostics
+
+Each MCP request writes metadata-only JSON lines to standard error (pocketcontext-core `mcpobserve`): method, tool (`drop_read`, `drop_write` or `unknown`), outcome, a fixed reason, the API route label (`/api/drop/op` only), status, counts and durations. The lists are `droppolicy.Observe`. No argument, input, result or error message is ever logged.
 
 ## Connect and consent
 

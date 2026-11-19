@@ -1,7 +1,6 @@
 package client
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -9,31 +8,6 @@ import (
 
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/droptest"
 )
-
-// TestMCPListsNoToolsYet: the hosted endpoint authenticates through OAuth with
-// a signed-in account, answers the protocol and lists no tools until Drop's
-// own tools arrive.
-func TestMCPListsNoToolsYet(t *testing.T) {
-	h := droptest.NewHosted(t, droptest.Options{MCPHandler: newMCPHandler})
-	bearer := h.OAuthToken(h.SignIn(droptest.OwnerEmail).Token)
-	w := h.MCP(bearer, "tools/list", map[string]any{})
-	if w.Code != http.StatusOK {
-		t.Fatalf("tools/list: %d %s", w.Code, w.Body)
-	}
-	var out struct {
-		Result struct {
-			Tools []any `json:"tools"`
-		} `json:"result"`
-		Error any `json:"error"`
-	}
-	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil || out.Error != nil || len(out.Result.Tools) != 0 {
-		t.Fatalf("tools/list answer %s: %v", w.Body, err)
-	}
-	w = h.MCP(bearer, "tools/call", map[string]any{"name": "query", "arguments": map[string]any{"sql": "SELECT 1"}})
-	if w.Code == http.StatusOK && !strings.Contains(w.Body.String(), "error") {
-		t.Fatalf("a removed tool answered: %s", w.Body)
-	}
-}
 
 // TestMCPRejectsAnonymous: no OAuth token, no tools, and the reader's own
 // session token is not a substitute.
@@ -62,9 +36,14 @@ func TestMCPRequiresPublicBoundary(t *testing.T) {
 	}
 }
 
-// Until Drop's tools exist, the transport reaches no API route at all.
+// The tools reach POST /api/drop/op and nothing else: no records, SQL,
+// settings or batch routes.
 func TestMCPAPIRouteLabels(t *testing.T) {
+	if got := mcpAPIRoute("POST", "/api/drop/op"); got != "/api/drop/op" {
+		t.Errorf("op route = %s", got)
+	}
 	for _, c := range []struct{ method, path string }{
+		{"GET", "/api/drop/op"}, {"GET", "/api/drop/me"}, {"POST", "/api/drop/me"},
 		{"GET", "/api/context/schema"}, {"POST", "/api/context/query"}, {"POST", "/api/collections/apps/records"},
 		{"GET", "/api/collections/apps/records"}, {"GET", "/api/settings"}, {"POST", "/api/batch"},
 	} {

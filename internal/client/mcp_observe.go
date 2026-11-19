@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/pocketcontext-labs/pocketcontext-core/mcpobserve"
+
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
 )
 
 // Diagnostic reasons are assigned at controlled call sites. Error messages may
@@ -75,6 +76,7 @@ type mcpObservation struct {
 	reason, route          string
 	status                 int
 	invoked, possibleWrite bool
+	write                  bool // the tool is drop_write: its operation calls may change data
 }
 
 func mcpObservationFrom(ctx context.Context) *mcpObservation {
@@ -82,7 +84,11 @@ func mcpObservationFrom(ctx context.Context) *mcpObservation {
 	return o
 }
 
-func (o *mcpObservation) startedTool() { o.mu.Lock(); o.invoked = true; o.mu.Unlock() }
+func (o *mcpObservation) startedTool(write bool) {
+	o.mu.Lock()
+	o.invoked, o.write = true, write
+	o.mu.Unlock()
+}
 
 func (o *mcpObservation) toolError(err, contextErr error) {
 	if err == nil {
@@ -106,7 +112,7 @@ func (o *mcpObservation) api(method, route string, status int, size int64, dispa
 		o.calls++
 	}
 	o.bytes += size
-	mutation := method != http.MethodGet && strings.HasPrefix(route, "/api/collections/")
+	mutation := o.write && method == http.MethodPost && route == dropapi.Route
 	if dispatched && mutation && (status == 0 || status >= 500 || status >= 200 && status < 300 || err != nil) {
 		o.possibleWrite = true
 	}
