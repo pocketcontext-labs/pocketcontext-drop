@@ -717,6 +717,14 @@ def hosted_scenario(pc, r):
     command = [str(pc.binary), '--db', str(db), 'serve', '--hosted', '--hosted-init', '--headless', '--mcp',
                '--domain', HOSTED_DOMAIN, '--hosted-http-address', f'127.0.0.1:{port}',
                '--hosted-proxy-header', 'X-Forwarded-For', '--hosted-proxy-networks', '127.0.0.0/8']
+    no_aws = subprocess.run(command, capture_output=True, text=True, encoding='utf-8', env=r.env, timeout=60)
+    check(no_aws.returncode == 2 and 'DROP_' in no_aws.stderr and not db.exists(),
+          'hosted serving without AWS settings or --fake-aws is refused and creates nothing')
+    off_loopback = subprocess.run([*command[:-6], '--hosted-http-address', f'0.0.0.0:{port}', '--fake-aws', str(hosted / 'fake-aws')],
+                                  capture_output=True, text=True, encoding='utf-8', env=r.env, timeout=60)
+    check(off_loopback.returncode == 2 and '--fake-aws' in off_loopback.stderr and not db.exists(),
+          '--fake-aws is refused with a non-loopback listen address')
+    command += ['--fake-aws', str(hosted / 'fake-aws')]
     refused = subprocess.run(command, capture_output=True, text=True, encoding='utf-8', env=r.env, timeout=60)
     check(refused.returncode != 0 and 'OWNER_EMAIL' in refused.stderr and not db.exists(),
           'hosted serving refuses a missing owner and SMTP configuration and creates nothing')

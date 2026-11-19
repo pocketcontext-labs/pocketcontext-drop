@@ -18,7 +18,7 @@ Setup and server:
   serve [--ui-dev URL]  run in the foreground; optionally proxy a loopback Vite UI
   serve --hosted --headless --domain HOST --mcp [--hosted-init | --hosted-restore]
         [--hosted-http-address IP:PORT]
-        [--hosted-proxy-header HEADER --hosted-proxy-networks CIDR[,CIDR]]
+        [--hosted-proxy-header HEADER --hosted-proxy-networks CIDR[,CIDR]] [--fake-aws DIR]
                        hosted mode: plain HTTP behind a TLS-terminating proxy
                        for HOST, email sign-in for the owner (DROP_OWNER_EMAIL,
                        DROP_SMTP_*) and invited people, remote MCP with OAuth

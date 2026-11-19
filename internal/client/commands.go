@@ -190,7 +190,7 @@ parsed:
 		return nil
 	}
 	spec := map[string][2][]string{
-		"serve":          {{"ui-dev", "port", "domain", "hosted-http-address", "hosted-proxy-header", "hosted-proxy-networks"}, {"take-over", "tcp-only", "headless", "mcp", "hosted", "hosted-init", "hosted-restore"}},
+		"serve":          {{"ui-dev", "port", "domain", "hosted-http-address", "hosted-proxy-header", "hosted-proxy-networks", "fake-aws"}, {"take-over", "tcp-only", "headless", "mcp", "hosted", "hosted-init", "hosted-restore"}},
 		"start":          {nil, {"take-over"}},
 		"ensure-running": {nil, {"take-over"}},
 		"stop":           {nil, nil},
@@ -250,6 +250,16 @@ parsed:
 		}
 		hosted, err := hostedServeOptions(a)
 		if err != nil {
+			return err
+		}
+		listen := "127.0.0.1:0" // plain serve listens on loopback only
+		if hosted != nil {
+			listen = hosted.HostedHTTPAddress
+			if listen == "" {
+				listen = ":80"
+			}
+		}
+		if serveStores, err = openServeStores(a, hosted != nil, listen); err != nil {
 			return err
 		}
 		if hosted != nil {
