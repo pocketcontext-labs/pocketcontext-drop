@@ -175,7 +175,7 @@ try {
   await until(async () => (await fetch(upstream)).ok, 'Vite readiness');
   let server = start(binary, ['serve', '--db', db, '--ui-dev', upstream], { env, cwd: temporary });
   await until(async () => (await fetch(`${origin}/api/bundle/instance`)).ok, 'Drop readiness');
-  await cli(['add', 'Hello from the synthetic CLI']);
+  await cli(['add', 'Hello from the synthetic CLI', '--slug', 'synthetic-cli']);
 
   const browser = await chromium.launch({ headless: true, executablePath: option('--browser') });
   browsers.push(browser);
