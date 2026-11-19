@@ -22,6 +22,9 @@ export const OPS = [
   "secret.list",
   "secret.set",
   "secret.delete",
+  "release.list",
+  "release.upload_link",
+  "release.deploy",
 ] as const;
 export type Op = (typeof OPS)[number];
 
@@ -85,6 +88,8 @@ export interface App {
   health_path: string;
   deployment_seq: number;
   deployment_id: string;
+  /** The id of the release the app runs; empty before its first deploy. */
+  current_release: string;
   archived: boolean;
   archived_at: string;
   created: string;
@@ -116,6 +121,82 @@ export interface AppSettings {
   args?: string[];
   health_kind?: HealthKind;
   health_path?: string;
+}
+
+/** An uploaded executable of an app (internal/dropapi Release). */
+export interface Release {
+  id: string;
+  app: string;
+  sha256: string;
+  size_bytes: number;
+  s3_key: string;
+  note: string;
+  created_by: string;
+  created: string;
+  current: boolean;
+}
+/** A one-time upload link: one PUT of the file to `path` before `expires_at`. */
+export interface UploadLink {
+  url: string;
+  path: string;
+  method: "PUT";
+  max_bytes: number;
+  expires_at: string;
+  activate: boolean;
+  example: string;
+}
+/** The answer of a successful upload. */
+export interface UploadResult {
+  release: Release;
+  created: boolean;
+  deployed: boolean;
+  deployment_id: string;
+}
+/** The largest release (90 MiB, dropapi.MaxReleaseBytes). */
+export const MAX_RELEASE_BYTES = 90 * 1024 * 1024;
+
+/** The first bytes of a file (FileReader works in every browser and in tests). */
+function readStart(file: Blob, bytes: number): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
+    reader.onerror = () => reject(new Error("The file could not be read."));
+    reader.readAsArrayBuffer(file.slice(0, bytes));
+  });
+}
+
+/**
+ * Why a file cannot be a release, or "" (dropapi.ReleaseHeaderProblem): a
+ * 64-bit little-endian x86-64 ELF executable of at most `max` bytes. The
+ * server checks again; this only fails fast.
+ */
+export async function releaseFileProblem(
+  file: Blob,
+  max = MAX_RELEASE_BYTES,
+): Promise<string> {
+  if (file.size === 0) return "The file is empty.";
+  if (file.size > max)
+    return `The file is ${(file.size / 1048576).toFixed(1)} MiB; a release is at most ${Math.floor(max / 1048576)} MiB.`;
+  const h = await readStart(file, 64);
+  const want =
+    "A release is a linux/amd64 ELF executable (for Go: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build)";
+  if (h.length < 64 || h[0] !== 0x7f || h[1] !== 0x45 || h[2] !== 0x4c || h[3] !== 0x46)
+    return `${want}; this file is not an ELF executable.`;
+  if (h[4] !== 2 || h[5] !== 1 || h[6] !== 1)
+    return `${want}; this ELF file is not 64-bit little-endian.`;
+  if (h[7] !== 0 && h[7] !== 3)
+    return `${want}; this ELF file is for another operating system.`;
+  const type = h[16] | (h[17] << 8);
+  if (type !== 2 && type !== 3)
+    return `${want}; this ELF file is not an executable.`;
+  const machine = h[18] | (h[19] << 8);
+  if (machine !== 0x3e) {
+    const arch =
+      { 0xb7: "arm64", 0x03: "386", 0xf3: "riscv64" }[machine] ??
+      "another architecture";
+    return `${want}; this one is built for ${arch}.`;
+  }
+  return "";
 }
 
 /** The error body of a failed operation: a stable code and a message. */
@@ -223,6 +304,68 @@ async function deleteSecret(
   return op("secret.delete", { app, name });
 }
 
+async function listReleases(
+  app: string,
+): Promise<{ releases: Release[]; current_release: string; has_more: boolean }> {
+  return op("release.list", { app, limit: 100 });
+}
+async function createUploadLink(
+  app: string,
+  input: { note?: string; activate?: boolean },
+): Promise<UploadLink> {
+  return op("release.upload_link", { app, ...input });
+}
+async function deployRelease(
+  app: string,
+  release: string,
+): Promise<{ app: App; release: Release; deployment_bumped: boolean; deployment_id: string }> {
+  return op("release.deploy", { app, release });
+}
+/**
+ * PUT a file to an upload link's path, reporting progress. Resolves with the
+ * upload's answer; rejects with an OpError carrying the server's code.
+ */
+function uploadRelease(
+  path: string,
+  file: Blob,
+  onProgress: (loaded: number, total: number) => void,
+): Promise<UploadResult> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", pb.buildURL(path));
+    xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(event.loaded, event.total);
+    };
+    xhr.onload = () => {
+      let body: { code?: unknown; message?: unknown } & Partial<UploadResult> = {};
+      try {
+        body = JSON.parse(xhr.responseText) as typeof body;
+      } catch {
+        // Not JSON: a proxy's own error page.
+      }
+      if (xhr.status === 200 && body.release) {
+        resolve(body as UploadResult);
+        return;
+      }
+      reject(
+        new OpError(
+          xhr.status,
+          typeof body.code === "string" ? body.code : "",
+          typeof body.message === "string" && body.message
+            ? body.message
+            : xhr.status === 413
+              ? "The file is larger than the server or its proxy accepts."
+              : `The upload failed (HTTP ${xhr.status}). Please retry.`,
+        ),
+      );
+    };
+    xhr.onerror = () =>
+      reject(new OpError(0, "", "The upload failed. Check your connection and retry."));
+    xhr.send(file);
+  });
+}
+
 export const dropApi = {
   me,
   listUsers,
@@ -237,4 +380,8 @@ export const dropApi = {
   appAction,
   setSecret,
   deleteSecret,
+  listReleases,
+  createUploadLink,
+  deployRelease,
+  uploadRelease,
 };

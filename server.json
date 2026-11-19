@@ -18,6 +18,7 @@
       "health_kind",
       "health_path",
       "deployment_seq",
+      "current_release",
       "archived",
       "archived_at",
       "created",
@@ -42,6 +43,16 @@
       "updated_by",
       "created",
       "updated"
+    ],
+    "releases": [
+      "id",
+      "app",
+      "sha256",
+      "size_bytes",
+      "s3_key",
+      "note",
+      "created_by",
+      "created"
     ]
   },
   "timeoutMs": 2000,

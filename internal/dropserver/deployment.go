@@ -20,7 +20,8 @@ import (
 //   - app.set, when one of instanceFields changes value;
 //   - secret.set and secret.delete, always (a new version or a removed name
 //     changes the instance environment);
-//   - release.deploy (M5b), when the release changes.
+//   - release.deploy, and an upload link with activate, when the current
+//     release changes (setCurrentRelease).
 //
 // Not bumped: the name (not rendered), app.start and app.stop (only the
 // desired state, which nibrunner applies to the current deployment), the disk

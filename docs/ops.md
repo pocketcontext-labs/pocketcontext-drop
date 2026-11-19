@@ -28,11 +28,13 @@ Content-Type: application/json
 | 413 | `invalid_request` (body too large) |
 | 500 | `internal` (details only in the server log, never the input) |
 | 502 | `secret_store_failed` (the secret store refused or timed out; nothing changed) |
-| 503 | `secrets_unavailable` (this server has no secret store: the local development server without `--fake-aws`) |
+| 503 | `secrets_unavailable`, `releases_unavailable` (this server has no secret or release store: the local development server without `--fake-aws`) |
+
+The upload route has its own answers ([Releases](#releases)).
 
 ### Idempotency keys
 
-A key is 1-128 letters, digits, `.`, `_`, `:` or `-`, and belongs to the calling account. The first successful call stores the key with a hash of the operation and its input, and the result. A retry with the same key and input within 24 hours replays that result without acting again (no second change, no second event). The same key with another operation or input answers 409 `idempotency_conflict`. A failed call stores nothing, so the key stays usable. An operation whose result is shown only once (a generated credential, from M7) stores no result: its replay answers 409 `idempotency_result_unavailable`. Read operations ignore keys, and so does `secret.set` (`Spec.SecretInput`): not even a hash of a secret value is stored, and setting a secret again is safe (a new version). Keys live in the private `op_keys` collection (hashes only; every rule closed) and are pruned hourly.
+A key is 1-128 letters, digits, `.`, `_`, `:` or `-`, and belongs to the calling account. The first successful call stores the key with a hash of the operation and its input, and the result. A retry with the same key and input within 24 hours replays that result without acting again (no second change, no second event). The same key with another operation or input answers 409 `idempotency_conflict`. A failed call stores nothing, so the key stays usable. An operation whose result is shown only once (`release.upload_link`, whose URL carries a credential, and from M7 generated node credentials) stores no result: its replay answers 409 `idempotency_result_unavailable`. Read operations ignore keys, and so does `secret.set` (`Spec.SecretInput`): not even a hash of a secret value is stored, and setting a secret again is safe (a new version). Keys live in the private `op_keys` collection (hashes only; every rule closed) and are pruned hourly.
 
 ## Roles
 
@@ -57,6 +59,9 @@ Every account has a role, `admin` or `user` (decision 4); admins may call every 
 | `secret.list` | user | `{app}` | `{secrets}` |
 | `secret.set` | user | `{app, name, value}` | `{secret, deployment_bumped, deployment_id}` |
 | `secret.delete` | user | `{app, name}` | `{deleted, deployment_bumped, deployment_id}` |
+| `release.list` | user | `{app, limit?, offset?}` | `{releases, has_more, current_release}`, newest first |
+| `release.upload_link` | user | `{app, note?, activate?}` | `{url, path, method, max_bytes, expires_at, activate, example}`, shown once |
+| `release.deploy` | user | `{app, release}` | `{app, release, deployment_bumped, deployment_id}` |
 
 - **Lists**: `limit` 1-500 (default 100), `offset` 0-10000; `has_more` says more follow.
 - **An account** (`user`): `id`, `email`, `role`, `app_quota`, `suspended`, `owner`, `signed_in` (false until its first sign-in; core prunes such accounts after 15 minutes), `invited_by`, `created`.
@@ -82,7 +87,7 @@ nibrunner acts on an instance only when its `deploymentId` changes: a changed co
 
 - `app.set`, when one of the instance fields changes value: the run mode (`running` versus `on-request`, which decides the activation block), `idle_timeout_ms`, `vcpu`, `memory_mib`, `http_port`, `executable_name`, `args`, `env`, `health_kind`, `health_path`. Values are compared normalized (JSON re-encoded, an empty list or object the same as none), so setting a field to its current value bumps nothing.
 - `secret.set` and `secret.delete`, always (a new version or a removed name changes the instance environment).
-- `release.deploy` (M5b), when the release changes.
+- `release.deploy`, and an upload link with `activate`, when the current release changes.
 
 The name, `app.start`/`app.stop` (only the desired state, which nibrunner applies to the current deployment), the disk (the volume, fixed once placed) and archive/restore do not bump it. The node's `desired_seq` (M7) is a separate counter that goes up on every change to a node's rendered document, these included. A deployment number past 999999999 answers 409 `deployment_limit`.
 
@@ -96,9 +101,30 @@ A secret is an environment variable whose value lives only in SSM, at `<prefix>/
 - The store call runs inside the operation's transaction (at most 15 s): a refused call changes nothing; a version stored by a call whose transaction then fails is never referenced.
 - `TestSecretSentinel` sets a random value through every path (success, refusals, a failing store whose error echoes the value, an MCP-marked call) and checks that it appears in no database table, no operation answer, no `_logs` row and no standard log line.
 
+## Releases
+
+A release is one executable of an app: a static linux/amd64 ELF file of at most 90 MiB (decision 2: under Cloudflare's 100 MB body limit). Its bytes live in the release store (S3, or the `--fake-aws` directory) once per content, at `releases/<sha256>` (`awsx.ReleaseKey`); the database keeps a `releases` row per app and content ([Data model](data-model.md#releases)). The server holds the store as an `awsx.BlobWriter` (put-if-absent and head; `dropserver.Services.Releases`, handed over by `serve`).
+
+- **A release**: `id`, `app`, `sha256`, `size_bytes`, `s3_key` (`releases/<sha256>`), `note`, `created_by`, `created`, `current` (it is the app's `current_release`).
+- **`release.upload_link`** (the owner of an app that is not archived) creates a one-time upload link: a 32-character random token whose SHA-256 alone is stored, valid for 15 minutes and for one successful upload. The result is shown once (`OnceResult`: a replayed idempotency key answers 409 `idempotency_result_unavailable`): `url` (`https://HOST/api/drop/upload/<token>`), `path` (the same without the origin), `method` `PUT`, `max_bytes`, `expires_at` (RFC 3339), `activate` and `example` (`curl -fT FILE 'URL'`). `note` (at most 500 characters, one line) is kept with the release; `activate: true` deploys it once uploaded. Its event holds the link id, expiry and `activate`, never the token. A server without a release store answers 503 `releases_unavailable`.
+- **`release.list`** shows an app's releases newest first (to its owner and admins) with `current_release`.
+- **`release.deploy`** makes one of the app's releases (by id; another app's release is 404) its current release and bumps the deployment; the current release again changes nothing (`deployment_bumped: false`).
+
+### The upload route
+
+`PUT /api/drop/upload/<token>` (`internal/dropserver/upload.go`) is anonymous: the token is the credential, so the link can be used by `curl -fT FILE URL` from any machine, by the reader (with a progress bar) and by `drop release upload`. It is public only for a token of exactly 32 letters and digits (`droppolicy.PublicRoute`; anything else is 404 before Drop sees it).
+
+1. Each client address gets 6 attempts at once, then one every 10 seconds, and the server runs at most 4 uploads at a time: 429 `rate_limited` with `Retry-After`.
+2. The link must exist, be unused and unexpired, belong to an app that is not archived and to an account that is not suspended: otherwise one 404 `upload_link_invalid` for every case (409 `app_archived` for an archived app). These checks happen before the body is read, so a client that sends `Expect: 100-continue` (curl does) sends nothing to a dead link.
+3. The body streams to a private temporary file while it is hashed (SHA-256), at most `max_bytes` (90 MiB, or `DROP_RELEASE_MAX_BYTES`): 413 `release_too_large` beyond, from `Content-Length` or while reading. Its first 64 bytes must be a 64-bit little-endian ELF executable or position-independent executable for x86-64 with the System V or Linux ABI (`dropapi.ReleaseHeaderProblem`): 400 `invalid_release` otherwise (also for an empty or interrupted body), checked before the rest is read.
+4. The file goes to the release store with `PutIfAbsent(releases/<sha256>, size, sha256)`: an object already there holds the same bytes. A store failure answers 502 `release_store_failed`.
+5. One transaction creates the release (or reuses the app's release with the same digest), marks the link used, deploys the release when the link says `activate` (a deployment bump unless it was already current), and writes one `release.upload` event as the link's account.
+
+The answer is 200 `{release, created, deployed, deployment_id}`: `created` is false when the app already had these bytes, `deployed` true when the upload changed the current release. Only a successful upload uses the link: a refused body leaves it usable until it expires, and two uploads at once to one link answer 409 `upload_in_progress` to the second. Unused links are deleted a day after they expire.
+
 ## Events
 
-Each successful mutating operation writes one `events` row in its transaction: `actor` (the caller), `action` (the operation name unless the operation says otherwise), `app` and `subject_user` when it acts on one, and `detail`, a JSON object of at most 8 KiB that never holds a secret value (names, lengths and before/after values of plain fields only). App events name what changed: `app.create` `{name, slug}`; `app.set` `{changed, env_set?, env_unset?, deployment_bumped, deployment_seq}` (environment names, never values); `app.start`/`app.stop` `{desired_state}`; `app.archive`/`app.restore` `{slug}`; `secret.set` `{name, version, set_via, deployment_seq}`; `secret.delete` `{name, deployment_seq}`. Read operations write nothing. Collection rules show admins every event and other accounts the events of their own apps.
+Each successful mutating operation writes one `events` row in its transaction: `actor` (the caller), `action` (the operation name unless the operation says otherwise), `app` and `subject_user` when it acts on one, and `detail`, a JSON object of at most 8 KiB that never holds a secret value (names, lengths and before/after values of plain fields only). App events name what changed: `app.create` `{name, slug}`; `app.set` `{changed, env_set?, env_unset?, deployment_bumped, deployment_seq}` (environment names, never values); `app.start`/`app.stop` `{desired_state}`; `app.archive`/`app.restore` `{slug}`; `secret.set` `{name, version, set_via, deployment_seq}`; `secret.delete` `{name, deployment_seq}`; `release.upload_link` `{link, expires_at, activate}` (never the token); `release.upload` (written by the upload route, actor the link's account) `{release, sha256, size_bytes, link, created, stored, activate, deployed, deployment_seq}`; `release.deploy` `{release, sha256, deployment_bumped, deployment_seq}`. Read operations write nothing. Collection rules show admins every event and other accounts the events of their own apps.
 
 ## Adding an operation
 

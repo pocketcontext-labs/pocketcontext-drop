@@ -84,3 +84,47 @@ func TestAppAndSecretSpecs(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestReleaseSpecs(t *testing.T) {
+	for _, name := range []string{"release.list", "release.upload_link", "release.deploy"} {
+		s, ok := Lookup(name)
+		if !ok || s.Role != RoleUser || s.SecretInput || s.Read != (name == "release.list") || s.OnceResult != (name == "release.upload_link") {
+			t.Errorf("%s: %+v %v", name, s, ok)
+		}
+	}
+	if UploadTokenPattern.String() != `^[A-Za-z0-9]{32}$` || MaxReleaseBytes != 90<<20 || UploadLinkTTL.Minutes() != 15 {
+		t.Fatal("upload limits changed")
+	}
+}
+
+func TestReleaseHeaderProblem(t *testing.T) {
+	good := make([]byte, ELFHeaderBytes)
+	copy(good, "\x7fELF\x02\x01\x01")
+	good[16], good[18] = 2, 0x3E
+	if p := ReleaseHeaderProblem(good); p != "" {
+		t.Fatal(p)
+	}
+	pie := append([]byte(nil), good...)
+	pie[16], pie[7] = 3, 3
+	if p := ReleaseHeaderProblem(pie); p != "" {
+		t.Fatal("a Linux-ABI position-independent executable is refused:", p)
+	}
+	for name, change := range map[string]func(b []byte){
+		"magic":   func(b []byte) { b[1] = 'X' },
+		"class":   func(b []byte) { b[4] = 1 },
+		"endian":  func(b []byte) { b[5] = 2 },
+		"version": func(b []byte) { b[6] = 0 },
+		"os":      func(b []byte) { b[7] = 9 },
+		"type":    func(b []byte) { b[16] = 1 },
+		"machine": func(b []byte) { b[18] = 0xB7 },
+	} {
+		b := append([]byte(nil), good...)
+		change(b)
+		if ReleaseHeaderProblem(b) == "" {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	if ReleaseHeaderProblem(good[:63]) == "" {
+		t.Error("a short header was accepted")
+	}
+}

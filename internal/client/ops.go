@@ -20,7 +20,7 @@ import (
 // forwarded server.
 
 // opCommands are the commands that call operations.
-var opCommands = map[string]bool{"invite": true, "user": true, "op": true, "app": true, "secret": true}
+var opCommands = map[string]bool{"invite": true, "user": true, "op": true, "app": true, "secret": true, "release": true}
 
 // newOpsClient signs in to the project's server as its owner: through the
 // private socket when a hosted server runs (hosted mode has no loopback TCP
@@ -97,7 +97,7 @@ func (c *Client) sendOp(req dropapi.Request) (any, error) {
 	return nil, fail(exit, "%s: HTTP %d %s: %s", req.Op, status, code, text)
 }
 
-// runOps runs invite, user, app, secret and op.
+// runOps runs invite, user, app, secret, release and op.
 func runOps(c *Client, command string, a *args) (any, error) {
 	sub := ""
 	if len(a.pos) > 0 {
@@ -108,6 +108,8 @@ func runOps(c *Client, command string, a *args) (any, error) {
 		return runApp(c, sub, a)
 	case "secret":
 		return runSecret(c, sub, a)
+	case "release":
+		return runRelease(c, sub, a)
 	}
 	switch command + " " + sub {
 	case "invite create":

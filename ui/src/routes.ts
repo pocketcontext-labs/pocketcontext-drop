@@ -1,5 +1,6 @@
 // Hash routes of the reader (as in Crew): `#/apps` (the default), `#/apps/new`,
-// `#/apps/<id>` with its tabs `#/apps/<id>/settings` and `#/apps/<id>/env`,
+// `#/apps/<id>` with its tabs `#/apps/<id>/settings`, `#/apps/<id>/env` and
+// `#/apps/<id>/releases`,
 // `#/connect`, `#/admin/users` (admins only; anyone else sees Not found),
 // `#/invite?email=…` (the sign-in URL of an invite: the sign-in page with the
 // address filled in), `#/login?otpId=…&otp=…` (the link of a sign-in email)
@@ -14,13 +15,13 @@ export const viewHashes: Record<Exclude<View, "app">, string> = {
   "admin-users": "#/admin/users",
 };
 
-export type AppTab = "overview" | "settings" | "env";
+export type AppTab = "overview" | "settings" | "env" | "releases";
 export interface AppRoute {
   id: string;
   tab: AppTab;
 }
-const appPattern = /^#\/apps\/([a-z0-9]{15})(?:\/(settings|env))?$/;
-/** The app and tab of `#/apps/<id>[/settings|/env]`, or null. */
+const appPattern = /^#\/apps\/([a-z0-9]{15})(?:\/(settings|env|releases))?$/;
+/** The app and tab of `#/apps/<id>[/settings|/env|/releases]`, or null. */
 export function appRouteFromHash(hash: string): AppRoute | null {
   const match = appPattern.exec(hash);
   if (!match) return null;

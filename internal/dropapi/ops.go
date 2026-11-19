@@ -115,6 +115,12 @@ var specs = []Spec{
 		Summary: "Set an app secret (an environment variable kept in AWS SSM, never stored, logged or returned) and start a new deployment. Through MCP the value passes through the assistant's conversation: prefer the reader for real secrets."},
 	{Name: "secret.delete", Role: RoleUser, Input: &SecretDeleteInput{},
 		Summary: "Delete an app secret (every version) and start a new deployment."},
+	{Name: "release.list", Role: RoleUser, Read: true, Input: &ReleaseListInput{},
+		Summary: "An app's releases (uploaded executables), newest first: id, sha256, size, note, and which one is current."},
+	{Name: "release.upload_link", Role: RoleUser, Input: &ReleaseUploadLinkInput{}, OnceResult: true,
+		Summary: "A one-time upload link for a new release of an app: PUT a static linux/amd64 ELF executable (at most 90 MiB) to the returned URL within 15 minutes, for example with curl -fT FILE URL. activate:true deploys it once uploaded. The URL is shown once."},
+	{Name: "release.deploy", Role: RoleUser, Input: &ReleaseDeployInput{},
+		Summary: "Make one of an app's releases (by id) its current release and start a new deployment."},
 }
 
 func init() {

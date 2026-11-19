@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/pocketcontext-labs/pocketcontext-core/appserver"
+
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
 )
 
 // readableCollections are the collections whose record reads are public
@@ -42,6 +44,13 @@ func PublicRoute(method, p string) bool {
 		// /api/drop/op is every write: the operation framework checks the
 		// account, its role and the input (internal/dropserver/ops.go).
 		case "/api/realtime", "/api/collections/users/auth-refresh", "/api/drop/op":
+			return true
+		}
+	}
+	// One-time release uploads: anonymous, scoped to one link by its token
+	// (internal/dropserver/upload.go), so only the token's exact form is public.
+	if method == http.MethodPut {
+		if token, ok := strings.CutPrefix(p, dropapi.UploadRoutePrefix); ok && dropapi.UploadTokenPattern.MatchString(token) {
 			return true
 		}
 	}

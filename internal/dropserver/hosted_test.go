@@ -123,6 +123,9 @@ func TestAppRecordsAreReadOnly(t *testing.T) {
 		{"PATCH", "/api/collections/apps/records/" + id, `{"owner":"` + other.Id + `"}`},
 		{"DELETE", "/api/collections/apps/records/" + id, ""},
 		{"POST", "/api/collections/app_secret_names/records", `{"app":"` + id + `","name":"X"}`},
+		{"POST", "/api/collections/releases/records", `{"app":"` + id + `","sha256":"` + strings.Repeat("a", 64) + `"}`},
+		{"POST", "/api/collections/upload_links/records", `{"app":"` + id + `"}`},
+		{"GET", "/api/collections/upload_links/records", ""},
 	} {
 		if code := router(c.method, c.path, c.body); code != http.StatusForbidden {
 			t.Errorf("%s %s: %d", c.method, c.path, code)

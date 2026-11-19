@@ -21,7 +21,7 @@ The reader asks for an email address and sends a sign-in email with a six-digit 
 
 ## What is public
 
-The hosted origin answers only the allowlist in `internal/droppolicy/routes.go` (golden table `internal/droppolicy/testdata/public_routes.json`): the reader, `POST /api/drop/op` and `GET /api/drop/me` ([Operations](ops.md)), record reads of `apps`, `invites` and `events` (their rules decide who sees what), realtime and session renewal, plus the routes core adds: the sign-in email routes, `/up` (for health checks, on any Host) and, with `--mcp`, `/mcp`, `/oauth/*` and `/.well-known/*`. Everything else answers 404, including the SQL and search reads (`/api/context/*`, which read whole tables and stay local), every record write, `/api/batch`, `/api/files/*`, `/_/` and all local administration. Requests for any Host other than `--domain` are refused.
+The hosted origin answers only the allowlist in `internal/droppolicy/routes.go` (golden table `internal/droppolicy/testdata/public_routes.json`): the reader, `POST /api/drop/op` and `GET /api/drop/me` ([Operations](ops.md)), `PUT /api/drop/upload/<token>` for a 32-character token (one-time release uploads, anonymous but scoped to one link; [Operations](ops.md#releases)), record reads of `apps`, `invites` and `events` (their rules decide who sees what), realtime and session renewal, plus the routes core adds: the sign-in email routes, `/up` (for health checks, on any Host) and, with `--mcp`, `/mcp`, `/oauth/*` and `/.well-known/*`. Everything else answers 404, including the SQL and search reads (`/api/context/*`, which read whole tables and stay local), every record write, `/api/batch`, `/api/files/*`, `/_/` and all local administration. Requests for any Host other than `--domain` are refused.
 
 ## Configuration
 
@@ -35,6 +35,7 @@ The service reads these variables from its environment (never from the project):
 | `DROP_SMTP_USERNAME`, `DROP_SMTP_PASSWORD` | SMTP credentials (Resend: `resend` and a send-only API key) |
 | `DROP_SMTP_TLS` | `tls` (default, implicit TLS) or `starttls` |
 | `DROP_APP_DOMAIN` | optional: the domain of app hostnames (`<slug>.<DROP_APP_DOMAIN>`, for example `bigconfig.space`), set on each app at creation; without it new apps get no hostname |
+| `DROP_RELEASE_MAX_BYTES` | optional: a lower release cap in bytes (1048576 up to the default and maximum, 94371840 = 90 MiB) |
 | `DROP_AWS_REGION`, `DROP_S3_BUCKET`, `DROP_SSM_PREFIX` | where releases (S3) and secrets (SSM) live, through the default AWS credential chain ([aws.md](aws.md)); `--fake-aws DIR` replaces them with a local directory for testing, only with a loopback `--hosted-http-address` |
 
 Keep the password in a root-owned environment file read by the service manager. The settings change only the server's memory; they are never saved into the database.
@@ -53,6 +54,15 @@ drop serve --hosted --headless --mcp --domain drop.example.com --db /var/lib/dro
 - `--hosted-proxy-header` and `--hosted-proxy-networks` go together. The header is `CF-Connecting-IP` (Cloudflare Tunnel) or `X-Forwarded-For` (a load balancer; the rightmost entry is used), and the networks are the comma-separated CIDR prefixes the proxy connects from. Only then does Drop key its per-client limits on the real client; without them every request counts as the proxy's address. A prefix that would trust every peer is refused.
 - Hosted mode keeps only a private local socket (for `stop`, `status`, the local key and the owner's account commands `invite`, `user` and `op`), never a loopback TCP port, so the CLI's app commands (`add`, `list`, `sql` and the others) do not run against a hosted server.
 - The plain HTTP server's write timeout is 5 minutes, so long-lived streams (realtime) reconnect; idle connections close after 120 s.
+
+### Release uploads through the proxy
+
+Releases reach Drop as one `PUT /api/drop/upload/<token>` whose body is the executable, up to 90 MiB (`dropapi.MaxReleaseBytes`; decision 2). The proxy in front must pass that request whole:
+
+- **Body size.** Allow request bodies of at least 92 MiB (96468992 bytes) on `PUT /api/drop/upload/*`: the 90 MiB cap plus headroom. Drop itself accepts public bodies up to 92 MiB (`Policy.PublicBodyLimit`) and answers 413 `release_too_large` above the release cap. Cloudflare (tunnel or proxied DNS) limits request bodies to 100 MB on the Free and Pro plans, which is why the cap is 90 MiB; never raise `DROP_RELEASE_MAX_BYTES` above it (Drop refuses to). An AWS Application Load Balancer has no request body limit. nginx needs `client_max_body_size 92m;` (its default is 1 MiB), and Caddy `request_body { max_size 92MB }` if a limit is set.
+- **Time.** The upload must finish within the server's 5-minute read timeout (about 2.5 Mbit/s for a full 90 MiB release); keep the proxy's own request and idle timeouts at least as long (an ALB's idle timeout defaults to 60 s, which a steady upload never hits).
+- **Path and method.** A path-filtering proxy must pass `PUT` to `/api/drop/upload/*` with the request unbuffered or buffered whole; do not strip `Expect: 100-continue` (curl sends it, and Drop answers a refused link before reading the body).
+
 
 ### Development: Cloudflare Tunnel
 
@@ -74,6 +84,7 @@ Behind an AWS Application Load Balancer, listen on `0.0.0.0:8100`, use `--hosted
 3. `https://HOST/.well-known/oauth-protected-resource` names `https://HOST/mcp`, and an anonymous `POST https://HOST/mcp` answers 401.
 4. Sign in as the owner in a browser with the emailed code; the Users link appears.
 5. On the host, `drop --db /var/lib/drop/project/drop.db invite list` answers `{"invites": [], …}` (run as the service user, so it finds the server's private socket).
+6. A release upload passes the proxy: create a test app, then `drop op release.upload_link '{"app":"SLUG"}'` and `curl -fT ./hello URL` with a linux/amd64 executable (build `tests/fixtures/hello`) answers 200 with the release; an 80 MiB executable must pass as well.
 
 ## Remote MCP
 

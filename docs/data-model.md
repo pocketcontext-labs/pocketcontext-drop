@@ -1,8 +1,8 @@
 # Data model
 
-Drop stores accounts with roles (`users`), `invites`, `apps`, the names of their secrets (`app_secret_names`; values live only in SSM), `events` and the private idempotency keys of its operations (`op_keys`). A hosted Drop holds several accounts (the owner and the people an admin invited; see [Hosting](hosting.md)); each account sees and changes only its own apps, and admins see every app. A local project, for developing the reader, keeps exactly one hidden account, an admin. Every request must prove which account it is. The schema lives in `pb_migrations/`; the rules below are enforced by PocketBase collection rules, by `pb_hooks/`, by Go hooks and operations in `internal/dropserver` and by the SQL and search configuration in `server.json`. Every write happens only in Go: through Drop's operations ([Operations](ops.md), `POST /api/drop/op`) and the account hooks; every client rule that would write a collection is closed.
+Drop stores accounts with roles (`users`), `invites`, `apps`, the names of their secrets (`app_secret_names`; values live only in SSM), their `releases` (the executables live in S3), one-time `upload_links`, `events` and the private idempotency keys of its operations (`op_keys`). A hosted Drop holds several accounts (the owner and the people an admin invited; see [Hosting](hosting.md)); each account sees and changes only its own apps, and admins see every app. A local project, for developing the reader, keeps exactly one hidden account, an admin. Every request must prove which account it is. The schema lives in `pb_migrations/`; the rules below are enforced by PocketBase collection rules, by `pb_hooks/`, by Go hooks and operations in `internal/dropserver` and by the SQL and search configuration in `server.json`. Every write happens only in Go: through Drop's operations ([Operations](ops.md), `POST /api/drop/op`) and the account hooks; every client rule that would write a collection is closed.
 
-`1820000200_apps.js` replaced the unreleased placeholder `1810000100_apps.js` (an owner, a name and a slug) before any database had shipped. Releases (M5b), nodes and placements (M7) come next; the releases migration adds `apps.current_release`.
+`1820000200_apps.js` replaced the unreleased placeholder `1810000100_apps.js` (an owner, a name and a slug) before any database had shipped. Nodes and placements (M7) come next.
 
 ## The account
 
@@ -70,6 +70,7 @@ A partial unique index allows one open invite per address (`email_lower` where `
 | `env` | json, at most 32 KiB | plain environment variables (never secrets) |
 | `health_kind`, `health_path` | select `tcp`, `http`; text | required kind; a path only for `http` |
 | `deployment_seq` | number 1-999999999 | required: the deployment number, bumped when the instance configuration changes ([Operations](ops.md#deployments)) |
+| `current_release` | relation to `releases` | the release the app runs, set by `release.deploy` or an upload link with `activate` (added by `1820000300_releases.js`); empty before the first deploy |
 | `archived`, `archived_at` | bool, date | set by `app.archive`, cleared by `app.restore` |
 | `created`, `updated` | autodate | |
 
@@ -79,14 +80,25 @@ Unique indexes on `slug` and `nib_app_id`, and an index on `(owner, created)`. L
 
 `pb_migrations/1820000400_app_secret_names.js` creates `app_secret_names`, one row per secret: `app` (relation to `apps`), `name` (`^[A-Z][A-Z0-9_]{0,63}$`), `ssm_version` (the SSM parameter version the app uses), `length` (of the value, 1-4096), `set_via` (`ui` or `mcp`), `updated_by` (relation to `users`), `created`, `updated`. **No value field**: values live only in SSM at `<prefix>/apps/<record id>/<NAME>` ([AWS](aws.md)). A unique index on `(app, name)`. List and view rules: admins, and the app's owner (`app.owner = @request.auth.id`); writes closed. The records are not a public route of the hosted origin: the reader reads them with the `secret.list` and `app.get` operations.
 
+## Releases
+
+`pb_migrations/1820000300_releases.js` creates `releases`, one row per app and executable, written only by the upload route (`internal/dropserver/upload.go`): `app` (relation to `apps`, required), `sha256` (64 lower-case hex characters), `size_bytes` (1 to 90 MiB), `s3_key` (`releases/<sha256>`, where the bytes live in the release store; [AWS](aws.md)), `note` (at most 500 characters), `created_by` (relation to `users`: the account that asked for the upload link) and `created`. There is no PocketBase file field: PocketBase's storage uses its own key layout, and Drop stores by content itself. A unique index on `(app, sha256)` (the same bytes uploaded again reuse the row; another app's row with the same digest shares the stored object) and an index on `(app, created)`. List and view rules as `app_secret_names` (admins, and the app's owner); writes closed. The records are not a public route of the hosted origin: the reader and the CLI read them with `release.list`. It also adds `apps.current_release`.
+
+What the node needs to run a release (M7 and M9) is `sha256`, `s3_key` and `size_bytes` of the app's `current_release`: the desired-state route fills `render.Release{SHA256, S3Key, SizeBytes}` from them, and the agent downloads `s3_key` and refuses bytes whose size or digest differ. An app without a current release is not rendered.
+
+## Upload links
+
+`pb_migrations/1820000500_upload_links.js` creates `upload_links`, private to the server (every rule closed, never a public route or an SQL table): `app` (relation to `apps`), `token_hash` (the SHA-256 of the 32-character token, hidden; the token itself is shown once and never stored), `created_by` (relation to `users`), `note`, `activate` (deploy on upload), `expires_at` (15 minutes after creation), `used_at` and `release` (set by the one successful upload) and `created`. A unique index on `token_hash` and an index on `expires_at`. Unused links are deleted a day after they expire (hourly); used links stay with their release. See [Operations](ops.md#releases).
+
 ## SQL reads
 
 `server.json` lists the SQL-readable tables and columns:
 
 | Table | Columns |
 | --- | --- |
-| `apps` | `id`, `owner`, `name`, `slug`, `nib_app_id`, `hostname`, `desired_state`, `idle_timeout_ms`, `vcpu`, `memory_mib`, `disk_mib`, `http_port`, `executable_name`, `health_kind`, `health_path`, `deployment_seq`, `archived`, `archived_at`, `created`, `updated` (not `env` or `args`) |
+| `apps` | `id`, `owner`, `name`, `slug`, `nib_app_id`, `hostname`, `desired_state`, `idle_timeout_ms`, `vcpu`, `memory_mib`, `disk_mib`, `http_port`, `executable_name`, `health_kind`, `health_path`, `deployment_seq`, `current_release`, `archived`, `archived_at`, `created`, `updated` (not `env` or `args`) |
 | `app_secret_names` | `id`, `app`, `name`, `ssm_version`, `length`, `set_via`, `updated_by`, `created`, `updated` |
+| `releases` | `id`, `app`, `sha256`, `size_bytes`, `s3_key`, `note`, `created_by`, `created` |
 | `events` | `id`, `actor`, `app`, `subject_user`, `action`, `detail`, `created` |
 
 `POST /api/context/query {"sql": "SELECT ..."}` (`drop sql`) runs one read-only `SELECT` and returns `{columns, rows, truncated}`; `GET /api/context/schema` (`drop schema`) lists the readable tables, columns and search indexes with `"permissionModel": "shared"`. Both require a `users` token. The vendored SQL reader (`internal/pocketcontext/sqlread`) reads the live working database through read-only connections and authorizes every statement with an SQLite authorizer: only listed columns of listed tables, an allowlist of functions, no writes, `PRAGMA`, `ATTACH`, `sqlite_schema`, `dbstat`, `pragma_*` table-valued functions, FTS shadow tables or auth collections. Results are bounded (`maxRows` 500, `maxBytes` 1 MiB, `timeoutMs` 2000); `truncated` says a limit was hit. The column allowlist is the only read restriction and SQL reads whole tables, whoever owns the rows, so these reads stay on the loopback server (the owner's local key) and are never public routes; list only what the owner may read and never secrets.

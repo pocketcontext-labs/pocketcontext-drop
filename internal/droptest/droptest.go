@@ -6,6 +6,7 @@
 package droptest
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -55,6 +56,11 @@ type Options struct {
 	// fails); NoSecrets starts the server without a secret store.
 	Secrets   awsx.SecretWriter
 	NoSecrets bool
+	// Releases replaces the in-memory release store; NoReleases starts the
+	// server without one. ReleaseMaxBytes lowers the release cap.
+	Releases        awsx.BlobWriter
+	NoReleases      bool
+	ReleaseMaxBytes int64
 }
 
 // Hosted is one synthetic hosted Drop instance.
@@ -66,8 +72,11 @@ type Hosted struct {
 	// Options.Secrets or NoSecrets). Tests read values back from it; the
 	// server itself never can.
 	Secrets *awsx.MemSecretStore
-	mail    chan Mail
-	client  atomic.Int64
+	// Releases is the in-memory release store (nil with Options.Releases or
+	// NoReleases).
+	Releases *awsx.MemBlobStore
+	mail     chan Mail
+	client   atomic.Int64
 }
 
 var codeSubject = regexp.MustCompile(`^(\d{6}) is your Drop sign-in code$`)
@@ -118,6 +127,15 @@ func NewHosted(t *testing.T, opts Options) *Hosted {
 		h.Secrets = awsx.NewMemSecretStore()
 		services.Secrets = h.Secrets
 	}
+	switch {
+	case opts.NoReleases:
+	case opts.Releases != nil:
+		services.Releases = opts.Releases
+	default:
+		h.Releases = awsx.NewMemBlobStore()
+		services.Releases = h.Releases
+	}
+	services.ReleaseMaxBytes = opts.ReleaseMaxBytes
 	dropserver.SetServices(app, services)
 	// A late priority captures the email after core rendered the code email;
 	// not calling Next means nothing is ever sent.
@@ -429,4 +447,35 @@ func (h *Hosted) MustOp(authorization, op string, input any) map[string]any {
 		h.T.Fatalf("%s: %d %s", op, r.Status, r.Raw)
 	}
 	return r.Result
+}
+
+// ELF returns a synthetic release of size bytes (at least 64): a valid
+// linux/amd64 ELF executable header followed by bytes derived from seed, so
+// different seeds give different content. It never runs; it only passes
+// Drop's upload check.
+func ELF(size int, seed byte) []byte {
+	if size < 64 {
+		size = 64
+	}
+	b := make([]byte, size)
+	copy(b, "\x7fELF")
+	b[4], b[5], b[6] = 2, 1, 1 // 64-bit, little-endian, version 1
+	b[16], b[18] = 2, 0x3E     // ET_EXEC, x86-64
+	for i := 64; i < size; i++ {
+		b[i] = byte(i) ^ seed
+	}
+	return b
+}
+
+// Upload sends one PUT of body to path (an upload link's path), anonymously,
+// from a client address of its own.
+func (h *Hosted) Upload(path string, body []byte) *httptest.ResponseRecorder {
+	h.T.Helper()
+	r := httptest.NewRequest(http.MethodPut, "https://"+Domain+path, bytes.NewReader(body))
+	r.TLS, r.Host = nil, Domain
+	r.RemoteAddr = fmt.Sprintf("198.51.100.%d:40000", 1+h.client.Add(1)%250)
+	r.Header.Set("Content-Type", "application/octet-stream")
+	w := httptest.NewRecorder()
+	h.Server.Public().ServeHTTP(w, r)
+	return w
 }

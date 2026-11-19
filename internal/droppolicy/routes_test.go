@@ -47,6 +47,9 @@ var routePaths = []string{
 	"/api/collections/nodes/auth-with-password", "/api/collections/nodes/auth-refresh",
 	"/api/drop/me", "/api/drop/op", "/api/drop/agent/desired", "/api/drop/agent/report",
 	"/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+	"/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz01234", "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz0123456",
+	"/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz01234-", "/api/drop/upload/", "/api/drop/upload",
+	"/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz012345/extra",
 }
 
 // routeCollections get record list, view and malformed-path rows.

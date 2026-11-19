@@ -18,10 +18,12 @@ import {
   type Secret,
 } from "./dropApi";
 import { message } from "./errors";
+import Releases from "./Releases";
 import { appHash, viewHashes, type AppTab } from "./routes";
 
 const tabs: { tab: AppTab; label: string }[] = [
   { tab: "overview", label: "Overview" },
+  { tab: "releases", label: "Releases" },
   { tab: "settings", label: "Settings" },
   { tab: "env", label: "Env & secrets" },
 ];
@@ -95,7 +97,12 @@ function Overview({
         <dd>{formatDate(app.created)}</dd>
       </dl>
       <p className="quiet">
-        Releases and placement on a node come next; until then nothing runs.
+        {app.current_release ? (
+          <>The current release is set in <a href={appHash(app.id, "releases")}>Releases</a>.</>
+        ) : (
+          <>No release yet: upload the app&apos;s executable in <a href={appHash(app.id, "releases")}>Releases</a>.</>
+        )}{" "}
+        Placement on a node comes next; until then nothing runs.
       </p>
       {error && (
         <p role="alert" className="error">
@@ -586,7 +593,7 @@ function Secrets({
   );
 }
 
-/** `#/apps/<id>`: one app with its Overview, Settings and Env & secrets tabs. */
+/** `#/apps/<id>`: one app with its Overview, Settings, Env & secrets and Releases tabs. */
 export default function AppPage({ id, tab }: { id: string; tab: AppTab }) {
   const [app, setApp] = useState<App | null>(null);
   const [secrets, setSecrets] = useState<Secret[]>([]);
@@ -671,6 +678,7 @@ export default function AppPage({ id, tab }: { id: string; tab: AppTab }) {
             // Remount after a change elsewhere so the form shows saved values.
             <Settings key={`${app.id}-${version}`} app={app} onChange={setApp} />
           )}
+          {tab === "releases" && <Releases app={app} onChange={() => void load()} />}
           {tab === "env" && (
             <>
               <EnvVars app={app} secrets={secrets} onChange={changed} />

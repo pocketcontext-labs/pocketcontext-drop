@@ -2342,6 +2342,216 @@
  {
   "method": "PUT",
   "path": "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+  "allow": true
+ },
+ {
+  "method": "DELETE",
+  "path": "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz01234",
+  "allow": false
+ },
+ {
+  "method": "GET",
+  "path": "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz01234",
+  "allow": false
+ },
+ {
+  "method": "HEAD",
+  "path": "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz01234",
+  "allow": false
+ },
+ {
+  "method": "OPTIONS",
+  "path": "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz01234",
+  "allow": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz01234",
+  "allow": false
+ },
+ {
+  "method": "POST",
+  "path": "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz01234",
+  "allow": false
+ },
+ {
+  "method": "PUT",
+  "path": "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz01234",
+  "allow": false
+ },
+ {
+  "method": "DELETE",
+  "path": "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz0123456",
+  "allow": false
+ },
+ {
+  "method": "GET",
+  "path": "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz0123456",
+  "allow": false
+ },
+ {
+  "method": "HEAD",
+  "path": "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz0123456",
+  "allow": false
+ },
+ {
+  "method": "OPTIONS",
+  "path": "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz0123456",
+  "allow": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz0123456",
+  "allow": false
+ },
+ {
+  "method": "POST",
+  "path": "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz0123456",
+  "allow": false
+ },
+ {
+  "method": "PUT",
+  "path": "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz0123456",
+  "allow": false
+ },
+ {
+  "method": "DELETE",
+  "path": "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz01234-",
+  "allow": false
+ },
+ {
+  "method": "GET",
+  "path": "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz01234-",
+  "allow": false
+ },
+ {
+  "method": "HEAD",
+  "path": "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz01234-",
+  "allow": false
+ },
+ {
+  "method": "OPTIONS",
+  "path": "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz01234-",
+  "allow": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz01234-",
+  "allow": false
+ },
+ {
+  "method": "POST",
+  "path": "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz01234-",
+  "allow": false
+ },
+ {
+  "method": "PUT",
+  "path": "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz01234-",
+  "allow": false
+ },
+ {
+  "method": "DELETE",
+  "path": "/api/drop/upload/",
+  "allow": false
+ },
+ {
+  "method": "GET",
+  "path": "/api/drop/upload/",
+  "allow": false
+ },
+ {
+  "method": "HEAD",
+  "path": "/api/drop/upload/",
+  "allow": false
+ },
+ {
+  "method": "OPTIONS",
+  "path": "/api/drop/upload/",
+  "allow": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/api/drop/upload/",
+  "allow": false
+ },
+ {
+  "method": "POST",
+  "path": "/api/drop/upload/",
+  "allow": false
+ },
+ {
+  "method": "PUT",
+  "path": "/api/drop/upload/",
+  "allow": false
+ },
+ {
+  "method": "DELETE",
+  "path": "/api/drop/upload",
+  "allow": false
+ },
+ {
+  "method": "GET",
+  "path": "/api/drop/upload",
+  "allow": false
+ },
+ {
+  "method": "HEAD",
+  "path": "/api/drop/upload",
+  "allow": false
+ },
+ {
+  "method": "OPTIONS",
+  "path": "/api/drop/upload",
+  "allow": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/api/drop/upload",
+  "allow": false
+ },
+ {
+  "method": "POST",
+  "path": "/api/drop/upload",
+  "allow": false
+ },
+ {
+  "method": "PUT",
+  "path": "/api/drop/upload",
+  "allow": false
+ },
+ {
+  "method": "DELETE",
+  "path": "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz012345/extra",
+  "allow": false
+ },
+ {
+  "method": "GET",
+  "path": "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz012345/extra",
+  "allow": false
+ },
+ {
+  "method": "HEAD",
+  "path": "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz012345/extra",
+  "allow": false
+ },
+ {
+  "method": "OPTIONS",
+  "path": "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz012345/extra",
+  "allow": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz012345/extra",
+  "allow": false
+ },
+ {
+  "method": "POST",
+  "path": "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz012345/extra",
+  "allow": false
+ },
+ {
+  "method": "PUT",
+  "path": "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz012345/extra",
   "allow": false
  },
  {

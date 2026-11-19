@@ -118,7 +118,8 @@ func (c *Ctx) appOut(r *core.Record, emails map[string]string) dropapi.App {
 		HTTPPort: r.GetInt("http_port"), ExecutableName: r.GetString("executable_name"),
 		Args: appArgs(r), Env: appEnv(r), HealthKind: r.GetString("health_kind"), HealthPath: r.GetString("health_path"),
 		DeploymentSeq: r.GetInt("deployment_seq"), DeploymentID: deploymentID(r),
-		Archived: r.GetBool("archived"), ArchivedAt: dateString(r, "archived_at"),
+		CurrentRelease: r.GetString("current_release"),
+		Archived:       r.GetBool("archived"), ArchivedAt: dateString(r, "archived_at"),
 		Created: dateString(r, "created"), Updated: dateString(r, "updated"),
 	}
 }

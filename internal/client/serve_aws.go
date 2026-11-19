@@ -4,18 +4,24 @@ import (
 	"context"
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/awsx"
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropserver"
 )
 
 // EnvAppDomain names the domain under which apps get their hostnames.
 const EnvAppDomain = "DROP_APP_DOMAIN"
 
+// EnvReleaseMaxBytes optionally lowers the release upload cap below 90 MiB.
+const EnvReleaseMaxBytes = "DROP_RELEASE_MAX_BYTES"
+
 // serveServices opens the stores for serve and returns what the server's
 // operations get: only the secret store's write side (the server never reads
-// a secret), its SSM prefix and the app domain (DROP_APP_DOMAIN, optional).
-// M5b adds the release store's write side.
+// a secret), its SSM prefix, the release store's write side, the release cap
+// (DROP_RELEASE_MAX_BYTES, optional, at most 90 MiB) and the app domain
+// (DROP_APP_DOMAIN, optional).
 func serveServices(a *args, hosted bool, listenAddr string, getenv func(string) string) (dropserver.Services, error) {
 	var s dropserver.Services
 	if domain := getenv(EnvAppDomain); domain != "" {
@@ -24,11 +30,18 @@ func serveServices(a *args, hosted bool, listenAddr string, getenv func(string) 
 		}
 		s.AppDomain = domain
 	}
+	if raw := getenv(EnvReleaseMaxBytes); raw != "" {
+		n, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || n < 1<<20 || n > dropapi.MaxReleaseBytes {
+			return s, fail(2, "%s must be a number of bytes from 1048576 to %d (90 MiB)", EnvReleaseMaxBytes, dropapi.MaxReleaseBytes)
+		}
+		s.ReleaseMaxBytes = n
+	}
 	stores, err := openServeStores(a, hosted, listenAddr)
 	if err != nil || stores == nil {
 		return s, err
 	}
-	s.Secrets, s.SSMPrefix = stores.Secrets, stores.SSMPrefix
+	s.Secrets, s.SSMPrefix, s.Releases = stores.Secrets, stores.SSMPrefix, stores.Blobs
 	return s, nil
 }
 

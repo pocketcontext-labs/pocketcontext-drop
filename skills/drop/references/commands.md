@@ -6,8 +6,9 @@
 
 | Table | Columns |
 | --- | --- |
-| `apps` | `id`, `owner`, `name` (1-80 characters), `slug` (unique; 3-32 lowercase letters, digits and hyphens, starting with a letter and not ending with a hyphen), `nib_app_id`, `hostname`, `desired_state`, `idle_timeout_ms`, `vcpu`, `memory_mib`, `disk_mib`, `http_port`, `executable_name`, `health_kind`, `health_path`, `deployment_seq`, `archived`, `archived_at`, `created`, `updated` (no environment or arguments: read those with `app show`) |
+| `apps` | `id`, `owner`, `name` (1-80 characters), `slug` (unique; 3-32 lowercase letters, digits and hyphens, starting with a letter and not ending with a hyphen), `nib_app_id`, `hostname`, `desired_state`, `idle_timeout_ms`, `vcpu`, `memory_mib`, `disk_mib`, `http_port`, `executable_name`, `health_kind`, `health_path`, `deployment_seq`, `current_release`, `archived`, `archived_at`, `created`, `updated` (no environment or arguments: read those with `app show`) |
 | `app_secret_names` | `id`, `app`, `name`, `ssm_version`, `length`, `set_via` (`ui` or `mcp`), `updated_by`, `created`, `updated`: never a value |
+| `releases` | `id`, `app`, `sha256`, `size_bytes`, `s3_key` (`releases/<sha256>`), `note`, `created_by`, `created` |
 | `events` | `id`, `actor` (account id), `app`, `subject_user`, `action` (the operation, such as `invite.create`), `detail` (JSON, never secret values), `created` |
 
 `drop schema` prints the live tables, columns and search indexes; it takes precedence over this table. Timestamps are UTC text such as `2026-10-25 09:16:27.718Z`. SQL reads whole tables with the project's own account (an admin); the accounts, credentials, secret values and SQLite metadata are not readable.
@@ -25,7 +26,7 @@ drop app start|stop|archive|restore APP
 
 APP is an app's id or slug; another account's app is "not found" (exit 1).
 
-- An app: `id`, `name`, `slug`, `owner`, `owner_email`, `nib_app_id` (`d-<id>`), `volume_id`, `hostname` (`SLUG.<app domain>`, empty without one), `desired_state`, `idle_timeout_ms` (60000-86400000), `vcpu` (1-2), `memory_mib` (128-4096), `disk_mib` (256-16384), `http_port` (1024-65535), `executable_name` (`^[a-z][a-z0-9-]{0,31}$`), `args`, `env` (plain values only), `health_kind` (`tcp` or `http`), `health_path`, `deployment_seq`, `deployment_id` (`<nib_app_id>-dep-<deployment_seq>`), `archived`, `archived_at`, `created`, `updated`.
+- An app: `id`, `name`, `slug`, `owner`, `owner_email`, `nib_app_id` (`d-<id>`), `volume_id`, `hostname` (`SLUG.<app domain>`, empty without one), `desired_state`, `idle_timeout_ms` (60000-86400000), `vcpu` (1-2), `memory_mib` (128-4096), `disk_mib` (256-16384), `http_port` (1024-65535), `executable_name` (`^[a-z][a-z0-9-]{0,31}$`), `args`, `env` (plain values only), `health_kind` (`tcp` or `http`), `health_path`, `deployment_seq`, `deployment_id` (`<nib_app_id>-dep-<deployment_seq>`), `current_release` (a release id, empty before the first deploy), `archived`, `archived_at`, `created`, `updated`.
 - `app list` prints `{"apps", "has_more", "quota"}` newest first; `quota` is `{"used", "limit", "unlimited"}`. `--archived` lists archived apps; `--all` (admins) every account's.
 - `app create` defaults: `on-request`, 300000 ms, 1 vCPU, 512 MiB, 1024 MiB disk, port 8080, executable `server`, a tcp health check (`--health http` checks `/` unless `--health-path` says otherwise). Prints `{"app"}`. A taken slug (`slug_taken`) or a full quota (`quota_exceeded`) exits 4; a reserved slug (`drop`, `www`, `api`, ...) or a bad value exits 1 with the field.
 - `app set` prints `{"app", "deployment_bumped"}`; the slug never changes. A changed state, port, executable, arguments, environment, health check, vCPU, memory or idle timeout starts a new deployment (`deployment_bumped: true`); the name, `app start`/`app stop` and the disk do not.
@@ -44,6 +45,19 @@ drop secret delete APP NAME
 - A secret: `name`, `version`, `length`, `set_via` (`ui` or `mcp`), `updated_by`, `updated`. No command, operation or log ever returns a value.
 - `secret delete` removes every version and starts a new deployment.
 - A server without a secret store (the local development server) answers `secrets_unavailable` (exit 1); a store that fails answers `secret_store_failed` (exit 1) and nothing changes.
+
+## release
+
+```sh
+drop release list APP [--limit N]
+drop release upload APP FILE [--activate] [--note TEXT]
+drop release deploy APP RELEASE_ID
+```
+
+- FILE must be a static linux/amd64 ELF executable of at most 90 MiB; anything else exits 2 before anything is sent. `release upload` asks for a one-time upload link (`release.upload_link`, valid 15 minutes) and sends the file to it; it prints `{"release", "created", "deployed", "deployment_id"}` (`created` is false when the app already had these bytes). `--activate` deploys it (a new deployment); `--note` keeps a short note (at most 500 characters).
+- A release: `id`, `app`, `sha256`, `size_bytes`, `s3_key` (`releases/<sha256>`), `note`, `created_by`, `created`, `current`.
+- `release list` prints `{"releases", "has_more", "current_release"}` newest first. `release deploy` prints `{"app", "release", "deployment_bumped", "deployment_id"}`; deploying the current release changes nothing.
+- A server without a release store (the local development server) answers `releases_unavailable` (exit 1). Without the CLI, `drop op release.upload_link '{"app":"APP"}'` returns a `url` for `curl -fT FILE URL` from any machine; treat it as a secret.
 
 ## search
 

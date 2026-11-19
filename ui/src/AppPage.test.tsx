@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { api, pb } from "./api";
 import App from "./App";
-import { dropApi, OpError, type App as DropApp, type Me } from "./dropApi";
+import { dropApi, OpError, releaseFileProblem, type App as DropApp, type Me, type Release } from "./dropApi";
 
 const token = `synthetic.${btoa(JSON.stringify({ exp: 4102444800 }))}.signature`;
 const user = { id: "user00000000001", collectionId: "_pb_users_auth_", collectionName: "users", email: "owner@example.test" };
@@ -12,7 +12,7 @@ const app: DropApp = {
   id, name: "Hello app", slug: "hello-app", owner: user.id, owner_email: user.email, nib_app_id: `d-${id}`,
   volume_id: `d-${id}-vol`, hostname: "hello-app.apps.example.test", desired_state: "on-request", idle_timeout_ms: 300000,
   vcpu: 1, memory_mib: 512, disk_mib: 1024, http_port: 8080, executable_name: "server", args: [], env: { WELCOME_TEXT: "hi" },
-  health_kind: "tcp", health_path: "", deployment_seq: 1, deployment_id: `d-${id}-dep-1`, archived: false, archived_at: "",
+  health_kind: "tcp", health_path: "", deployment_seq: 1, deployment_id: `d-${id}-dep-1`, current_release: "", archived: false, archived_at: "",
   created: "2026-11-19 10:00:00.000Z", updated: "2026-11-19 10:00:00.000Z",
 };
 
@@ -103,4 +103,63 @@ it("shows Not found for an app that is not the account's", async () => {
   vi.spyOn(dropApi, "getApp").mockRejectedValue(new OpError(404, "not_found", "App not found."));
   render(<App />);
   expect(await screen.findByRole("heading", { name: "Not found" })).toBeInTheDocument();
+});
+
+/** A synthetic release: a linux/amd64 ELF header and filler; machine changes the architecture. */
+function elf(size = 256, machine = 0x3e): File {
+  const bytes = new Uint8Array(size);
+  bytes.set([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1]);
+  bytes[16] = 2;
+  bytes[18] = machine;
+  return new File([bytes], "server", { type: "application/octet-stream" });
+}
+
+const release: Release = {
+  id: "rel000000000001", app: id, sha256: "a".repeat(64), size_bytes: 256, s3_key: `releases/${"a".repeat(64)}`, note: "v1",
+  created_by: user.id, created: "2026-11-19 10:00:00.000Z", current: true,
+};
+const older: Release = { ...release, id: "rel000000000002", sha256: "b".repeat(64), s3_key: `releases/${"b".repeat(64)}`, note: "", current: false };
+
+it("checks a release file locally like the server", async () => {
+  expect(await releaseFileProblem(elf())).toBe("");
+  expect(await releaseFileProblem(elf(256, 0xb7))).toMatch(/built for arm64/);
+  expect(await releaseFileProblem(new File(["#!/bin/sh\n"], "script.sh"))).toMatch(/not an ELF executable/);
+  expect(await releaseFileProblem(new File([], "empty"))).toBe("The file is empty.");
+  expect(await releaseFileProblem(elf(), 100)).toMatch(/at most 0 MiB/);
+});
+
+it("uploads a release through a one-time link with progress and deploys another", async () => {
+  history.replaceState(null, "", `/#/apps/${id}/releases`);
+  vi.spyOn(dropApi, "getApp").mockResolvedValue({ app: { ...app, current_release: release.id }, secrets: [] });
+  vi.spyOn(dropApi, "listReleases").mockResolvedValue({ releases: [release, older], current_release: release.id, has_more: false });
+  const link = vi.spyOn(dropApi, "createUploadLink").mockResolvedValue({
+    url: "https://drop.example.test/api/drop/upload/" + "T".repeat(32), path: "/api/drop/upload/" + "T".repeat(32), method: "PUT",
+    max_bytes: 90 * 1024 * 1024, expires_at: "2026-11-19T10:15:00Z", activate: true, example: "curl -fT FILE URL",
+  });
+  const put = vi.spyOn(dropApi, "uploadRelease").mockImplementation(async (_path, file, onProgress) => {
+    onProgress(file.size, file.size);
+    return { release: { ...release, sha256: "c".repeat(64) }, created: true, deployed: true, deployment_id: `d-${id}-dep-2` };
+  });
+  const deploy = vi.spyOn(dropApi, "deployRelease").mockResolvedValue({
+    app, release: older, deployment_bumped: true, deployment_id: `d-${id}-dep-3`,
+  });
+  render(<App />);
+  expect(await screen.findByText("Current")).toBeInTheDocument();
+  const upload = screen.getByRole("button", { name: "Upload release" });
+  expect(upload).toBeDisabled();
+  // A file for another architecture is refused before anything is sent.
+  fireEvent.change(screen.getByLabelText("Release file"), { target: { files: [elf(256, 0xb7)] } });
+  expect(await screen.findByText(/built for arm64/)).toBeInTheDocument();
+  expect(upload).toBeDisabled();
+  fireEvent.change(screen.getByLabelText("Release file"), { target: { files: [elf()] } });
+  await vi.waitFor(() => expect(upload).toBeEnabled());
+  fireEvent.change(screen.getByLabelText("Note (optional)"), { target: { value: " v2 " } });
+  fireEvent.click(upload);
+  expect(await screen.findByText(`Uploaded cccccccccccc. Deployed: new deployment d-${id}-dep-2.`)).toBeInTheDocument();
+  expect(link).toHaveBeenCalledWith(id, { note: "v2", activate: true });
+  expect(put).toHaveBeenCalledWith("/api/drop/upload/" + "T".repeat(32), expect.any(File), expect.any(Function));
+  expect(screen.getByLabelText("Upload progress")).toHaveAttribute("value", "256");
+  fireEvent.click(screen.getByRole("button", { name: "Deploy" }));
+  expect(await screen.findByText(`Deployed bbbbbbbbbbbb: new deployment d-${id}-dep-3.`)).toBeInTheDocument();
+  expect(deploy).toHaveBeenCalledWith(id, older.id);
 });

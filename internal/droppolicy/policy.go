@@ -14,6 +14,8 @@ import (
 	"github.com/pocketcontext-labs/pocketcontext-core/appserver"
 	"github.com/pocketcontext-labs/pocketcontext-core/maintenance"
 	"github.com/pocketcontext-labs/pocketcontext-core/mcpobserve"
+
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
 )
 
 // Identity names this application everywhere. Its values are persisted (cache
@@ -72,9 +74,10 @@ const OAuthScope = "drop"
 // label in 429 responses, so it must never change after the first release.
 var HostedBudget = appserver.HostedBudget{Label: "drop_requests", Burst: 600, PerSecond: 50}
 
-// ReleaseMaxBytes caps one release upload (90 MiB): Cloudflare limits request
-// bodies to 100 MB, and the public body limit sits just above it.
-const ReleaseMaxBytes = 90 << 20
+// ReleaseMaxBytes caps one release upload (90 MiB, dropapi.MaxReleaseBytes):
+// Cloudflare limits request bodies to 100 MB, and the public body limit sits
+// just above it.
+const ReleaseMaxBytes = dropapi.MaxReleaseBytes
 
 // Observe lists the diagnostic labels of the MCP tools and the API routes they
 // call; anything else is reported as unknown. Drop's tools (drop_read and

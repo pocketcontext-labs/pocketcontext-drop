@@ -289,10 +289,11 @@ def scenario(pc):
     tables = {t['name']: sorted(c['name'] for c in t['columns']) for t in schema['tables']}
     check(tables == {'apps': sorted(['id', 'owner', 'name', 'slug', 'nib_app_id', 'hostname', 'desired_state', 'idle_timeout_ms', 'vcpu',
                                      'memory_mib', 'disk_mib', 'http_port', 'executable_name', 'health_kind', 'health_path',
-                                     'deployment_seq', 'archived', 'archived_at', 'created', 'updated']),
+                                     'deployment_seq', 'current_release', 'archived', 'archived_at', 'created', 'updated']),
+                     'releases': sorted(['id', 'app', 'sha256', 'size_bytes', 's3_key', 'note', 'created_by', 'created']),
                      'app_secret_names': sorted(['id', 'app', 'name', 'ssm_version', 'length', 'set_via', 'updated_by', 'created', 'updated']),
                      'events': ['action', 'actor', 'app', 'created', 'detail', 'id', 'subject_user']},
-          f'the SQL schema exposes apps (no env or args), secret names and events: {tables}')
+          f'the SQL schema exposes apps (no env or args), secret names, releases and events: {tables}')
     check(schema['permissionModel'] == 'shared' and schema['search']['indexes'] == ['apps'] and 'isolation' not in schema['search']
           and 'snapshotLimits' not in schema, 'reads use the live database and a shared apps index')
 
@@ -757,12 +758,26 @@ APP_DOMAIN = 'apps.example.test'
 SECRET_SENTINEL = 'synthetic-secret-sentinel-' + hashlib.sha256(b'drop e2e').hexdigest()[:16]
 
 
-def hosted_request(port, method, path, body=None, host=HOSTED_DOMAIN):
+def build_hello(directory):
+    """Build the test release tests/fixtures/hello: a static linux/amd64 executable, reproducibly."""
+    go = shutil.which('go')
+    if go is None:
+        raise AssertionError('the Go toolchain is needed to build tests/fixtures/hello')
+    out = Path(directory) / 'hello'
+    env = {**os.environ, 'CGO_ENABLED': '0', 'GOOS': 'linux', 'GOARCH': 'amd64'}
+    subprocess.run([go, 'build', '-trimpath', '-ldflags', '-s -w -buildid=', '-o', str(out), './tests/fixtures/hello'],
+                   cwd=Path(__file__).resolve().parents[1], env=env, check=True, timeout=600)
+    return out
+
+
+def hosted_request(port, method, path, body=None, host=HOSTED_DOMAIN, raw=None):
     import http.client
     connection = http.client.HTTPConnection('127.0.0.1', port, timeout=30)
-    data = None if body is None else json.dumps(body).encode()
+    data = raw if raw is not None else None if body is None else json.dumps(body).encode()
     headers = {'Host': host, 'Accept': 'application/json'}
-    if data is not None:
+    if raw is not None:
+        headers['Content-Type'] = 'application/octet-stream'
+    elif data is not None:
         headers['Content-Type'] = 'application/json'
     try:
         connection.request(method, path, body=data, headers=headers)
@@ -853,6 +868,40 @@ def hosted_scenario(pc, r):
               and (stored[0].parent / 'name').read_text(encoding='utf-8').strip() == '/drop/apps/' + app['id'] + '/API_KEY',
               'the value is in the secret store at <prefix>/apps/<app id>/<NAME>')
         check(owner('secret', 'delete', 'hosted-app', 'API_KEY')['deployment_id'] == app['nib_app_id'] + '-dep-3', 'secret delete bumps the deployment')
+
+        # Releases: the test executable, built from tests/fixtures/hello, through the CLI and a curl-style PUT.
+        hello = build_hello(hosted)
+        hello_bytes = hello.read_bytes()
+        hello_sha = hashlib.sha256(hello_bytes).hexdigest()
+        not_elf = hosted / 'script.sh'
+        not_elf.write_text('#!/bin/sh\necho hello\n', encoding='utf-8')
+        refused_file = owner('release', 'upload', 'hosted-app', str(not_elf), expect=2)
+        check('linux/amd64 ELF' in refused_file.stderr, 'release upload refuses a file that is not a linux/amd64 executable before asking for a link')
+        uploaded = owner('release', 'upload', 'hosted-app', str(hello), '--activate', '--note', 'e2e build')
+        check(uploaded['created'] and uploaded['deployed'] and uploaded['release']['sha256'] == hello_sha
+              and uploaded['release']['size_bytes'] == len(hello_bytes) and uploaded['release']['s3_key'] == 'releases/' + hello_sha
+              and uploaded['deployment_id'] == app['nib_app_id'] + '-dep-4', f'release upload --activate stores and deploys the release: {uploaded}')
+        blob = hosted / 'fake-aws' / 'blobs' / 'releases' / hello_sha
+        check(blob.is_file() and blob.read_bytes() == hello_bytes, 'the release is in the fake store at releases/<sha256>')
+        link = owner('op', 'release.upload_link', json.dumps({'app': 'hosted-app'}))
+        check(link['url'] == f'https://{HOSTED_DOMAIN}' + link['path'] and link['method'] == 'PUT' and link['max_bytes'] == 90 << 20,
+              f'release.upload_link returns a one-time URL on the hosted domain: {link["max_bytes"]}')
+        status, body = hosted_request(port, 'PUT', link['path'], raw=b'not an executable')
+        check(status == 400 and json.loads(body)['code'] == 'invalid_release', 'the public upload route refuses a non-ELF body')
+        status, body = hosted_request(port, 'PUT', link['path'], raw=hello_bytes)
+        answer = json.loads(body)
+        check(status == 200 and not answer['created'] and answer['release']['id'] == uploaded['release']['id'] and not answer['deployed'],
+              f'the same bytes through the public route reuse the release: {status} {answer}')
+        # A refused link answers before the body is read (curl waits for it with Expect: 100-continue), so send a short body.
+        status, body = hosted_request(port, 'PUT', link['path'], raw=hello_bytes[:4096])
+        check(status == 404 and json.loads(body)['code'] == 'upload_link_invalid', 'an upload link works once')
+        check(hosted_request(port, 'PUT', '/api/drop/upload/short', raw=hello_bytes[:4096])[0] == 404, 'a malformed upload token is not routed')
+        releases = owner('release', 'list', 'hosted-app')
+        check(len(releases['releases']) == 1 and releases['current_release'] == uploaded['release']['id']
+              and releases['releases'][0]['note'] == 'e2e build', f'release list shows the one current release: {releases}')
+        deployed = owner('release', 'deploy', 'hosted-app', uploaded['release']['id'])
+        check(not deployed['deployment_bumped'] and deployed['deployment_id'] == app['nib_app_id'] + '-dep-4',
+              'deploying the current release again starts no deployment')
     finally:
         server.send_signal(signal.SIGTERM)
         try:
@@ -873,6 +922,8 @@ def hosted_scenario(pc, r):
     output_text = (hosted / 'serve.log').read_text(encoding='utf-8', errors='replace')
     check('API_KEY' in dump and SECRET_SENTINEL not in dump, 'the database holds the secret name and never its value')
     check(SECRET_SENTINEL not in output_text, 'the server output never holds the secret value')
+    token = link['path'].rsplit('/', 1)[1]
+    check(token not in dump and token not in output_text, 'the upload token is in neither the database nor the server output')
 
 
 def codes_scenario(pc, r):

@@ -208,6 +208,7 @@ parsed:
 		"query":          {nil, nil},
 		"app":            {{"slug", "name", "mode", "idle-timeout", "vcpu", "memory", "disk", "port", "executable", "args-json", "health", "health-path", "limit"}, {"all", "archived"}},
 		"secret":         {nil, nil},
+		"release":        {{"note", "limit"}, {"activate"}},
 		"search":         {{"limit", "offset", "generation"}, nil},
 		"login-code":     {{"ttl"}, nil},
 		"login":          {nil, {"password-stdin", "code-stdin"}},
@@ -435,7 +436,7 @@ func runData(c *Client, command string, a *args, pretty bool) error {
 	var data any
 	var err error
 	switch command {
-	case "invite", "user", "op", "app", "secret":
+	case "invite", "user", "op", "app", "secret", "release":
 		data, err = runOps(c, command, a)
 	case "whoami":
 		me, err := c.Must("POST", "/api/collections/users/auth-refresh", nil)

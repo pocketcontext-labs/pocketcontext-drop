@@ -53,6 +53,11 @@ Apps (through Drop's operations; APP is an app's id or slug):
   secret set APP NAME                store a secret value read from standard
                                      input (kept in SSM, never shown again)
   secret delete APP NAME             remove a secret
+  release list APP                   uploaded executables, newest first
+  release upload APP FILE [--activate] [--note TEXT]
+                                     upload a static linux/amd64 executable
+                                     (at most 90 MiB) as a new release
+  release deploy APP RELEASE_ID      run a release: starts a new deployment
 
 Whole-table reads (the local server or --url; never the hosted origin):
   search TERMS [--limit N] [--offset N --generation G]
@@ -89,7 +94,7 @@ forward of the same port; --url URL or DROP_URL):
                        computer)
   skill --url URL [--agent A] [--dir DIR]
                        install the agent skill for the remote server
-  App, secret, account and op commands work with --url. URL must be http://127.0.0.1:PORT or
+  App, secret, release, account and op commands work with --url. URL must be http://127.0.0.1:PORT or
   http://localhost:PORT. Remote mode never creates a database or starts a
   server; serve, start, ensure-running, stop, flush, recover, init, password
   and login-code are not available with --url.

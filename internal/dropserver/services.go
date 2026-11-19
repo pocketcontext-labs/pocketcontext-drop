@@ -24,6 +24,15 @@ type Services struct {
 	Secrets awsx.SecretWriter
 	// SSMPrefix is the parameter prefix (awsx.DefaultSSMPrefix when empty).
 	SSMPrefix string
+	// Releases stores uploaded release executables in S3, or a fake, by
+	// content at awsx.ReleaseKey(sha256). The server only writes (and may
+	// check that a release exists); nil means this server has no release
+	// store (plain local serve), and upload links answer 503
+	// releases_unavailable.
+	Releases awsx.BlobWriter
+	// ReleaseMaxBytes caps one release upload: dropapi.MaxReleaseBytes when
+	// zero, and never more (DROP_RELEASE_MAX_BYTES may only lower it).
+	ReleaseMaxBytes int64
 	// AppDomain is the domain under which apps get their hostname,
 	// <slug>.<AppDomain> (DROP_APP_DOMAIN); empty leaves new apps without a
 	// hostname.
@@ -48,10 +57,17 @@ func UseServices(s Services) {
 
 // SetServices sets the services of one app directly (tests).
 func SetServices(app core.App, s Services) {
+	app.Store().Set(servicesStoreKey, s.withDefaults())
+}
+
+func (s Services) withDefaults() Services {
 	if s.SSMPrefix == "" {
 		s.SSMPrefix = awsx.DefaultSSMPrefix
 	}
-	app.Store().Set(servicesStoreKey, s)
+	if s.ReleaseMaxBytes <= 0 || s.ReleaseMaxBytes > dropapi.MaxReleaseBytes {
+		s.ReleaseMaxBytes = dropapi.MaxReleaseBytes
+	}
+	return s
 }
 
 // takeServices stores the pending services in a new app (Hooks.PreRegister).
@@ -64,10 +80,7 @@ func takeServices(app core.App) {
 
 func servicesOf(app core.App) Services {
 	s, _ := app.Store().Get(servicesStoreKey).(Services)
-	if s.SSMPrefix == "" {
-		s.SSMPrefix = awsx.DefaultSSMPrefix
-	}
-	return s
+	return s.withDefaults()
 }
 
 var appDomainPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$`)

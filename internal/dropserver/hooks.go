@@ -1,8 +1,9 @@
 // Package dropserver is Drop's server-side product code: the hooks core calls
 // at each point the server diverges, the account rules (accounts.go) and the
 // operation framework behind POST /api/drop/op (ops.go), with its operations
-// (ops_*.go): accounts and invites, apps and their secrets. Later milestones
-// add releases and the agent routes.
+// (ops_*.go): accounts and invites, apps, their secrets and releases, and the
+// one-time release upload route (upload.go). Later milestones add the agent
+// routes.
 package dropserver
 
 import (
@@ -30,6 +31,7 @@ func Hooks() appserver.Hooks {
 			bindAccounts(app)
 			app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 				registerOpRoutes(e)
+				registerUploadRoute(e)
 				return e.Next()
 			})
 			return nil
@@ -39,6 +41,7 @@ func Hooks() appserver.Hooks {
 			return ensureOwnerAdmin(e.App)
 		},
 		Background: func(ctx context.Context, app core.App) {
+			go runUploadLinkPruning(ctx, app)
 			runOpKeyPruning(ctx, app)
 		},
 		AllowSignIn: AllowSignIn,

@@ -177,5 +177,10 @@ jobs:
           tar -xOzf "$RUNNER_TEMP/assets/drop_${RELEASE_VERSION}_${RELEASE_PLATFORM}.tar.gz" drop > "$dir/drop"
           chmod 0755 "$dir/drop"
           echo "EXE=$dir/drop" >> "$GITHUB_ENV"
+      # tests/e2e.py builds its test release (tests/fixtures/hello) from source.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
       - name: End-to-end test of the published binary
         run: python3 tests/e2e.py --binary "$EXE"
