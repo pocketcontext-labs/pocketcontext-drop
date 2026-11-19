@@ -6,6 +6,20 @@
       "owner",
       "name",
       "slug",
+      "nib_app_id",
+      "hostname",
+      "desired_state",
+      "idle_timeout_ms",
+      "vcpu",
+      "memory_mib",
+      "disk_mib",
+      "http_port",
+      "executable_name",
+      "health_kind",
+      "health_path",
+      "deployment_seq",
+      "archived",
+      "archived_at",
       "created",
       "updated"
     ],
@@ -17,6 +31,17 @@
       "action",
       "detail",
       "created"
+    ],
+    "app_secret_names": [
+      "id",
+      "app",
+      "name",
+      "ssm_version",
+      "length",
+      "set_via",
+      "updated_by",
+      "created",
+      "updated"
     ]
   },
   "timeoutMs": 2000,

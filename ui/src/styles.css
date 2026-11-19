@@ -316,3 +316,82 @@ select {
 .invite-link .endpoint {
   overflow-wrap: anywhere;
 }
+
+.wide {
+  grid-column: 1 / -1;
+}
+.heading {
+  justify-content: space-between;
+}
+.heading h2 {
+  margin: 0;
+}
+a.button {
+  display: inline-block;
+  border-radius: 6px;
+  padding: 8px 14px;
+  text-decoration: none;
+}
+a {
+  color: var(--accent);
+}
+.check {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-weight: 400;
+  margin: 8px 0;
+}
+.check input {
+  width: auto;
+}
+textarea {
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: inherit;
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--field);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+.tabs {
+  margin: 4px 0 16px;
+  flex-wrap: wrap;
+}
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 16px;
+  margin: 0 0 12px;
+}
+.facts dt {
+  color: var(--muted);
+}
+.facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.badge {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+}
+section > h3 {
+  margin: 20px 0 8px;
+  font-size: 16px;
+}

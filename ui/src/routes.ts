@@ -1,20 +1,42 @@
-// Hash routes of the reader (as in Crew): `#/apps` (the default), `#/connect`,
-// `#/admin/users` (admins only; anyone else sees Not found),
+// Hash routes of the reader (as in Crew): `#/apps` (the default), `#/apps/new`,
+// `#/apps/<id>` with its tabs `#/apps/<id>/settings` and `#/apps/<id>/env`,
+// `#/connect`, `#/admin/users` (admins only; anyone else sees Not found),
 // `#/invite?email=…` (the sign-in URL of an invite: the sign-in page with the
 // address filled in), `#/login?otpId=…&otp=…` (the link of a sign-in email)
 // and `#/signin?next=/oauth/authorize?…` (OAuth consent sends the browser here
 // to sign in and come back).
 
-export type View = "apps" | "connect" | "admin-users";
-export const viewHashes: Record<View, string> = {
+export type View = "apps" | "app-new" | "app" | "connect" | "admin-users";
+export const viewHashes: Record<Exclude<View, "app">, string> = {
   apps: "#/apps",
+  "app-new": "#/apps/new",
   connect: "#/connect",
   "admin-users": "#/admin/users",
 };
+
+export type AppTab = "overview" | "settings" | "env";
+export interface AppRoute {
+  id: string;
+  tab: AppTab;
+}
+const appPattern = /^#\/apps\/([a-z0-9]{15})(?:\/(settings|env))?$/;
+/** The app and tab of `#/apps/<id>[/settings|/env]`, or null. */
+export function appRouteFromHash(hash: string): AppRoute | null {
+  const match = appPattern.exec(hash);
+  if (!match) return null;
+  return { id: match[1], tab: (match[2] as AppTab | undefined) ?? "overview" };
+}
+/** The hash of an app's tab. */
+export function appHash(id: string, tab: AppTab = "overview"): string {
+  return tab === "overview" ? `#/apps/${id}` : `#/apps/${id}/${tab}`;
+}
+
 /** The page of a hash; anything unknown is the apps page. */
 export function viewFromHash(hash: string): View {
   if (/^#\/connect(?:\?.*)?$/.test(hash)) return "connect";
   if (/^#\/admin\/users(?:\?.*)?$/.test(hash)) return "admin-users";
+  if (hash === viewHashes["app-new"]) return "app-new";
+  if (appRouteFromHash(hash)) return "app";
   return "apps";
 }
 
@@ -115,6 +137,7 @@ export function loginReturnHash(hash: string): string | null {
     return target ? signinHash(target) : null;
   }
   const view = viewFromHash(hash);
+  if (view === "app") return appHash(appRouteFromHash(hash)!.id);
   return view === "apps" ? null : viewHashes[view];
 }
 
@@ -131,8 +154,14 @@ export function rememberLoginReturn(hash: string) {
 
 /** Only the exact forms loginReturnHash writes; anything else in storage is refused. */
 function isStoredReturn(hash: string): boolean {
-  if (hash === viewHashes.connect || hash === viewHashes["admin-users"])
+  if (
+    hash === viewHashes.connect ||
+    hash === viewHashes["admin-users"] ||
+    hash === viewHashes["app-new"]
+  )
     return true;
+  const app = appRouteFromHash(hash);
+  if (app && hash === appHash(app.id)) return true;
   const target = oauthTargetFromHash(hash);
   return target !== null && hash === signinHash(target);
 }

@@ -34,3 +34,22 @@ func TestServeFakeAWSNeedsLoopback(t *testing.T) {
 		t.Fatalf("plain serve without --fake-aws opens nothing, got %v, %v", stores, err)
 	}
 }
+
+// TestServeServicesHandOverTheWriteSide: serve gives the server the secret
+// store as a write-only interface, and checks DROP_APP_DOMAIN.
+func TestServeServicesHandOverTheWriteSide(t *testing.T) {
+	a, _ := parseArgs([]string{"--fake-aws", t.TempDir()}, []string{"fake-aws"}, nil)
+	env := map[string]string{EnvAppDomain: "apps.example.test"}
+	s, err := serveServices(a, false, "127.0.0.1:0", func(k string) string { return env[k] })
+	if err != nil || s.Secrets == nil || s.SSMPrefix != "/drop" || s.AppDomain != "apps.example.test" {
+		t.Fatalf("%+v %v", s, err)
+	}
+	env[EnvAppDomain] = "Not A Domain"
+	if _, err := serveServices(a, false, "127.0.0.1:0", func(k string) string { return env[k] }); err == nil {
+		t.Fatal("a malformed DROP_APP_DOMAIN was accepted")
+	}
+	none, _ := parseArgs(nil, []string{"fake-aws"}, nil)
+	if s, err := serveServices(none, false, "127.0.0.1:0", func(string) string { return "" }); err != nil || s.Secrets != nil {
+		t.Fatalf("plain serve has no secret store: %+v %v", s, err)
+	}
+}

@@ -5,13 +5,6 @@ import PocketBase, {
   type SendOptions,
 } from "pocketbase";
 
-/** An app as the reader shows it. Each account reads only its own apps. */
-export interface App {
-  id: string;
-  name: string;
-  slug: string;
-  created: string;
-}
 // The SDK synchronizes this application's credentials across same-origin tabs.
 // The single-use sign-in page (/bundle/login) writes the same key.
 export const sessionKey = "drop.reader.auth";
@@ -113,40 +106,6 @@ pb.send = async <T = unknown>(
   }
 };
 
-const validID = (value: unknown): value is string =>
-  typeof value === "string" && /^[a-z0-9]{15}$/.test(value);
-
-function requireSession(): void {
-  if (!pb.authStore.isValid || !pb.authStore.record?.id)
-    throw new Error("Please sign in to continue");
-}
-function app(row: Partial<App>): App {
-  if (
-    !validID(row.id) ||
-    typeof row.name !== "string" ||
-    typeof row.slug !== "string" ||
-    typeof row.created !== "string"
-  )
-    throw new Error("Invalid app");
-  return { id: row.id, name: row.name, slug: row.slug, created: row.created };
-}
-
-export const LIST_LIMIT = 100;
-/** The signed-in account's apps, newest first. */
-export async function listApps(limit = LIST_LIMIT): Promise<App[]> {
-  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200)
-    throw new Error("Invalid list size");
-  requireSession();
-  // The records API: the apps rules return only the account's own apps. The
-  // SQL and search reads stay local (the owner's key) and are never public.
-  const page = await pb.collection("apps").getList<App>(1, limit, {
-    sort: "-created,-id",
-    fields: "id,name,slug,created",
-    skipTotal: true,
-  });
-  return page.items.map(app);
-}
-
 export const NAME_LIMIT = 80;
 export function validName(name: string): string {
   const trimmed = name.trim();
@@ -155,7 +114,7 @@ export function validName(name: string): string {
     throw new Error(`An app name has at most ${NAME_LIMIT} characters`);
   return trimmed;
 }
-/** The slug rule of the apps migration (pb_migrations/1810000100_apps.js). */
+/** The slug rule of the apps migration (pb_migrations/1820000200_apps.js). */
 export const SLUG_PATTERN = /^[a-z][a-z0-9-]{1,30}[a-z0-9]$/;
 export function validSlug(slug: string): string {
   const trimmed = slug.trim();
@@ -165,15 +124,6 @@ export function validSlug(slug: string): string {
     );
   return trimmed;
 }
-/** Create an app. */
-export async function addApp(name: string, slug: string): Promise<App> {
-  requireSession();
-  const record = await pb
-    .collection("apps")
-    .create<App>({ name: validName(name), slug: validSlug(slug) });
-  return app(record);
-}
-
 /** Notify on any change to the apps. Returns an unsubscribe. */
 export async function watchApps(notify: () => void): Promise<() => void> {
   const generation = sessionGeneration;
@@ -410,8 +360,6 @@ export const api = {
   requestEmailLogin,
   loginEmail,
   loginEmailCode,
-  listApps,
-  addApp,
   watchApps,
   connection,
   connectedApps,

@@ -1,7 +1,7 @@
 package client
 
 // Usage is the help text.
-const Usage = `drop — PocketContext Drop in one binary (placeholder app model)
+const Usage = `drop — PocketContext Drop in one binary
 
 People use Drop on its hosted origin (serve --hosted: several accounts, email
 sign-in, remote MCP). The local project below is for developing the reader.
@@ -39,9 +39,22 @@ Setup and server:
   skill [--agent claude-code|codex|antigravity|all] [--dir DIR]
                        install the agent skill with this computer's paths
 
-Apps (reads use SQL and full-text search; every request needs a sign-in):
-  add NAME|- --slug SLUG             add an app (name 1-80 characters, unique slug)
-  list [--limit N]                   list the apps, newest first
+Apps (through Drop's operations; APP is an app's id or slug):
+  app list [--all] [--archived]      your apps and your app quota
+  app show APP                       one app and its secret names
+  app create NAME|- --slug SLUG [--mode M] [--port N] [--executable NAME] ...
+                                     create an app (counts against your quota)
+  app set APP [--name NAME] [--vcpu N] [--memory MIB] [--disk MIB] ...
+                                     change settings; a new deployment when
+                                     what the app runs with changes
+  app env APP KEY=VALUE|-KEY ...     set or remove plain environment variables
+  app start|stop|archive|restore APP
+  secret list APP                    secret names, versions and lengths
+  secret set APP NAME                store a secret value read from standard
+                                     input (kept in SSM, never shown again)
+  secret delete APP NAME             remove a secret
+
+Whole-table reads (the local server or --url; never the hosted origin):
   search TERMS [--limit N] [--offset N --generation G]
                                      rank the apps by full-text match
   sql|query SQL|-                    run one read-only SELECT
@@ -76,7 +89,7 @@ forward of the same port; --url URL or DROP_URL):
                        computer)
   skill --url URL [--agent A] [--dir DIR]
                        install the agent skill for the remote server
-  App, account and op commands work with --url. URL must be http://127.0.0.1:PORT or
+  App, secret, account and op commands work with --url. URL must be http://127.0.0.1:PORT or
   http://localhost:PORT. Remote mode never creates a database or starts a
   server; serve, start, ensure-running, stop, flush, recover, init, password
   and login-code are not available with --url.

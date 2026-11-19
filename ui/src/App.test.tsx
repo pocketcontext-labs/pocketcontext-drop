@@ -7,6 +7,7 @@ import { browserNavigation } from "./routes";
 
 const token = `synthetic.${btoa(JSON.stringify({ exp: 4102444800 }))}.signature`;
 const user = { id: "user00000000001", collectionId: "_pb_users_auth_", collectionName: "users", email: "owner@example.test" };
+const noApps = { apps: [], quota: { used: 0, limit: 3, unlimited: false }, has_more: false };
 const member: Me = { id: user.id, email: user.email, role: "user", admin: false, owner: false, app_quota: 3 };
 beforeEach(() => {
   history.replaceState(null, "", "/");
@@ -21,7 +22,7 @@ afterEach(() => {
 
 it("shows the password sign-in locally until a users session exists, then the reader, and signs out", async () => {
   vi.spyOn(api, "loginMode").mockResolvedValue("password");
-  vi.spyOn(api, "listApps").mockResolvedValue([]);
+  vi.spyOn(dropApi, "listApps").mockResolvedValue(noApps);
   vi.spyOn(api, "watchApps").mockResolvedValue(() => {});
   const refresh = vi.spyOn(api, "refreshSession").mockResolvedValue();
   render(<App />);
@@ -39,7 +40,7 @@ it("signs in by email on the hosted origin with the code from the email", async 
   vi.spyOn(api, "loginMode").mockResolvedValue("email");
   const request = vi.spyOn(api, "requestEmailLogin").mockResolvedValue("otp000000000001");
   const redeem = vi.spyOn(api, "loginEmailCode").mockImplementation(async () => pb.authStore.save(token, user));
-  vi.spyOn(api, "listApps").mockResolvedValue([]);
+  vi.spyOn(dropApi, "listApps").mockResolvedValue(noApps);
   vi.spyOn(api, "watchApps").mockResolvedValue(() => {});
   vi.spyOn(api, "refreshSession").mockResolvedValue();
   render(<App />);
@@ -55,7 +56,7 @@ it("signs in by email on the hosted origin with the code from the email", async 
 it("confirms an emailed link before redeeming it and clears it from the address", async () => {
   history.replaceState(null, "", "/#/login?otpId=otp000000000001&otp=12345678901234567890123456789012");
   const redeem = vi.spyOn(api, "loginEmail").mockImplementation(async () => pb.authStore.save(token, user));
-  vi.spyOn(api, "listApps").mockResolvedValue([]);
+  vi.spyOn(dropApi, "listApps").mockResolvedValue(noApps);
   vi.spyOn(api, "watchApps").mockResolvedValue(() => {});
   vi.spyOn(api, "refreshSession").mockResolvedValue();
   render(<App />);
@@ -80,7 +81,7 @@ it("returns a signed-in browser to the OAuth consent request after checking the 
 it("ignores a sign-in return target that is not the consent page", async () => {
   history.replaceState(null, "", "/#/signin?next=" + encodeURIComponent("https://evil.example.test/"));
   pb.authStore.save(token, user);
-  vi.spyOn(api, "listApps").mockResolvedValue([]);
+  vi.spyOn(dropApi, "listApps").mockResolvedValue(noApps);
   vi.spyOn(api, "watchApps").mockResolvedValue(() => {});
   vi.spyOn(api, "refreshSession").mockResolvedValue();
   const replace = vi.spyOn(browserNavigation, "replace").mockImplementation(() => {});

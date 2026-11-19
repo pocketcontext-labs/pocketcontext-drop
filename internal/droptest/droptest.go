@@ -28,13 +28,16 @@ import (
 	"github.com/pocketcontext-labs/pocketcontext-core/appserver"
 
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/appconfig"
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/awsx"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropserver"
 )
 
-// Domain is the synthetic hosted domain; OwnerEmail its OWNER_EMAIL.
+// Domain is the synthetic hosted domain; OwnerEmail its OWNER_EMAIL;
+// AppDomain the domain of app hostnames.
 const (
 	Domain     = "drop.example.test"
 	OwnerEmail = "owner@example.test"
+	AppDomain  = "apps.example.test"
 )
 
 // Mail is one captured sign-in email: the address, the login request id, the
@@ -48,6 +51,10 @@ type Options struct {
 	// MCPHandler builds the MCP adapter around the unfiltered router; nil
 	// leaves /mcp and OAuth off.
 	MCPHandler func(api http.Handler) http.Handler
+	// Secrets replaces the in-memory secret store (for example with one that
+	// fails); NoSecrets starts the server without a secret store.
+	Secrets   awsx.SecretWriter
+	NoSecrets bool
 }
 
 // Hosted is one synthetic hosted Drop instance.
@@ -55,8 +62,12 @@ type Hosted struct {
 	T      *testing.T
 	App    core.App
 	Server *appserver.TestServer
-	mail   chan Mail
-	client atomic.Int64
+	// Secrets is the in-memory secret store the server writes to (nil with
+	// Options.Secrets or NoSecrets). Tests read values back from it; the
+	// server itself never can.
+	Secrets *awsx.MemSecretStore
+	mail    chan Mail
+	client  atomic.Int64
 }
 
 var codeSubject = regexp.MustCompile(`^(\d{6}) is your Drop sign-in code$`)
@@ -98,6 +109,16 @@ func NewHosted(t *testing.T, opts Options) *Hosted {
 		t.Fatal(err)
 	}
 	h := &Hosted{T: t, App: app, mail: make(chan Mail, 64)}
+	services := dropserver.Services{AppDomain: AppDomain}
+	switch {
+	case opts.NoSecrets:
+	case opts.Secrets != nil:
+		services.Secrets = opts.Secrets
+	default:
+		h.Secrets = awsx.NewMemSecretStore()
+		services.Secrets = h.Secrets
+	}
+	dropserver.SetServices(app, services)
 	// A late priority captures the email after core rendered the code email;
 	// not calling Next means nothing is ever sent.
 	app.OnMailerRecordOTPSend("users").Bind(&hook.Handler[*core.MailerRecordEvent]{Id: "droptestMailbox", Priority: 100, Func: func(e *core.MailerRecordEvent) error {

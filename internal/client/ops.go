@@ -1,7 +1,10 @@
 package client
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -17,7 +20,7 @@ import (
 // forwarded server.
 
 // opCommands are the commands that call operations.
-var opCommands = map[string]bool{"invite": true, "user": true, "op": true}
+var opCommands = map[string]bool{"invite": true, "user": true, "op": true, "app": true, "secret": true}
 
 // newOpsClient signs in to the project's server as its owner: through the
 // private socket when a hosted server runs (hosted mode has no loopback TCP
@@ -94,11 +97,17 @@ func (c *Client) sendOp(req dropapi.Request) (any, error) {
 	return nil, fail(exit, "%s: HTTP %d %s: %s", req.Op, status, code, text)
 }
 
-// runOps runs invite, user and op.
+// runOps runs invite, user, app, secret and op.
 func runOps(c *Client, command string, a *args) (any, error) {
 	sub := ""
 	if len(a.pos) > 0 {
 		sub = a.pos[0]
+	}
+	switch command {
+	case "app":
+		return runApp(c, sub, a)
+	case "secret":
+		return runSecret(c, sub, a)
 	}
 	switch command + " " + sub {
 	case "invite create":
@@ -185,4 +194,185 @@ func runOps(c *Client, command string, a *args) (any, error) {
 	}
 	usage := map[string]string{"invite": "invite create|list|revoke ...", "user": "user list|set ..."}[command]
 	return nil, fail(2, "usage: drop %s", usage)
+}
+
+// appSettingsUsage lists the app create/set options.
+const appSettingsUsage = "[--mode running|on-request|stopped] [--idle-timeout MS] [--vcpu N] [--memory MIB] [--disk MIB] [--port N] [--executable NAME] [--args-json JSON] [--health tcp|http] [--health-path PATH]"
+
+// appSettings reads the setting options into the fields of an app.create or
+// app.set input (both have the same optional fields).
+func appSettings(a *args) (map[string]any, error) {
+	out := map[string]any{}
+	texts := map[string]string{"mode": "desired_state", "executable": "executable_name", "health": "health_kind", "health-path": "health_path"}
+	for flag, field := range texts {
+		if a.has(flag) {
+			out[field] = a.flags[flag]
+		}
+	}
+	ints := map[string]string{"idle-timeout": "idle_timeout_ms", "vcpu": "vcpu", "memory": "memory_mib", "disk": "disk_mib", "port": "http_port"}
+	for flag, field := range ints {
+		if a.has(flag) {
+			n, err := a.intFlag(flag, 0)
+			if err != nil {
+				return nil, err
+			}
+			out[field] = n
+		}
+	}
+	if a.has("args-json") {
+		var list []string
+		if err := json.Unmarshal([]byte(a.flags["args-json"]), &list); err != nil {
+			return nil, fail(2, "--args-json must be a JSON array of strings, such as '[\"serve\",\"--port\",\"8080\"]'")
+		}
+		if list == nil {
+			list = []string{}
+		}
+		out["args"] = list
+	}
+	return out, nil
+}
+
+// typedOp converts a map input into an operation's typed input, so unknown
+// fields fail here, and calls it.
+func typedOp[In any](c *Client, op string, fields map[string]any) (any, error) {
+	raw, err := json.Marshal(fields)
+	if err != nil {
+		return nil, err
+	}
+	var in In
+	d := json.NewDecoder(bytes.NewReader(raw))
+	d.DisallowUnknownFields()
+	if err := d.Decode(&in); err != nil {
+		return nil, fail(2, "%s: %v", op, err)
+	}
+	return c.Op(op, in, "")
+}
+
+func runApp(c *Client, sub string, a *args) (any, error) {
+	settingsOK := func() error {
+		for _, flag := range []string{"all", "archived"} {
+			if a.bools[flag] {
+				return fail(2, "--%s is only for app list", flag)
+			}
+		}
+		return nil
+	}
+	switch sub {
+	case "list":
+		if err := a.need(1, "app list [--all] [--archived] [--limit N]"); err != nil {
+			return nil, err
+		}
+		limit, err := a.intFlag("limit", 0)
+		if err != nil {
+			return nil, err
+		}
+		return c.Op("app.list", dropapi.AppListInput{All: a.bools["all"], Archived: a.bools["archived"], Limit: limit}, "")
+	case "show":
+		if err := a.need(2, "app show APP"); err != nil {
+			return nil, err
+		}
+		return c.Op("app.get", dropapi.AppGetInput{App: a.pos[1]}, "")
+	case "create":
+		usage := "app create NAME|- --slug SLUG " + appSettingsUsage
+		if err := a.need(2, usage); err != nil {
+			return nil, err
+		}
+		if !a.has("slug") || a.has("name") {
+			return nil, fail(2, "usage: drop %s", usage)
+		}
+		if err := settingsOK(); err != nil {
+			return nil, err
+		}
+		name, err := readArg(a.pos[1], "the name")
+		if err != nil {
+			return nil, err
+		}
+		fields, err := appSettings(a)
+		if err != nil {
+			return nil, err
+		}
+		fields["name"], fields["slug"] = strings.TrimSpace(string(name)), a.flags["slug"]
+		return typedOp[dropapi.AppCreateInput](c, "app.create", fields)
+	case "set":
+		usage := "app set APP [--name NAME] " + appSettingsUsage
+		if err := a.need(2, usage); err != nil {
+			return nil, err
+		}
+		if a.has("slug") {
+			return nil, fail(2, "an app's slug cannot change")
+		}
+		if err := settingsOK(); err != nil {
+			return nil, err
+		}
+		fields, err := appSettings(a)
+		if err != nil {
+			return nil, err
+		}
+		if a.has("name") {
+			fields["name"] = a.flags["name"]
+		}
+		if len(fields) == 0 {
+			return nil, fail(2, "usage: drop %s", usage)
+		}
+		fields["app"] = a.pos[1]
+		return typedOp[dropapi.AppSetInput](c, "app.set", fields)
+	case "env":
+		usage := "app env APP KEY=VALUE|-KEY ..."
+		if len(a.pos) < 3 {
+			return nil, fail(2, "usage: drop %s", usage)
+		}
+		change := dropapi.EnvChange{Set: map[string]string{}}
+		for _, item := range a.pos[2:] {
+			if name, ok := strings.CutPrefix(item, "-"); ok && !strings.Contains(item, "=") {
+				change.Unset = append(change.Unset, name)
+				continue
+			}
+			name, value, ok := strings.Cut(item, "=")
+			if !ok || name == "" {
+				return nil, fail(2, "usage: drop %s", usage)
+			}
+			change.Set[name] = value
+		}
+		return c.Op("app.set", dropapi.AppSetInput{App: a.pos[1], Env: &change}, "")
+	case "start", "stop", "archive", "restore":
+		if err := a.need(2, "app "+sub+" APP"); err != nil {
+			return nil, err
+		}
+		return c.Op("app."+sub, dropapi.AppRef{App: a.pos[1]}, "")
+	}
+	return nil, fail(2, "usage: drop app list|show|create|set|env|start|stop|archive|restore ...")
+}
+
+// maxSecretInput bounds what `secret set` reads from standard input.
+const maxSecretInput = dropapi.MaxSecretBytes + 2
+
+func runSecret(c *Client, sub string, a *args) (any, error) {
+	switch sub {
+	case "list":
+		if err := a.need(2, "secret list APP"); err != nil {
+			return nil, err
+		}
+		return c.Op("secret.list", dropapi.SecretListInput{App: a.pos[1]}, "")
+	case "set":
+		// The value comes only from standard input: never an argument, which
+		// would show in the process list and shell history.
+		if err := a.need(3, "secret set APP NAME (the value on standard input)"); err != nil {
+			return nil, err
+		}
+		data, err := io.ReadAll(io.LimitReader(os.Stdin, maxSecretInput+1))
+		if err != nil {
+			return nil, err
+		}
+		value := strings.TrimSuffix(strings.TrimSuffix(string(data), "\n"), "\r")
+		if value == "" || len(value) > dropapi.MaxSecretBytes {
+			return nil, fail(2, "write the secret value (1-%d bytes) to standard input", dropapi.MaxSecretBytes)
+		}
+		return c.Op("secret.set", dropapi.SecretSetInput{App: a.pos[1], Name: a.pos[2], Value: value}, "")
+	case "delete":
+		if err := a.need(3, "secret delete APP NAME"); err != nil {
+			return nil, err
+		}
+		return c.Op("secret.delete", dropapi.SecretDeleteInput{App: a.pos[1], Name: a.pos[2]}, "")
+	}
+	return nil, fail(2, "usage: drop secret list|set|delete ...")
 }

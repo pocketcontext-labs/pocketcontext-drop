@@ -71,7 +71,7 @@ try {
   const password = 'synthetic reader password';
   // init starts the server in the background with the embedded reader.
   await cli(['init', '--port', String(port), '--password-stdin'], `${password}\n`);
-  await cli(['add', 'An app from the CLI', '--slug', 'cli-app']);
+  await cli(['app', 'create', 'An app from the CLI', '--slug', 'cli-app']);
 
   const served = await fetch(origin);
   assert.equal(served.status, 200);
@@ -114,27 +114,51 @@ try {
 
   const messages = ['First synthetic hello', 'Second synthetic hello <b>bold</b>', 'Third app about telescopes'];
   const slugs = ['first-app', 'second-app', 'third-app'];
+  const appList = page.getByRole('list', { name: 'Apps, newest first' });
   for (const [n, message] of messages.entries()) {
+    await page.getByRole('link', { name: 'New app' }).click();
+    await page.getByRole('heading', { name: 'New app' }).waitFor();
     await page.getByLabel('App name').fill(message);
     await page.getByLabel('Slug').fill(slugs[n]);
-    await page.getByRole('button', { name: 'Add' }).click();
-    await page.getByRole('list', { name: 'Apps, newest first' }).getByText(message, { exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Create app' }).click();
+    await page.getByRole('heading', { name: message, exact: true }).waitFor();
+    assert.match(new URL(page.url()).hash, /^#\/apps\/[a-z0-9]{15}$/, 'a new app opens its page');
+    await page.getByRole('link', { name: '← Your apps' }).click();
+    await appList.getByText(message, { exact: true }).waitFor();
     await page.waitForTimeout(20); // Distinct creation times keep the order deterministic.
   }
-  assert.equal(await page.getByLabel('App name').inputValue(), '');
-  assert.equal(await page.getByLabel('Slug').inputValue(), '');
-  const listed = await page.getByRole('list', { name: 'Apps, newest first' }).locator('li > p > span').allTextContents();
+  const listed = await appList.locator('li > p > a').allTextContents();
   assert.deepEqual(listed, [...messages].reverse().concat('An app from the CLI'), 'apps are listed newest first');
   assert.equal(await page.locator('.apps b').count(), 0, 'names render as text');
+  await page.getByText('4 apps (admins have no quota)').waitFor();
+  await page.getByRole('link', { name: 'New app' }).click();
   await page.getByLabel('App name').fill('Duplicate slug');
   await page.getByLabel('Slug').fill('first-app');
-  await page.getByRole('button', { name: 'Add' }).click();
-  await page.getByRole('alert').waitFor();
-  await page.getByLabel('App name').fill('');
-  await page.getByLabel('Slug').fill('');
-  const cliList = await cli(['list']);
-  assert.equal((cliList.rows ?? cliList).length, 4, 'the CLI sees the apps added in the reader, and no duplicate slug');
-  ok('apps added in the reader appear newest first as plain text; a duplicate slug is refused');
+  await page.getByRole('button', { name: 'Create app' }).click();
+  await page.getByRole('alert').getByText(/taken/).waitFor();
+  await page.getByRole('link', { name: '← Your apps' }).click();
+  const cliList = await cli(['app', 'list']);
+  assert.equal(cliList.apps.length, 4, 'the CLI sees the apps created in the reader, and no duplicate slug');
+  ok('apps created in the reader appear newest first as plain text; a duplicate slug is refused');
+
+  // The app page: Settings starts a new deployment; Env & secrets sets a variable.
+  await appList.getByRole('link', { name: 'Third app about telescopes' }).click();
+  await page.getByRole('link', { name: 'Settings' }).click();
+  assert.match(new URL(page.url()).hash, /^#\/apps\/[a-z0-9]{15}\/settings$/);
+  await page.getByLabel('Memory (MiB)').fill('1024');
+  await page.getByRole('button', { name: 'Save settings' }).click();
+  await page.getByText(/^Saved\. New deployment d-[a-z0-9]{15}-dep-2\.$/).waitFor();
+  await page.getByRole('link', { name: 'Env & secrets' }).click();
+  await page.getByLabel('Variable name').fill('WELCOME_TEXT');
+  await page.getByLabel('Variable value').fill('hello');
+  await page.getByRole('button', { name: 'Set variable' }).click();
+  await page.getByRole('list', { name: 'Environment variables' }).getByText('WELCOME_TEXT').waitFor();
+  assert.equal(await page.getByLabel('Secret value').getAttribute('type'), 'password', 'secret values are typed into a password field');
+  await page.screenshot({ path: path.join(screenshots, 'app-env-light.png'), fullPage: true });
+  await page.getByRole('link', { name: 'Overview' }).click();
+  await page.getByText(/-dep-3$/).waitFor();
+  await page.getByRole('link', { name: '← Your apps' }).click();
+  ok('the app page saves settings and environment variables, each a new deployment');
 
   await page.getByRole('link', { name: 'Connect' }).click();
   await page.getByRole('heading', { name: 'Connect an assistant' }).waitFor();
@@ -197,7 +221,8 @@ try {
   await page.getByText('Third app about telescopes', { exact: true }).waitFor();
   ok('password sign-in works');
 
-  const unexpected = errors.filter(text => !/Failed to load resource: the server responded with a status of 400/.test(text));
+  // Refused requests (a wrong password, a taken slug) log their status.
+  const unexpected = errors.filter(text => !/Failed to load resource: the server responded with a status of (400|409)/.test(text));
   assert.deepEqual(unexpected, [], 'no runtime or security-policy errors');
   console.log('all reader browser checks passed');
 } finally {

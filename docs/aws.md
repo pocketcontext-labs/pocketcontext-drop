@@ -24,7 +24,7 @@ Drop never reads, stores or accepts access keys in its own configuration. The cl
 
 - An app secret is the parameter `<prefix>/apps/<record id>/<NAME>`, where the app id is `d-<record id>` and `NAME` matches `[A-Z][A-Z0-9_]{0,63}` (`awsx.SecretParameter`). The agent refuses a desired-state parameter that differs from this value.
 - Values are standard-tier `SecureString` parameters (1 to 4096 bytes) encrypted with the account's AWS managed key `alias/aws/ssm`, so no KMS statement is needed.
-- The server only writes: `PutParameter` with overwrite (each write is a new version, starting at 1) and `DeleteParameter` (all versions; a later write starts at 1 again). It records the name and the version, never the value. The server holds an `awsx.SecretWriter`, which has no read method.
+- The server only writes: `PutParameter` with overwrite (each write is a new version, starting at 1) and `DeleteParameter` (all versions; a later write starts at 1 again). It records the name and the version, never the value. The server holds an `awsx.SecretWriter`, which has no read method: `serve` opens the stores (`internal/client/serve_aws.go`) and hands only the writer to the server's operations (`dropserver.UseServices`); `TestServerNeverReadsSecrets` keeps `internal/dropserver` from naming the reading side. The `secret.*` operations are in [Operations](ops.md#secrets).
 - The agent only reads one exact version: `GetParameter` of `name:version` with decryption. SSM keeps the last 100 versions of a parameter.
 - Errors and logs name parameters, never values.
 

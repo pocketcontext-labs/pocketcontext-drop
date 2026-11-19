@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  appHash,
+  appRouteFromHash,
   inviteEmailFromHash,
   loginReturnHash,
   oauthTargetFromHash,
@@ -19,6 +21,18 @@ describe("routes", () => {
     expect(viewFromHash("#/admin/users")).toBe("admin-users");
     expect(viewFromHash("#/admin/nodes")).toBe("apps");
     expect(viewFromHash("")).toBe("apps");
+    expect(viewFromHash("#/apps/new")).toBe("app-new");
+    expect(viewFromHash("#/apps/app000000000001")).toBe("app");
+    expect(viewFromHash("#/apps/app000000000001/env")).toBe("app");
+    expect(viewFromHash("#/apps/not-an-id")).toBe("apps");
+  });
+  it("reads an app's page and tab", () => {
+    expect(appRouteFromHash("#/apps/app000000000001")).toEqual({ id: "app000000000001", tab: "overview" });
+    expect(appRouteFromHash("#/apps/app000000000001/settings")).toEqual({ id: "app000000000001", tab: "settings" });
+    expect(appRouteFromHash("#/apps/app000000000001/other")).toBeNull();
+    expect(appRouteFromHash("#/apps/new")).toBeNull();
+    expect(appHash("app000000000001", "env")).toBe("#/apps/app000000000001/env");
+    expect(loginReturnHash("#/apps/app000000000001/env")).toBe("#/apps/app000000000001");
   });
   it("reads the address of an invite's sign-in URL", () => {
     expect(inviteEmailFromHash("#/invite?email=friend%40example.test")).toBe("friend@example.test");

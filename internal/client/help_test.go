@@ -69,8 +69,8 @@ func TestEveryCommandHasHelp(t *testing.T) {
 
 func TestDataHelpDocumentsShapes(t *testing.T) {
 	for command, wants := range map[string][]string{
-		"add":    {`"id"`, `"name"`, `"slug"`, `"created"`, "80"},
-		"list":   {`"name"`, `"slug"`, "500"},
+		"app":    {`"apps"`, `"quota"`, `"app"`, `"secrets"`, `"deployment_bumped"`, "80", "quota_exceeded", "exit 4"},
+		"secret": {`"secret"`, `"secrets"`, "standard input", "never", "secrets_unavailable"},
 		"search": {`"generation"`, `"apps"`, `"nextOffset"`, "exit 4"},
 		"invite": {`"invite"`, `"sign_in_url"`, `"invites"`, "no email is sent", "exit 4"},
 		"user":   {`"users"`, "app_quota", "suspended"},

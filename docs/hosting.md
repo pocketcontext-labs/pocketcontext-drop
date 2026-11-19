@@ -34,6 +34,7 @@ The service reads these variables from its environment (never from the project):
 | `DROP_SMTP_HOST`, `DROP_SMTP_PORT` | the SMTP server (Resend: `smtp.resend.com`, 465) |
 | `DROP_SMTP_USERNAME`, `DROP_SMTP_PASSWORD` | SMTP credentials (Resend: `resend` and a send-only API key) |
 | `DROP_SMTP_TLS` | `tls` (default, implicit TLS) or `starttls` |
+| `DROP_APP_DOMAIN` | optional: the domain of app hostnames (`<slug>.<DROP_APP_DOMAIN>`, for example `bigconfig.space`), set on each app at creation; without it new apps get no hostname |
 | `DROP_AWS_REGION`, `DROP_S3_BUCKET`, `DROP_SSM_PREFIX` | where releases (S3) and secrets (SSM) live, through the default AWS credential chain ([aws.md](aws.md)); `--fake-aws DIR` replaces them with a local directory for testing, only with a loopback `--hosted-http-address` |
 
 Keep the password in a root-owned environment file read by the service manager. The settings change only the server's memory; they are never saved into the database.

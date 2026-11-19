@@ -175,7 +175,7 @@ try {
   await until(async () => (await fetch(upstream)).ok, 'Vite readiness');
   let server = start(binary, ['serve', '--db', db, '--ui-dev', upstream], { env, cwd: temporary });
   await until(async () => (await fetch(`${origin}/api/bundle/instance`)).ok, 'Drop readiness');
-  await cli(['add', 'Hello from the synthetic CLI', '--slug', 'synthetic-cli']);
+  await cli(['app', 'create', 'Hello from the synthetic CLI', '--slug', 'synthetic-cli']);
 
   const browser = await chromium.launch({ headless: true, executablePath: option('--browser') });
   browsers.push(browser);
@@ -216,7 +216,7 @@ try {
   ok('CSS and React edits update without navigation, sign-in loss or Go restart');
 
   await until(async () => requests.some(url => url.pathname === '/api/realtime'), 'reader realtime connection');
-  await cli(['add', 'Realtime app from the CLI', '--slug', 'realtime-app']);
+  await cli(['app', 'create', 'Realtime app from the CLI', '--slug', 'realtime-app']);
   await page.getByText('Realtime app from the CLI', { exact: true }).waitFor();
   ok('app realtime updates still reach the reader');
 
@@ -250,7 +250,7 @@ try {
   assert.equal(hmr.host, `127.0.0.1:${port}`);
   assert.equal(hmr.origin, origin);
   assert.equal(hmr.upgrade?.toLowerCase(), 'websocket');
-  for (const pathname of ['/', '/@vite/client', '/api/bundle/auth-mode', '/api/bundle/redeem', '/api/collections/apps/records', '/api/realtime'])
+  for (const pathname of ['/', '/@vite/client', '/api/bundle/auth-mode', '/api/bundle/redeem', '/api/drop/op', '/api/realtime'])
     assert(forward.carried.some(item => item.path.split('?')[0] === pathname), `${pathname} must cross the forward`);
   assert(forward.carried.every(item => item.host === `127.0.0.1:${port}` && item.via === port), 'every forwarded request keeps Host 127.0.0.1:P');
   ok('page, modules, API, realtime and HMR WebSocket all cross the forward with Host 127.0.0.1:P');
@@ -263,13 +263,15 @@ try {
   await remote.waitForFunction(() => getComputedStyle(document.body).getPropertyValue('--drop-hmr-check').trim() === 'forwarded');
   assert.equal(await remote.evaluate(() => window.__uiTestDocument), remoteMarker, 'forwarded hot updates must preserve the document');
   await page.getByText('FORWARDED HOT UPDATE', { exact: true }).waitFor();
+  await remote.getByRole('link', { name: 'New app' }).click();
+  await remote.getByRole('heading', { name: 'New app' }).waitFor();
   await remote.getByLabel('App name').fill('Hello across the forward');
   await remote.getByLabel('Slug').fill('forwarded-app');
-  await remote.getByRole('button', { name: 'Add' }).click();
-  await remote.getByText('Hello across the forward', { exact: true }).waitFor();
+  await remote.getByRole('button', { name: 'Create app' }).click();
+  await remote.getByRole('heading', { name: 'Hello across the forward', exact: true }).waitFor();
   assert.equal(remoteErrors.length, 0, `forwarded reader must have no runtime errors: ${remoteErrors.join('; ')}`);
   assert.equal(server.pid, initialPID);
-  ok('hot reload and add work through the same-port forward');
+  ok('hot reload and creating an app work through the same-port forward');
 
   // Negative: a forward listening on another port still delivers bytes to P, but the Host check refuses it.
   const wrong = `http://127.0.0.1:${otherPort}`;

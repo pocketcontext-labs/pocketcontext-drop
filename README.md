@@ -2,7 +2,7 @@
 
 PocketContext Drop: a private, invite-only service that runs people's apps (one Linux executable each) on a PocketContext-managed host. It builds on the shared library [pocketcontext-core](https://github.com/pocketcontext-labs/pocketcontext-core), pinned to an exact release in `go.mod`, and is one Go executable with nothing else needed at run time: a server on PocketBase with hosted multi-account mode (email sign-in, remote MCP with OAuth) behind a TLS-terminating proxy, a browser reader, a command-line client and an agent skill for Claude Code, Codex and Antigravity.
 
-**Status: hosted foundation.** Derived from the PocketContext family template (see [origin](docs/origin.md)), Drop now serves people in hosted mode on pocketcontext-core 0.3.0: several accounts (`AccountsMulti`), email sign-in with a six-digit code, remote MCP with OAuth and a default-deny route allowlist, behind a Cloudflare Tunnel or load balancer ([Hosting](docs/hosting.md)). Drop is invite-only: every account is an admin or a user, and admins invite people by email address (the invite returns a sign-in link to share; no invite email is sent). Every write goes through one operation route, `POST /api/drop/op` ([Operations](docs/ops.md)), which checks the account and its role and records an event. The app model is still a placeholder, `apps` (an owner, a name and a unique slug); later milestones add apps with releases and secrets, nodes and the host agent. A local project (one account, loopback only) remains for developing the reader. The repository is private.
+**Status: hosted foundation.** Derived from the PocketContext family template (see [origin](docs/origin.md)), Drop now serves people in hosted mode on pocketcontext-core 0.3.0: several accounts (`AccountsMulti`), email sign-in with a six-digit code, remote MCP with OAuth and a default-deny route allowlist, behind a Cloudflare Tunnel or load balancer ([Hosting](docs/hosting.md)). Drop is invite-only: every account is an admin or a user, and admins invite people by email address (the invite returns a sign-in link to share; no invite email is sent). Every write goes through one operation route, `POST /api/drop/op` ([Operations](docs/ops.md)), which checks the account and its role and records an event. Apps have settings (state, resources, port, executable, arguments, environment, health check), a per-user quota (3 by default; admins are exempt) and a deployment number that goes up whenever what the app runs with changes; their secrets live only in AWS SSM, written by a server that cannot read them back. Later milestones add releases, nodes and the host agent. A local project (one account, loopback only) remains for developing the reader. The repository is private.
 
 **Linux only** (amd64 and arm64). The server and its host agent run only on Linux, and people need only a browser, remote MCP and `curl` for uploads; a build for any other system refuses to run (`cmd/drop/main_other.go`). A future laptop client would be a separate pure-Go program.
 
@@ -27,10 +27,10 @@ Build first (see [Build](#build)), then:
 ```sh
 bin/drop init                    # asks for a reader password
 bin/drop open                    # reader, signed in
-bin/drop add "Hello app" --slug hello-app
-bin/drop list
+bin/drop app create "Hello app" --slug hello-app
+bin/drop app list
 bin/drop search "hello"
-bin/drop sql "SELECT id, name, slug, created FROM apps ORDER BY created DESC LIMIT 20"
+bin/drop sql "SELECT id, name, slug, desired_state, created FROM apps ORDER BY created DESC LIMIT 20"
 bin/drop invite create friend@example.com   # the local account is an admin
 bin/drop user list
 bin/drop skill                   # Claude Code, Codex, Antigravity
@@ -61,7 +61,7 @@ The local server can run on one computer (the agent computer) while a person use
 drop login-code        # on the agent computer: prints {"code","expires"}
 ssh -L 8100:127.0.0.1:8100 <agent>   # on the person's computer, in another terminal
 printf '%s\n' "$CODE" | drop login --url http://127.0.0.1:8100 --code-stdin
-drop list --url http://127.0.0.1:8100
+drop app list --url http://127.0.0.1:8100
 drop skill --url http://127.0.0.1:8100
 ```
 
@@ -82,7 +82,7 @@ Hosted mode serves plain HTTP behind a TLS-terminating proxy (default `:80`, or 
 
 ## Data model
 
-Accounts (`users`) carry a role, an app quota and a suspension flag; `invites` hold who may sign in; `events` record every change made through an operation. They are written only by Drop's operations and account hooks. `apps` (`owner`, `name`, unique `slug`, `created`, `updated`), the placeholder model, belong to the account that created them: collection rules show and change only the requester's own apps. The reader reads them through the records API; the local CLI also reads them through authenticated read-only SQL (`/api/context/query`) and search (`/api/context/search`), which read whole tables and so stay on the loopback server. Writes use the PocketBase records API on the loopback server. See [docs/data-model.md](docs/data-model.md), including how to add a collection.
+Accounts (`users`) carry a role, an app quota and a suspension flag; `invites` hold who may sign in; `events` record every change made through an operation. They are written only by Drop's operations and account hooks. `apps` belong to the account that created them (admins see every app) and `app_secret_names` record each secret's name, SSM version and length, never its value. Both are written only by the `app.*` and `secret.*` operations; the reader and the CLI (`drop app`, `drop secret`) use them, and the local CLI also reads apps through authenticated read-only SQL (`/api/context/query`) and search (`/api/context/search`), which read whole tables and so stay on the loopback server. See [docs/data-model.md](docs/data-model.md), including how to add a collection.
 
 ## Build
 
@@ -120,7 +120,7 @@ Open the reader at the project port (18100 in this example) and sign in with the
 
 Hot reload does not type-check. Run `pnpm typecheck`, `pnpm test` and `pnpm build` in `ui/` after changes, plus `node --test tests/dev_launcher.test.mjs` after launcher changes.
 
-The browser checks use synthetic data. Install their pinned Chromium once with `(cd ui && pnpm exec playwright install chromium)`, then run `node tests/reader_ui_browser.mjs --binary bin/drop` (sign-in, adding apps, a duplicate slug, listing, the Users page (invite, sign-in link, revoke) and the Connect page at desktop and mobile widths; `--screenshots DIR` keeps screenshots) and `node tests/ui_dev_browser.mjs --binary bin/drop` (hot reload and development routing, including a second browser behind a same-port loopback forward and the refusal of a forward on another port). Both accept `--browser /path/to/chromium`; `ui_dev_browser.mjs` also accepts `--playwright /absolute/path/to/playwright/index.mjs`. CI runs both on Linux amd64 and arm64; they cannot start Chromium on a host without its system libraries.
+The browser checks use synthetic data. Install their pinned Chromium once with `(cd ui && pnpm exec playwright install chromium)`, then run `node tests/reader_ui_browser.mjs --binary bin/drop` (sign-in, creating apps, a duplicate slug, listing, an app's Settings and Env & secrets tabs, the Users page (invite, sign-in link, revoke) and the Connect page at desktop and mobile widths; `--screenshots DIR` keeps screenshots) and `node tests/ui_dev_browser.mjs --binary bin/drop` (hot reload and development routing, including a second browser behind a same-port loopback forward and the refusal of a forward on another port). Both accept `--browser /path/to/chromium`; `ui_dev_browser.mjs` also accepts `--playwright /absolute/path/to/playwright/index.mjs`. CI runs both on Linux amd64 and arm64; they cannot start Chromium on a host without its system libraries.
 
 ## Tests
 
@@ -155,11 +155,13 @@ While the repository is private, download with `gh release download vX.Y.Z -R po
 | `internal/appconfig` | the runtime on pocketcontext-core, built from `droppolicy` and `dropserver` |
 | `internal/droppolicy` | `Identity`, `Text` (with the sign-in email), `Policy` (`AccountsMulti`, budget, session, OAuth scope), the hosted route allowlist and its golden table |
 | `internal/dropapi` | the operations' wire contract: request, result and error shapes and the registry of operation names, roles and inputs |
-| `internal/dropserver` | hooks and accounts (`AllowSignIn`, roles, invites), the operation framework (`POST /api/drop/op`) and its operations, events, idempotency keys, app ownership, the SQL and search reads |
+| `internal/dropserver` | hooks and accounts (`AllowSignIn`, roles, invites), the operation framework (`POST /api/drop/op`) and its operations (accounts, apps, secrets), deployments, events, idempotency keys, the services serve hands over (`services.go`), the SQL and search reads |
+| `internal/appspec` | the app value rules shared by the operations and the renderer |
+| `internal/render`, `internal/awsx` | the node's `desired.json` renderer; S3 and SSM clients and fakes |
 | `internal/droptest` | hosted test server helpers: owner and email sign-in, invited accounts, operations, OAuth, MCP |
 | `internal/buildinfo` | version and commit stamped at build time |
 | `cmd/drop` | entry point (`main.go`, Linux) and the refusal on every other system (`main_other.go`) |
-| `internal/client` | CLI commands, hosted serve options (`serve_hosted.go`), the placeholder apps (`apps.go`), operations and the account commands (`ops.go`), remote mode, skill installation, MCP adapter, help |
+| `internal/client` | CLI commands, hosted serve options (`serve_hosted.go`), app search (`apps.go`), operations with the app, secret and account commands (`ops.go`), remote mode, skill installation, MCP adapter, help |
 | `internal/pocketcontext` | vendored PocketContext server (SQL reads, search, tracing); see `VENDORED.md`. The project, sync-safe database handling, local routes, hosted mode and UI development proxy live in [pocketcontext-core](https://github.com/pocketcontext-labs/pocketcontext-core) |
 | `pb_hooks`, `pb_migrations` | schema and server-side rules |
 | `server.json` | SQL column allowlist and search index configuration (local only) |

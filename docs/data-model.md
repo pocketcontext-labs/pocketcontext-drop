@@ -1,8 +1,8 @@
 # Data model
 
-Drop stores accounts with roles (`users`), `invites`, `events`, the private idempotency keys of its operations (`op_keys`) and one placeholder collection, `apps` (an owner, a name and a unique slug). A hosted Drop holds several accounts (the owner and the people an admin invited; see [Hosting](hosting.md)), and each account sees and changes only its own apps. A local project, for developing the reader, keeps exactly one hidden account, an admin. Every request must prove which account it is. The schema lives in `pb_migrations/`; the rules below are enforced by PocketBase collection rules, by `pb_hooks/`, by Go hooks and operations in `internal/dropserver` and by the SQL and search configuration in `server.json`. Writes to `users`, `invites` and `events` happen only in Go: through Drop's operations ([Operations](ops.md), `POST /api/drop/op`) and the account hooks; every client rule that would write them is closed.
+Drop stores accounts with roles (`users`), `invites`, `apps`, the names of their secrets (`app_secret_names`; values live only in SSM), `events` and the private idempotency keys of its operations (`op_keys`). A hosted Drop holds several accounts (the owner and the people an admin invited; see [Hosting](hosting.md)); each account sees and changes only its own apps, and admins see every app. A local project, for developing the reader, keeps exactly one hidden account, an admin. Every request must prove which account it is. The schema lives in `pb_migrations/`; the rules below are enforced by PocketBase collection rules, by `pb_hooks/`, by Go hooks and operations in `internal/dropserver` and by the SQL and search configuration in `server.json`. Every write happens only in Go: through Drop's operations ([Operations](ops.md), `POST /api/drop/op`) and the account hooks; every client rule that would write a collection is closed.
 
-The `apps` placeholder is temporary. Drop's real app model (apps with releases, secrets, nodes and placements) replaces it in later milestones; no database with `1810000100_apps.js` has been released, so those milestones may replace that migration instead of adding to it.
+`1820000200_apps.js` replaced the unreleased placeholder `1810000100_apps.js` (an owner, a name and a slug) before any database had shipped. Releases (M5b), nodes and placements (M7) come next; the releases migration adds `apps.current_release`.
 
 ## The account
 
@@ -48,21 +48,36 @@ A partial unique index allows one open invite per address (`email_lower` where `
 
 ## Apps
 
-`pb_migrations/1810000100_apps.js` creates `apps`:
+`pb_migrations/1820000200_apps.js` creates `apps`, written only by the `app.*` and `secret.*` operations (`internal/dropserver/ops_apps.go`, `ops_secrets.go`):
 
 | Field | Type | Rules |
 | --- | --- | --- |
-| `id` | text, 15 characters | PocketBase record ID |
-| `owner` | relation to `users` | required; set to the requester on every create request and never moved by an update request (`internal/dropserver/hooks.go`) |
-| `name` | text | required, at most 80 characters (the CLI and reader also trim whitespace; the CLI requires valid UTF-8) |
-| `slug` | text | required, `^[a-z][a-z0-9-]{1,30}[a-z0-9]$` (3-32 lowercase letters, digits and hyphens, starting with a letter and not ending with a hyphen), unique |
-| `created`, `updated` | autodate | set by PocketBase |
+| `owner` | relation to `users` | required; the account that created the app; never changes |
+| `name` | text, at most 80 | required |
+| `slug` | text | required, `^[a-z][a-z0-9-]{1,30}[a-z0-9]$`, unique across all accounts, not a reserved name; immutable |
+| `nib_app_id` | text | `d-<record id>`: nibrunner's app id; unique, immutable |
+| `volume_id` | text | `d-<record id>-vol`; immutable |
+| `hostname` | text | `<slug>.<DROP_APP_DOMAIN>` at creation, empty when the server has no app domain |
+| `desired_state` | select `running`, `on-request`, `stopped` | required |
+| `start_state` | select `running`, `on-request` | required: the state `app.start` returns to (the last non-stopped state) |
+| `idle_timeout_ms` | number 60000-86400000 | required (default 300000); the sleep timeout of an on-request app |
+| `vcpu` | number 1-2 | required (default 1) |
+| `memory_mib` | number 128-4096 | required (default 512) |
+| `disk_mib` | number 256-16384 | required (default 1024); fixed once placed (M7) |
+| `http_port` | number 1024-65535 | required (default 8080) |
+| `executable_name` | text | required, `^[a-z][a-z0-9-]{0,31}$` (default `server`): the file `/app/<name>` |
+| `args` | json, at most 4 KiB | a list of strings |
+| `env` | json, at most 32 KiB | plain environment variables (never secrets) |
+| `health_kind`, `health_path` | select `tcp`, `http`; text | required kind; a path only for `http` |
+| `deployment_seq` | number 1-999999999 | required: the deployment number, bumped when the instance configuration changes ([Operations](ops.md#deployments)) |
+| `archived`, `archived_at` | bool, date | set by `app.archive`, cleared by `app.restore` |
+| `created`, `updated` | autodate | |
 
-A unique index on `slug` refuses a second app with the same slug, across all accounts (HTTP 400 from the records API, exit 1 from `drop add`); an index on `(owner, created)` serves each account's newest-first list. The migration enforces the slug pattern, and the CLI (`internal/client/apps.go`) and the reader (`ui/src/api.ts`) check the same pattern before sending.
+Unique indexes on `slug` and `nib_app_id`, and an index on `(owner, created)`. List and view rules: `@request.auth.collectionName = 'users' && @request.auth.suspended = false && (@request.auth.role = 'admin' || owner = @request.auth.id)`; create, update and delete are closed (superusers only). The value rules are `internal/appspec`, shared with the node's renderer; the migration repeats the ranges and patterns as a second check. Quota: an account has at most `app_quota` non-archived apps (admins are exempt).
 
-With `signedIn` = `@request.auth.id != '' && @request.auth.collectionName = 'users'`, the create rule is `signedIn` and the list, view, update and delete rules are `signedIn && owner = @request.auth.id`: each account sees and changes only its own apps, and anonymous requests nothing. The slug is not immutable in the placeholder.
+## App secret names
 
-Reads go through the records API (`GET /api/collections/apps/records`, a public route on the hosted origin). Writes go through the records API on the loopback server only, `POST /api/collections/apps/records` with `{"name": "...", "slug": "..."}`; `drop add NAME --slug SLUG` does exactly that. Record writes are not public routes: on the hosted origin Drop's writes will go through its own operations, which replace this placeholder.
+`pb_migrations/1820000400_app_secret_names.js` creates `app_secret_names`, one row per secret: `app` (relation to `apps`), `name` (`^[A-Z][A-Z0-9_]{0,63}$`), `ssm_version` (the SSM parameter version the app uses), `length` (of the value, 1-4096), `set_via` (`ui` or `mcp`), `updated_by` (relation to `users`), `created`, `updated`. **No value field**: values live only in SSM at `<prefix>/apps/<record id>/<NAME>` ([AWS](aws.md)). A unique index on `(app, name)`. List and view rules: admins, and the app's owner (`app.owner = @request.auth.id`); writes closed. The records are not a public route of the hosted origin: the reader reads them with the `secret.list` and `app.get` operations.
 
 ## SQL reads
 
@@ -70,7 +85,8 @@ Reads go through the records API (`GET /api/collections/apps/records`, a public 
 
 | Table | Columns |
 | --- | --- |
-| `apps` | `id`, `owner`, `name`, `slug`, `created`, `updated` |
+| `apps` | `id`, `owner`, `name`, `slug`, `nib_app_id`, `hostname`, `desired_state`, `idle_timeout_ms`, `vcpu`, `memory_mib`, `disk_mib`, `http_port`, `executable_name`, `health_kind`, `health_path`, `deployment_seq`, `archived`, `archived_at`, `created`, `updated` (not `env` or `args`) |
+| `app_secret_names` | `id`, `app`, `name`, `ssm_version`, `length`, `set_via`, `updated_by`, `created`, `updated` |
 | `events` | `id`, `actor`, `app`, `subject_user`, `action`, `detail`, `created` |
 
 `POST /api/context/query {"sql": "SELECT ..."}` (`drop sql`) runs one read-only `SELECT` and returns `{columns, rows, truncated}`; `GET /api/context/schema` (`drop schema`) lists the readable tables, columns and search indexes with `"permissionModel": "shared"`. Both require a `users` token. The vendored SQL reader (`internal/pocketcontext/sqlread`) reads the live working database through read-only connections and authorizes every statement with an SQLite authorizer: only listed columns of listed tables, an allowlist of functions, no writes, `PRAGMA`, `ATTACH`, `sqlite_schema`, `dbstat`, `pragma_*` table-valued functions, FTS shadow tables or auth collections. Results are bounded (`maxRows` 500, `maxBytes` 1 MiB, `timeoutMs` 2000); `truncated` says a limit was hit. The column allowlist is the only read restriction and SQL reads whole tables, whoever owns the rows, so these reads stay on the loopback server (the owner's local key) and are never public routes; list only what the owner may read and never secrets.
@@ -89,11 +105,11 @@ A built index may also restrict its rows with `"where"`, a predicate over the co
 
 ## Reader
 
-The reader (`ui/`) asks the server how people sign in (`GET /api/bundle/auth-mode`). On the hosted origin it signs in by email (`ui/src/Login.tsx`, from Crew: the address, then the six-digit code from the email, or the email's link at `#/login`, which asks to confirm); locally it uses the password, a single-use link from `open` or a one-time code from `login-code` (`ui/src/SignIn.tsx`). Hash routes (`ui/src/routes.ts`): `#/apps` (the default) lists the account's apps newest first through the records API and adds one (name and slug, local only); `#/admin/users` (admins only; anyone else sees Not found) invites people (showing the sign-in link with Copy), lists and revokes invites and changes accounts' role, quota and suspension through Drop's operations (`ui/src/dropApi.ts`); `#/connect` shows the MCP address and the account's connected apps with Disconnect; `#/invite?email=…` (an invite's sign-in URL) opens the email sign-in with the address filled in; `#/signin?next=/oauth/authorize?…` is where the OAuth consent page sends a browser to sign in and come back. The reader asks `/api/drop/me` for the account's role to show the Users link. Realtime events on `apps` refresh the list. The header shows a hosted account's email, never the local account's address. It stores its session in `localStorage` under `drop.reader.auth`.
+The reader (`ui/`) asks the server how people sign in (`GET /api/bundle/auth-mode`). On the hosted origin it signs in by email (`ui/src/Login.tsx`, from Crew: the address, then the six-digit code from the email, or the email's link at `#/login`, which asks to confirm); locally it uses the password, a single-use link from `open` or a one-time code from `login-code` (`ui/src/SignIn.tsx`). Hash routes (`ui/src/routes.ts`): `#/apps` (the default) lists the account's apps newest first with its quota (`app.list`; archived apps on request); `#/apps/new` creates one (name, slug and settings); `#/apps/<id>` is an app's page with the tabs Overview (state, hostname, deployment; Start, Stop, Archive, Restore), Settings (`#/apps/<id>/settings`: only changed fields are sent, and a new deployment is reported) and Env & secrets (`#/apps/<id>/env`: plain variables, and write-only secrets in a password field that is cleared after saving, with secrets set through MCP marked and Replace); another account's app shows Not found; `#/admin/users` (admins only; anyone else sees Not found) invites people (showing the sign-in link with Copy), lists and revokes invites and changes accounts' role, quota and suspension through Drop's operations (`ui/src/dropApi.ts`); `#/connect` shows the MCP address and the account's connected apps with Disconnect; `#/invite?email=…` (an invite's sign-in URL) opens the email sign-in with the address filled in; `#/signin?next=/oauth/authorize?…` is where the OAuth consent page sends a browser to sign in and come back. The reader asks `/api/drop/me` for the account's role to show the Users link. Realtime events on `apps` refresh the list and the app page. All app reads and writes go through Drop's operations (`ui/src/dropApi.ts`). The header shows a hosted account's email, never the local account's address. It stores its session in `localStorage` under `drop.reader.auth`.
 
 ## Hosted origin
 
-The hosted origin answers only the allowlist in `internal/droppolicy/routes.go` (golden table `internal/droppolicy/testdata/public_routes.json`, test `internal/droppolicy/routes_test.go`) plus the routes core adds; see [Hosting](hosting.md). Record reads of `apps`, `invites` and `events` are public routes and the collection rules decide what each account sees, as are `POST /api/drop/op` and `GET /api/drop/me` (the operation framework checks the account and its role); record writes, `users` records, `op_keys`, the SQL and search reads and all local administration are not. The frozen loopback route table `tests/testdata/public_routes.json` (`tests/public_routes.py`) is separate and unaffected.
+The hosted origin answers only the allowlist in `internal/droppolicy/routes.go` (golden table `internal/droppolicy/testdata/public_routes.json`, test `internal/droppolicy/routes_test.go`) plus the routes core adds; see [Hosting](hosting.md). Record reads of `apps`, `invites` and `events` are public routes and the collection rules decide what each account sees (`app_secret_names` is not: the operations read it), as are `POST /api/drop/op` and `GET /api/drop/me` (the operation framework checks the account and its role); record writes, `users` records, `op_keys`, the SQL and search reads and all local administration are not. The frozen loopback route table `tests/testdata/public_routes.json` (`tests/public_routes.py`) is separate and unaffected.
 
 ## Databases from other releases
 
@@ -103,11 +119,11 @@ The hosted origin answers only the allowlist in `internal/droppolicy/routes.go` 
 
 To add a collection:
 
-1. **Migration.** Add `pb_migrations/<timestamp>_<name>.js` with a number above the existing ones. Drop's own collections close every write rule (`null`) and change records only through operations ([Operations](ops.md), "Adding an operation"); the placeholder `apps` is the exception until it is replaced. Never edit a migration that has shipped; add a new one. Give every rule `signedIn` (`@request.auth.id != '' && @request.auth.collectionName = 'users'`) narrowed to the requester's own records (an owner field), or `null` where clients must not act; never an empty rule, which would admit anonymous requests, and never a rule that lets one account read another's records. Add indexes for the reads you expect.
+1. **Migration.** Add `pb_migrations/<timestamp>_<name>.js` with a number above the existing ones. Drop's own collections close every write rule (`null`) and change records only through operations ([Operations](ops.md), "Adding an operation"). Never edit a migration that has shipped; add a new one. Give every rule `signedIn` (`@request.auth.id != '' && @request.auth.collectionName = 'users'`) narrowed to the requester's own records (an owner field), or `null` where clients must not act; never an empty rule, which would admit anonymous requests, and never a rule that lets one account read another's records. Add indexes for the reads you expect.
 2. **Hooks.** Only when the model needs them: in `pb_hooks/<name>.js` with a `<name>.pb.js` registration, set server-managed fields on create and refuse changes to immutable fields on every update path (`onRecordUpdate`, which covers REST, batch and internal saves). Hooks run in-process: no `$os` calls (`internal/appconfig/hooks_test.go` enforces it). The runtime is PocketBase's goja, not a browser or Node: there is no `URL` constructor and no `fetch`, so validate addresses with a regular expression. A `json` field's `e.record.get(name)` is the raw JSON bytes, not a parsed value (`Array.isArray` is true and `length` counts bytes): read it with `JSON.parse(String(e.record.get(name)))`, treating an empty string or `null` as unset.
 3. **SQL exposure.** List the readable columns in `server.json` `tables`, never secrets or auth collections. The list is the whole read policy of SQL: there are no per-requester filters, which is why SQL stays local.
 4. **Search.** For full-text search add an index under `search.indexes` with the collection, its text `columns` and a `snippetColumn` (and `where` to leave rows out); every column must also be listed under `tables`. Excerpts come only from the `snippetColumn`, so a match in another column is ranked but its words may not appear in the excerpt. Never list auth or system collections.
-5. **Client.** Add commands in `internal/client` (writes through `records(...)`, reads through `c.Rows`/`c.Query` and `/api/context/search`), with entries in `commandHelp` (`help.go`), the overview (`usage.go`) and the argument spec in `commands.go`; `help_test.go` checks they agree and pins each data command's output keys, so update its expected strings too. `--url` and `--db` are global flags accepted anywhere on the line (`commands.go`), so a record field with one of those names (a bookmark's url) must be positional or use another flag name.
+5. **Client.** Add commands in `internal/client` (writes through operations with `c.Op`, local reads through `c.Rows`/`c.Query` and `/api/context/search`), with entries in `commandHelp` (`help.go`), the overview (`usage.go`) and the argument spec in `commands.go`; `help_test.go` checks they agree and pins each data command's output keys, so update its expected strings too. `--url` and `--db` are global flags accepted anywhere on the line (`commands.go`), so a record field with one of those names (a bookmark's url) must be positional or use another flag name.
 6. **Hosted routes.** A collection whose records the reader reads on the hosted origin goes into `readableCollections` in `internal/droppolicy/routes.go`; regenerate the golden table with `go test ./internal/droppolicy -run TestPublicRouteTable -update-routes` and review the diff.
 7. **Reader, skill and tests.** Show the collection in `ui/src`, document the commands in `skills/drop`, and cover the rules (anonymous and invalid-token requests are refused, the account reads and writes), the SQL policy (unlisted columns and writes are refused) and search in `tests/e2e.py`, in `internal/appconfig/sqlite_test.go` if the table needs SQLite features, and in the browser tests.
 

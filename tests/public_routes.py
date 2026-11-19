@@ -105,7 +105,7 @@ def main():
             print(result.stderr)
             return 1
         try:
-            result = run('add', '--db', str(db), 'Synthetic route table app', '--slug', 'route-table')
+            result = run('app', 'create', '--db', str(db), 'Synthetic route table app', '--slug', 'route-table')
             if result.returncode != 0:
                 print(result.stderr)
                 return 1

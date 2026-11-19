@@ -156,7 +156,9 @@ func serveOp(re *core.RequestEvent, keys *sync.Mutex) error {
 		return writeResult(re, result, false)
 	}
 	var key *opKey
-	if req.IdempotencyKey != "" {
+	// An input holding a secret value is never hashed or stored: its key is
+	// ignored, like a read operation's.
+	if req.IdempotencyKey != "" && !spec.SecretInput {
 		if !dropapi.IdempotencyKeyPattern.MatchString(req.IdempotencyKey) {
 			return writeError(re, &dropapi.Error{Status: http.StatusBadRequest, Code: dropapi.CodeInvalidIdempotencyKey, Message: "An idempotency key is 1-128 letters, digits, '.', '_', ':' or '-'."})
 		}

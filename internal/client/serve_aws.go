@@ -6,12 +6,31 @@ import (
 	"os"
 
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/awsx"
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropserver"
 )
 
-// serveStores holds the release and secret stores opened by serve. The server
-// side (apps, secrets and releases, milestones M5a and M5b) reads it; until then
-// serve only opens and checks them.
-var serveStores *awsx.Stores
+// EnvAppDomain names the domain under which apps get their hostnames.
+const EnvAppDomain = "DROP_APP_DOMAIN"
+
+// serveServices opens the stores for serve and returns what the server's
+// operations get: only the secret store's write side (the server never reads
+// a secret), its SSM prefix and the app domain (DROP_APP_DOMAIN, optional).
+// M5b adds the release store's write side.
+func serveServices(a *args, hosted bool, listenAddr string, getenv func(string) string) (dropserver.Services, error) {
+	var s dropserver.Services
+	if domain := getenv(EnvAppDomain); domain != "" {
+		if !dropserver.ValidAppDomain(domain) {
+			return s, fail(2, "%s must be a lower-case domain name such as apps.example.com", EnvAppDomain)
+		}
+		s.AppDomain = domain
+	}
+	stores, err := openServeStores(a, hosted, listenAddr)
+	if err != nil || stores == nil {
+		return s, err
+	}
+	s.Secrets, s.SSMPrefix = stores.Secrets, stores.SSMPrefix
+	return s, nil
+}
 
 // openServeStores opens the stores for serve. --fake-aws DIR keeps releases and
 // secrets in a local directory for testing, and only with a loopback listen

@@ -68,6 +68,11 @@ type Spec struct {
 	// credential): it is never stored for idempotent replay, and a replayed
 	// key answers 409 idempotency_result_unavailable instead.
 	OnceResult bool
+	// SecretInput marks an input that holds a secret value. Its idempotency
+	// key is ignored, so not even a hash of the input is stored; calling the
+	// operation again is safe (secret.set stores the same value as a new
+	// version).
+	SecretInput bool
 }
 
 var opName = regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`)
@@ -88,12 +93,34 @@ var specs = []Spec{
 		Summary: "Invites, newest first, with their state (open, used, revoked or expired)."},
 	{Name: "invite.revoke", Role: RoleAdmin, Input: &InviteRevokeInput{},
 		Summary: "Revoke an open invite; the address can no longer get an account."},
+	{Name: "app.list", Role: RoleUser, Read: true, Input: &AppListInput{},
+		Summary: "Your apps, newest first, with your app quota; archived:true lists archived apps; all:true (admins) lists everyone's."},
+	{Name: "app.get", Role: RoleUser, Read: true, Input: &AppGetInput{},
+		Summary: "One app by id or slug, with the names of its secrets (never their values)."},
+	{Name: "app.create", Role: RoleUser, Input: &AppCreateInput{},
+		Summary: "Create an app: name, unique slug (its hostname), and optional settings (state, idle timeout, vCPU, memory, disk, port, executable, args, env, health check). Counts against your app quota."},
+	{Name: "app.set", Role: RoleUser, Input: &AppSetInput{},
+		Summary: "Change an app's settings (env as {set, unset}); a change to the instance configuration starts a new deployment. The slug cannot change; the disk cannot change once the app is placed."},
+	{Name: "app.start", Role: RoleUser, Input: &AppStartInput{},
+		Summary: "Start a stopped app in the state it had before it stopped (running or on-request)."},
+	{Name: "app.stop", Role: RoleUser, Input: &AppStopInput{},
+		Summary: "Stop an app; its data stays."},
+	{Name: "app.archive", Role: RoleUser, Input: &AppArchiveInput{},
+		Summary: "Archive an app: it stops running and no longer counts against your quota. Its data, secrets and slug stay; app.restore brings it back."},
+	{Name: "app.restore", Role: RoleUser, Input: &AppRestoreInput{},
+		Summary: "Restore an archived app (it counts against your quota again)."},
+	{Name: "secret.list", Role: RoleUser, Read: true, Input: &SecretListInput{},
+		Summary: "An app's secrets: name, version, length, when and how each was set. Values are never returned."},
+	{Name: "secret.set", Role: RoleUser, Input: &SecretSetInput{}, SecretInput: true,
+		Summary: "Set an app secret (an environment variable kept in AWS SSM, never stored, logged or returned) and start a new deployment. Through MCP the value passes through the assistant's conversation: prefer the reader for real secrets."},
+	{Name: "secret.delete", Role: RoleUser, Input: &SecretDeleteInput{},
+		Summary: "Delete an app secret (every version) and start a new deployment."},
 }
 
 func init() {
 	seen := map[string]bool{}
 	for _, s := range specs {
-		if !opName.MatchString(s.Name) || seen[s.Name] || (s.Role != RoleUser && s.Role != RoleAdmin) || s.Input == nil || s.Summary == "" {
+		if !opName.MatchString(s.Name) || seen[s.Name] || (s.Role != RoleUser && s.Role != RoleAdmin) || s.Input == nil || s.Summary == "" || (s.Read && s.SecretInput) {
 			panic(fmt.Sprintf("dropapi: invalid operation spec %q", s.Name))
 		}
 		seen[s.Name] = true
@@ -140,7 +167,8 @@ func (e *Error) Error() string { return e.Message }
 
 // Error codes. Statuses: 400 invalid_input, unknown_op, invalid_request,
 // invalid_idempotency_key; 401 unauthenticated; 403 forbidden, suspended;
-// 404 not_found; 409 conflict codes; 500 internal.
+// 404 not_found; 409 conflict codes; 500 internal; 502 secret_store_failed;
+// 503 secrets_unavailable.
 const (
 	CodeInvalidRequest        = "invalid_request"
 	CodeInvalidInput          = "invalid_input"
@@ -155,5 +183,12 @@ const (
 	CodeAccountExists         = "account_exists"
 	CodeInviteExists          = "invite_exists"
 	CodeInviteClosed          = "invite_closed"
+	CodeQuotaExceeded         = "quota_exceeded"
+	CodeSlugTaken             = "slug_taken"
+	CodeAppArchived           = "app_archived"
+	CodeAppNotArchived        = "app_not_archived"
+	CodeDeploymentLimit       = "deployment_limit"
+	CodeSecretsUnavailable    = "secrets_unavailable"
+	CodeSecretStoreFailed     = "secret_store_failed"
 	CodeInternal              = "internal"
 )

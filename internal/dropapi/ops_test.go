@@ -65,3 +65,22 @@ func TestNamesByRole(t *testing.T) {
 		}
 	}
 }
+
+func TestAppAndSecretSpecs(t *testing.T) {
+	for _, s := range Specs() {
+		if strings.HasPrefix(s.Name, "app.") || strings.HasPrefix(s.Name, "secret.") {
+			if s.Role != RoleUser {
+				t.Errorf("%s is not a user operation", s.Name)
+			}
+			if s.SecretInput != (s.Name == "secret.set") {
+				t.Errorf("%s: SecretInput %v", s.Name, s.SecretInput)
+			}
+		}
+	}
+	if _, err := Build("secret.set", SecretSetInput{App: "a", Name: "B", Value: "c"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Build("app.start", AppRef{App: "a"}, ""); err != nil {
+		t.Fatal(err)
+	}
+}

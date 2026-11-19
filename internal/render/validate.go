@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/appspec"
 )
 
 // The 7.3 validation. The server never controls paths or commands: every value
@@ -14,50 +16,36 @@ import (
 // secrets.
 
 var (
-	reAppID      = regexp.MustCompile(`^d-[a-z0-9]{15}$`)
-	reDeployTail = regexp.MustCompile(`^-dep-[0-9]{1,9}$`)
-	reSHA256     = regexp.MustCompile(`^[0-9a-f]{64}$`)
-	reExecutable = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
-	reEnvName    = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,63}$`)
+	reAppID      = appspec.AppIDPattern
+	reSHA256     = appspec.SHA256Pattern
+	reExecutable = appspec.ExecutablePattern
 	reHostID     = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$`)
 	reHostname   = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$`)
-	reHealthPath = regexp.MustCompile(`^/[\x21-\x7e]*$`)
 	reSSMPrefix  = regexp.MustCompile(`^(/[A-Za-z0-9_.-]+)+$`)
-	reNibrunRef  = regexp.MustCompile(`\$\{NIBRUN_[^}]*\}`)
 )
 
-// Bounds from the data model (plan section 3) and nibrunner's schema.
+// Bounds from the data model (plan section 3) and nibrunner's schema; the
+// app rules are shared with the server's operations (internal/appspec).
 const (
-	mib              = 1 << 20
-	minDiskMib       = 256
-	maxDiskMib       = 16384
-	maxReleaseBytes  = 90 * mib
-	minIdleMs        = 60000
-	maxIdleMs        = 86400000
-	minPort          = 1024
-	maxPort          = 65535
-	minVCPU          = 1
-	maxVCPU          = 2
-	minMemoryMib     = 128
-	maxMemoryMib     = 4096
-	maxArgs          = 64
-	maxArgBytes      = 4096
-	maxArgsTotal     = 4096
-	maxEnvEntries    = 64
-	maxEnvValueBytes = 4096
-	maxHostnames     = 16
-	maxSeq           = 999999999
+	mib             = appspec.MiB
+	minDiskMib      = appspec.MinDiskMiB
+	maxDiskMib      = appspec.MaxDiskMiB
+	maxReleaseBytes = appspec.MaxReleaseBytes
+	minIdleMs       = appspec.MinIdleMs
+	maxIdleMs       = appspec.MaxIdleMs
+	minPort         = appspec.MinPort
+	maxPort         = appspec.MaxPort
+	minVCPU         = appspec.MinVCPU
+	maxVCPU         = appspec.MaxVCPU
+	minMemoryMib    = appspec.MinMemoryMiB
+	maxMemoryMib    = appspec.MaxMemoryMiB
+	maxEnvEntries   = appspec.MaxEnvEntries
+	maxHostnames    = 16
+	maxSeq          = 999999999
 )
 
 func deploymentIDOK(appID, deploymentID string) bool {
-	tail, ok := strings.CutPrefix(deploymentID, appID)
-	return ok && reDeployTail.MatchString(tail)
-}
-
-// reservedEnv reports names the app may not set: nibrunner's own, Drop's and
-// the ones the renderer fixes.
-func reservedEnv(name string) bool {
-	return name == "HOME" || name == "PATH" || strings.HasPrefix(name, "NIBRUN_") || strings.HasPrefix(name, "DROP_")
+	return appspec.DeploymentIDOK(appID, deploymentID)
 }
 
 // checkInput refuses a malformed input as a whole.
@@ -143,18 +131,8 @@ func validateApp(app App, lim Limits) *AppError {
 	if app.HTTPPort < minPort || app.HTTPPort > maxPort {
 		return fail("httpPort", "must be %d–%d", minPort, maxPort)
 	}
-	if len(app.Args) > maxArgs {
-		return fail("args", "at most %d arguments", maxArgs)
-	}
-	total := 0
-	for i, a := range app.Args {
-		if len(a) > maxArgBytes || strings.ContainsRune(a, 0) {
-			return fail(fmt.Sprintf("args[%d]", i), "at most %d bytes, no NUL", maxArgBytes)
-		}
-		total += len(a)
-	}
-	if total > maxArgsTotal {
-		return fail("args", "at most %d bytes in all", maxArgsTotal)
+	if field, reason := appspec.CheckArgs(app.Args); field != "" {
+		return fail(field, "%s", reason)
 	}
 	r := app.Resources
 	if r.VCPU < minVCPU || r.VCPU > maxVCPU || (lim.AllocatableVCPU > 0 && r.VCPU > lim.AllocatableVCPU) {
@@ -163,17 +141,8 @@ func validateApp(app App, lim Limits) *AppError {
 	if r.MemoryMib < minMemoryMib || r.MemoryMib > maxMemoryMib || (lim.AllocatableMemoryMib > 0 && r.MemoryMib > lim.AllocatableMemoryMib) {
 		return fail("resources.memoryMib", "must be %d–%d and within the node's allocatable", minMemoryMib, maxMemoryMib)
 	}
-	switch app.HealthCheck.Kind {
-	case "tcp":
-		if app.HealthCheck.Path != "" {
-			return fail("healthCheck.path", "a tcp check has no path")
-		}
-	case "http":
-		if len(app.HealthCheck.Path) > 1024 || !reHealthPath.MatchString(app.HealthCheck.Path) {
-			return fail("healthCheck.path", "must start with / and hold at most 1024 printable characters without spaces")
-		}
-	default:
-		return fail("healthCheck.kind", "must be tcp or http")
+	if field, reason := appspec.CheckHealth(app.HealthCheck.Kind, app.HealthCheck.Path); field != "" {
+		return fail("healthCheck."+field, "%s", reason)
 	}
 	if len(app.Hostnames) > maxHostnames {
 		return fail("hostnames", "at most %d", maxHostnames)
@@ -228,21 +197,11 @@ func checkEnvEntry(app App, field, name, value string) *AppError {
 	fail := func(msg string) *AppError {
 		return &AppError{AppID: app.AppID, Code: CodeInvalidApp, Field: field, Message: msg}
 	}
-	if !reEnvName.MatchString(name) {
-		return fail("names must match ^[A-Z][A-Z0-9_]{0,63}$")
+	if reason := appspec.CheckEnvName(name); reason != "" {
+		return fail(reason)
 	}
-	if reservedEnv(name) {
-		return fail(name + " is reserved")
-	}
-	if len(value) > maxEnvValueBytes || strings.ContainsRune(value, 0) {
-		return fail(fmt.Sprintf("the value of %s must be at most %d bytes with no NUL", name, maxEnvValueBytes))
-	}
-	// nibrunner fills ${NIBRUN_HOSTNAME} and ${NIBRUN_HTTP_PORT} and refuses
-	// the whole document for any other complete ${NIBRUN_...} reference.
-	for _, ref := range reNibrunRef.FindAllString(value, -1) {
-		if ref != "${NIBRUN_HOSTNAME}" && ref != "${NIBRUN_HTTP_PORT}" {
-			return fail(fmt.Sprintf("the value of %s references an unknown NIBRUN_ variable", name))
-		}
+	if reason := appspec.CheckEnvValue(name, value); reason != "" {
+		return fail(reason)
 	}
 	return nil
 }

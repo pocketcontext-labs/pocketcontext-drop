@@ -14,6 +14,7 @@ import (
 	"github.com/pocketcontext-labs/pocketcontext-core/appserver"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/appconfig"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/buildinfo"
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropserver"
 )
 
 // args is a small argparse-like parser: flags may appear anywhere.
@@ -205,8 +206,8 @@ parsed:
 		"schema":         {nil, nil},
 		"sql":            {nil, nil},
 		"query":          {nil, nil},
-		"add":            {{"slug"}, nil},
-		"list":           {{"limit"}, nil},
+		"app":            {{"slug", "name", "mode", "idle-timeout", "vcpu", "memory", "disk", "port", "executable", "args-json", "health", "health-path", "limit"}, {"all", "archived"}},
+		"secret":         {nil, nil},
 		"search":         {{"limit", "offset", "generation"}, nil},
 		"login-code":     {{"ttl"}, nil},
 		"login":          {nil, {"password-stdin", "code-stdin"}},
@@ -262,9 +263,11 @@ parsed:
 				listen = ":80"
 			}
 		}
-		if serveStores, err = openServeStores(a, hosted != nil, listen); err != nil {
+		services, err := serveServices(a, hosted != nil, listen, os.Getenv)
+		if err != nil {
 			return err
 		}
+		dropserver.UseServices(services)
 		if hosted != nil {
 			return appserver.Serve(p, *hosted)
 		}
@@ -432,7 +435,7 @@ func runData(c *Client, command string, a *args, pretty bool) error {
 	var data any
 	var err error
 	switch command {
-	case "invite", "user", "op":
+	case "invite", "user", "op", "app", "secret":
 		data, err = runOps(c, command, a)
 	case "whoami":
 		me, err := c.Must("POST", "/api/collections/users/auth-refresh", nil)
@@ -463,33 +466,6 @@ func runData(c *Client, command string, a *args, pretty bool) error {
 			fmt.Fprintf(os.Stderr, "WARNING: result truncated to %d rows by the server's row or byte limit. Select fewer columns, narrow the query, or page with ORDER BY and LIMIT/OFFSET.\n", len(rows))
 		}
 		data = result
-	case "add":
-		if err := a.need(1, "add NAME|- --slug SLUG"); err != nil {
-			return err
-		}
-		if !a.has("slug") {
-			return fail(2, "usage: drop add NAME|- --slug SLUG")
-		}
-		name, err := readArg(a.pos[0], "the name")
-		if err != nil {
-			return err
-		}
-		data, err = c.AddApp(string(name), a.flags["slug"])
-		if err != nil {
-			return err
-		}
-	case "list":
-		if err := a.need(0, "list [--limit N]"); err != nil {
-			return err
-		}
-		limit, err := a.intFlag("limit", 50)
-		if err != nil {
-			return err
-		}
-		data, err = c.ListApps(limit)
-		if err != nil {
-			return err
-		}
 	case "search":
 		if err := a.need(1, "search TERMS [--limit N] [--offset N --generation G]"); err != nil {
 			return err

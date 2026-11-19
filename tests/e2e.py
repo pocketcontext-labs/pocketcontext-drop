@@ -228,8 +228,9 @@ def main():
     print('all end-to-end checks passed')
 
 
-def app_names(rows):
-    return [row['name'] for row in rows]
+def app_names(client):
+    """The names of the client's apps, newest first."""
+    return [row['name'] for row in client.json('app', 'list')['apps']]
 
 
 def slug(name):
@@ -238,8 +239,8 @@ def slug(name):
 
 
 def add(client, name, **kwargs):
-    """Add an app named name with its synthetic slug."""
-    return client.json('add', name, '--slug', slug(name), **kwargs)
+    """Create an app named name with its synthetic slug."""
+    return client.json('app', 'create', name, '--slug', slug(name), **kwargs)['app']
 
 
 def token(pc, password):
@@ -261,8 +262,9 @@ def scenario(pc):
     usage = pc.run('help')
     text = usage.stdout + usage.stderr
     check('drop' in text and RETIRED not in text.lower(), 'help names drop and not the retired product')
-    add_help = pc.run('add', '--help').stdout
-    check(add_help.startswith('usage: drop add') and '"name"' in add_help and '"slug"' in add_help, 'add --help documents the output shape')
+    app_help = pc.run('app', '--help').stdout
+    check(app_help.startswith('usage: drop app') and '"apps"' in app_help and '"quota"' in app_help, 'app --help documents the output shape')
+    check('unknown command' in pc.run('add', 'x', '--slug', 'xyz', expect=2).stderr, 'apps are created with app create, not add')
     check(pc.run('help', 'search').stdout == pc.run('search', '-h').stdout and 'generation' in pc.run('help', 'search').stdout,
           'help COMMAND and COMMAND -h print the same help')
     check('unknown command' in pc.run('help', 'no-such-command', expect=2).stderr, 'help refuses an unknown command')
@@ -281,36 +283,59 @@ def scenario(pc):
     again = pc.json('init', '--port', str(pc.port))
     check(not again['accountCreated'] and not again['newProject'] and pc.json('whoami')['id'] == me['id'],
           'init on an existing project keeps its account and password')
-    check(pc.json('list') == [], 'a new project has no apps')
+    listed = pc.json('app', 'list')
+    check(listed['apps'] == [] and listed['quota']['unlimited'], 'a new project has no apps, and its admin account no quota')
     schema = pc.json('schema')
     tables = {t['name']: sorted(c['name'] for c in t['columns']) for t in schema['tables']}
-    check(tables == {'apps': ['created', 'id', 'name', 'owner', 'slug', 'updated'],
+    check(tables == {'apps': sorted(['id', 'owner', 'name', 'slug', 'nib_app_id', 'hostname', 'desired_state', 'idle_timeout_ms', 'vcpu',
+                                     'memory_mib', 'disk_mib', 'http_port', 'executable_name', 'health_kind', 'health_path',
+                                     'deployment_seq', 'archived', 'archived_at', 'created', 'updated']),
+                     'app_secret_names': sorted(['id', 'app', 'name', 'ssm_version', 'length', 'set_via', 'updated_by', 'created', 'updated']),
                      'events': ['action', 'actor', 'app', 'created', 'detail', 'id', 'subject_user']},
-          f'the SQL schema exposes only apps and events: {tables}')
+          f'the SQL schema exposes apps (no env or args), secret names and events: {tables}')
     check(schema['permissionModel'] == 'shared' and schema['search']['indexes'] == ['apps'] and 'isolation' not in schema['search']
           and 'snapshotLimits' not in schema, 'reads use the live database and a shared apps index')
 
     accounts_scenario(pc, me['id'])
 
     first = add(pc, 'Hello from the espresso machine ✓')
-    second = pc.json('add', '-', '--slug', 'cafe-app', stdin='Café app for everyone 😀\n')
+    second = pc.json('app', 'create', '-', '--slug', 'cafe-app', '--port', '9000', '--mode', 'running', stdin='Café app for everyone 😀\n')['app']
     check(first['name'] == 'Hello from the espresso machine ✓' and first['slug'] == slug(first['name'])
-          and set(first) == {'id', 'name', 'slug', 'created', 'updated'}, 'add creates an app')
-    check(second['name'] == 'Café app for everyone 😀' and second['slug'] == 'cafe-app', 'add - reads the name from standard input')
-    check(app_names(pc.json('list')) == [second['name'], first['name']], 'list shows the apps newest first')
-    check(app_names(pc.json('list', '--limit', '1')) == [second['name']], 'list --limit bounds the result')
-    pc.run('list', '--limit', '0', expect=2)
-    pc.run('add', '   ', '--slug', 'blank-name', expect=2)
-    check('1-80' in pc.run('add', 'x' * 81, '--slug', 'long-name', expect=2).stderr, 'add refuses empty and over-long names')
-    pc.run('add', 'No slug', expect=2)
-    for bad in ('ab', '1abc', 'abc-', 'Abc', 'a_bc', 'a' * 33):
-        pc.run('add', 'Bad slug', '--slug', bad, expect=2)
-    check(True, 'add refuses a missing or invalid slug')
-    taken = pc.run('add', 'Another café', '--slug', 'cafe-app', expect=1)
-    check('slug' in taken.stderr.lower() and len(pc.json('list')) == 2, 'add refuses a slug already in use')
-    status, _ = pc.http('POST', '/api/collections/apps/records', {'name': 'Bad slug through the API', 'slug': 'Not A Slug'},
+          and first['nib_app_id'] == 'd-' + first['id'] and first['deployment_id'] == first['nib_app_id'] + '-dep-1'
+          and first['desired_state'] == 'on-request' and first['http_port'] == 8080 and first['hostname'] == '', 'app create creates an app with defaults')
+    check(second['name'] == 'Café app for everyone 😀' and second['slug'] == 'cafe-app' and second['http_port'] == 9000
+          and second['desired_state'] == 'running', 'app create - reads the name from standard input and takes settings')
+    check(app_names(pc) == [second['name'], first['name']], 'app list shows the apps newest first')
+    check([a['name'] for a in pc.json('app', 'list', '--limit', '1')['apps']] == [second['name']], 'app list --limit bounds the result')
+    pc.run('app', 'list', '--limit', '501', expect=1)
+    pc.run('app', 'create', '   ', '--slug', 'blank-name', expect=1)
+    check('1-80' in pc.run('app', 'create', 'x' * 81, '--slug', 'long-name', expect=1).stderr, 'app create refuses empty and over-long names')
+    pc.run('app', 'create', 'No slug', expect=2)
+    for bad in ('ab', '1abc', 'abc-', 'Abc', 'a_bc', 'a' * 33, 'www'):
+        pc.run('app', 'create', 'Bad slug', '--slug', bad, expect=1)
+    check(True, 'app create refuses a missing, invalid or reserved slug')
+    taken = pc.run('app', 'create', 'Another café', '--slug', 'cafe-app', expect=4)
+    check('slug_taken' in taken.stderr and len(app_names(pc)) == 2, 'app create refuses a slug already in use (exit 4)')
+    status, _ = pc.http('POST', '/api/collections/apps/records', {'name': 'Through the records API', 'slug': 'records-api'},
                         headers={'Authorization': token(pc, PASSWORD)})
-    check(status == 400 and len(pc.json('list')) == 2, 'the records API enforces the slug rule')
+    check(status == 403 and len(app_names(pc)) == 2, 'the records API writes no app: apps change only through operations')
+    changed = pc.json('app', 'set', 'cafe-app', '--memory', '1024', '--name', 'Café app')
+    check(changed['deployment_bumped'] and changed['app']['deployment_id'].endswith('-dep-2') and changed['app']['name'] == 'Café app',
+          'app set changes settings and bumps the deployment')
+    renamed = pc.json('app', 'set', 'cafe-app', '--name', 'Café app for everyone 😀')
+    check(not renamed['deployment_bumped'], 'a new name keeps the deployment')
+    env = pc.json('app', 'env', 'cafe-app', 'WELCOME_TEXT=hello', 'URL=https://${NIBRUN_HOSTNAME}/')['app']
+    check(env['env'] == {'WELCOME_TEXT': 'hello', 'URL': 'https://${NIBRUN_HOSTNAME}/'} and env['deployment_id'].endswith('-dep-3'), 'app env sets variables')
+    check(pc.json('app', 'env', 'cafe-app', '-WELCOME_TEXT')['app']['env'] == {'URL': 'https://${NIBRUN_HOSTNAME}/'}, 'app env -KEY removes one')
+    pc.run('app', 'env', 'cafe-app', 'HOME=/root', expect=1)
+    check(pc.json('app', 'stop', 'cafe-app')['app']['desired_state'] == 'stopped'
+          and pc.json('app', 'start', 'cafe-app')['app']['desired_state'] == 'running', 'app stop and start keep the mode')
+    shown = pc.json('app', 'show', 'cafe-app')
+    check(shown['app']['id'] == second['id'] and shown['secrets'] == [], 'app show reads one app by slug')
+    unavailable = pc.run('secret', 'set', 'cafe-app', 'API_KEY', stdin='synthetic\n', expect=1)
+    check('secrets_unavailable' in unavailable.stderr, 'the local server has no secret store')
+    pc.run('secret', 'set', 'cafe-app', 'API_KEY', 'value-as-argument', expect=2)
+    check(True, 'secret set never takes the value as an argument')
 
     found = pc.json('search', 'espresso')
     check([g['id'] for g in found['apps']] == [first['id']] and found['generation'] and not found['hasMore']
@@ -331,6 +356,9 @@ def scenario(pc):
 
     rows = pc.json('sql', 'SELECT count(*) FROM apps')['rows']
     check(rows == [[6]], 'sql counts the apps')
+    check(pc.json('sql', "SELECT deployment_seq FROM apps WHERE slug = 'cafe-app'")['rows'] == [[4]], 'sql reads the deployment number')
+    pc.run('sql', 'SELECT env FROM apps', expect=1)
+    check(True, 'sql never reads the app environment')
     newest = pc.json('query', 'SELECT name FROM apps ORDER BY created DESC, id DESC LIMIT 1')['rows']
     check(newest == [['Paged hello number 3']], 'query is an alias of sql')
     for denied in ('SELECT * FROM users', 'SELECT email FROM users', 'SELECT * FROM user_directory', 'SELECT * FROM sqlite_schema', 'SELECT * FROM dbstat', 'SELECT * FROM pragma_table_info(\'apps\')',
@@ -377,7 +405,7 @@ def scenario(pc):
     with closing(sqlite3.connect(f'file:{pc.db.as_posix()}?mode=ro', uri=True)) as db:
         stored = db.execute('SELECT count(*) FROM apps').fetchone()[0]
     check(stored == 6, 'stop writes the apps back to the synced database')
-    check(len(pc.json('list')) == 6, 'apps survive a restart')
+    check(len(app_names(pc)) == 6, 'apps survive a restart')
 
     # Another computer is using the project.
     pc.json('stop')
@@ -473,19 +501,22 @@ def single_user_scenario(pc):
         accounts = db.execute('SELECT id, email FROM users').fetchall()
     check(accounts == [(me, ACCOUNT_EMAIL)], f'the database holds exactly one account: {accounts}')
 
-    # Every app belongs to the account that created it; a request cannot choose another owner.
-    status, body = pc.http('POST', '/api/collections/apps/records', {'name': 'Through the records API', 'slug': 'records-api', 'owner': 'aaaaaaaaaaaaaaa'}, headers={'Authorization': mine})
-    created = json.loads(body)
-    check(status == 200 and created.get('owner') == me and created['name'] == 'Through the records API', 'the records API creates an app owned by the requester')
+    # Apps change only through operations; the records API reads the account's apps and writes none.
+    status, _ = pc.http('POST', '/api/collections/apps/records', {'name': 'Through the records API', 'slug': 'records-api', 'owner': 'aaaaaaaaaaaaaaa'}, headers={'Authorization': mine})
+    check(status == 403, 'the records API creates no app')
+    created = pc.json('app', 'create', 'Records reader app', '--slug', 'records-app')['app']
+    check(created['owner'] == me, 'app create makes an app owned by the caller')
     status, body = pc.http('GET', '/api/collections/apps/records?perPage=100', headers={'Authorization': mine})
     listed = {item['id'] for item in json.loads(body)['items']}
     check(status == 200 and created['id'] in listed and len(listed) == pc.json('sql', 'SELECT count(*) FROM apps')['rows'][0][0],
           'the account lists every app through the records API')
-    check(created['id'] in json.dumps(pc.json('list')) and [g['id'] for g in pc.json('search', 'records')['apps']] == [created['id']]
-          and pc.json('sql', f"SELECT name FROM apps WHERE id = '{created['id']}'")['rows'] == [['Through the records API']],
-          'list, search and SQL read the app')
-    status, body = pc.http('PATCH', f"/api/collections/apps/records/{created['id']}", {'name': 'Edited app'}, headers={'Authorization': mine})
-    check(status == 200 and json.loads(body)['name'] == 'Edited app', 'the account edits an app')
+    check(created['id'] in json.dumps(pc.json('app', 'list')) and [g['id'] for g in pc.json('search', 'records')['apps']] == [created['id']]
+          and pc.json('sql', f"SELECT name FROM apps WHERE id = '{created['id']}'")['rows'] == [['Records reader app']],
+          'app list, search and SQL read the app')
+    for method, body in (('PATCH', {'name': 'Edited app'}), ('DELETE', None)):
+        status, _ = pc.http(method, f"/api/collections/apps/records/{created['id']}", body, headers={'Authorization': mine})
+        check(status == 403, f'the records API refuses {method} on an app')
+    check(pc.json('app', 'set', created['id'], '--name', 'Edited app')['app']['name'] == 'Edited app', 'the account edits an app with app set')
 
     # Authentication stays on for every read and write.
     for headers, who in (({}, 'anonymous'), ({'Authorization': 'not-a-valid-token'}, 'an invalid token')):
@@ -507,8 +538,9 @@ def single_user_scenario(pc):
         check(status in (401, 403, 404), f'deleting an app refuses {who}')
     check(pc.json('sql', f"SELECT name FROM apps WHERE id = '{created['id']}'")['rows'] == [['Edited app']],
           'refused requests change nothing')
-    status, _ = pc.http('DELETE', f"/api/collections/apps/records/{created['id']}", headers={'Authorization': mine})
-    check(status == 204, 'the account deletes an app')
+    archived = pc.json('app', 'archive', created['id'])['app']
+    check(archived['archived'] and created['id'] not in json.dumps(pc.json('app', 'list'))
+          and created['id'] in json.dumps(pc.json('app', 'list', '--archived')), 'the account archives an app instead of deleting it')
 
     # password changes the reader password and, like any PocketBase password change, revokes earlier tokens.
     new_password = 'synthetic changed password'
@@ -567,8 +599,9 @@ def replace_elsewhere(pc, name):
     shutil.copyfile(pc.db, copy)
     with closing(sqlite3.connect(copy)) as db:
         record = hashlib.sha256(name.encode()).hexdigest()[:15]
-        db.execute("INSERT INTO apps(id, name, slug, created, updated) VALUES (?, ?, ?, '2026-01-01 00:00:00.000Z', '2026-01-01 00:00:00.000Z')",
-                   (record, name, slug(name)))
+        owner = db.execute('SELECT id FROM users').fetchone()[0]
+        db.execute("INSERT INTO apps(id, owner, name, slug, nib_app_id, volume_id, deployment_seq, created, updated) VALUES (?, ?, ?, ?, ?, ?, 1, '2026-01-01 00:00:00.000Z', '2026-01-01 00:00:00.000Z')",
+                   (record, owner, name, slug(name), 'd-' + record, 'd-' + record + '-vol'))
         db.commit()
         db.execute('PRAGMA journal_mode=DELETE')
     os.replace(copy, pc.db)
@@ -586,7 +619,7 @@ def sync_scenario(pc):
     add(pc, 'Survives a crash')
     crash(pc)
     pc.json('ensure-running')
-    check('Survives a crash' in app_names(pc.json('list')), 'unsaved changes survive a crash')
+    check('Survives a crash' in app_names(pc), 'unsaved changes survive a crash')
     pc.json('flush')
     check('Survives a crash' in stored_names(pc.db), 'the recovered changes reach the synced database')
 
@@ -608,7 +641,7 @@ def sync_scenario(pc):
     check('recover' in blocked.stderr, 'start after a conflict asks for recover')
     pc.run('recover', '--keep', 'both', expect=2)
     pc.json('recover', '--keep', 'synced')
-    current = app_names(pc.json('list'))
+    current = app_names(pc)
     check('Remote change while running' in current and 'Local change while running' not in current, 'recover --keep synced uses the synced file')
     check('Local change while running' in stored_names(Path(conflicts[0])), "this computer's work stays in the conflict copy")
     pc.run('recover', '--keep', 'local', expect=1)
@@ -623,7 +656,7 @@ def sync_scenario(pc):
     pc.json('recover', '--keep', 'local')
     replaced = list(pc.project.glob('drop.db.replaced-*.db'))
     check(len(replaced) == 1 and 'Remote change after crash' in stored_names(replaced[0]), 'recover --keep local saves the other file')
-    current = app_names(pc.json('list'))
+    current = app_names(pc)
     check('Local change before crash' in current and 'Remote change after crash' not in current, "recover --keep local keeps this computer's work")
     check('Local change before crash' in stored_names(pc.db), 'the kept work is written back')
     pc.json('stop')
@@ -659,10 +692,10 @@ def remote_scenario(pc, r):
 
     remote_me = r.json('whoami')
     check(remote_me == {'id': me, 'url': pc.url}, 'remote whoami reports the same account without a database')
-    check(app_names(r.json('list')) == app_names(pc.json('list')), 'the remote client sees the same apps')
+    check(app_names(r) == app_names(pc), 'the remote client sees the same apps')
     check(r.json('op', 'me')['id'] == remote_me['id'], 'operations work with --url')
     added = add(r, 'Rooibosquartz app from the other computer')
-    check(app_names(r.json('list'))[0] == 'Rooibosquartz app from the other computer', 'remote list shows the remote app')
+    check(app_names(r)[0] == 'Rooibosquartz app from the other computer', 'remote list shows the remote app')
     check([g['id'] for g in r.json('search', 'rooibosquartz')['apps']] == [added['id']], 'remote search finds the remote app')
     check(r.json('sql', 'SELECT count(*) FROM apps')['rows'] == pc.json('sql', 'SELECT count(*) FROM apps')['rows'],
           'remote SQL reads the same apps')
@@ -719,6 +752,9 @@ def remote_scenario(pc, r):
 
 
 HOSTED_DOMAIN = 'drop.example.test'
+APP_DOMAIN = 'apps.example.test'
+# A synthetic secret value that must reach only the fake secret store.
+SECRET_SENTINEL = 'synthetic-secret-sentinel-' + hashlib.sha256(b'drop e2e').hexdigest()[:16]
 
 
 def hosted_request(port, method, path, body=None, host=HOSTED_DOMAIN):
@@ -763,7 +799,7 @@ def hosted_scenario(pc, r):
     refused = subprocess.run(command, capture_output=True, text=True, encoding='utf-8', env=r.env, timeout=60)
     check(refused.returncode != 0 and 'OWNER_EMAIL' in refused.stderr and not db.exists(),
           'hosted serving refuses a missing owner and SMTP configuration and creates nothing')
-    env = {**r.env, 'DROP_OWNER_EMAIL': 'owner@example.test', 'DROP_SMTP_FROM': 'login@example.test',
+    env = {**r.env, 'DROP_OWNER_EMAIL': 'owner@example.test', 'DROP_SMTP_FROM': 'login@example.test', 'DROP_APP_DOMAIN': APP_DOMAIN,
            'DROP_SMTP_HOST': '127.0.0.1', 'DROP_SMTP_PORT': '9', 'DROP_SMTP_USERNAME': 'synthetic',
            'DROP_SMTP_PASSWORD': 'synthetic'}
     output = open(hosted / 'serve.log', 'w+', encoding='utf-8')
@@ -798,6 +834,25 @@ def hosted_scenario(pc, r):
         # The sign-in email cannot be sent here (no SMTP server), but the
         # invited address gets its account before the send.
         hosted_request(port, 'POST', '/api/collections/users/request-otp', {'email': 'Invitee@Example.test'})
+
+        # Apps and secrets through the private socket, with the fake AWS directory.
+        def owner(*args, stdin=None, expect=0):
+            result = subprocess.run([str(pc.binary), '--db', str(db), *args], input=stdin, capture_output=True, text=True,
+                                    encoding='utf-8', env=r.env, timeout=60)
+            check(result.returncode == expect, f'drop {" ".join(args[:2])} exits {expect} {result.stderr.strip()[-300:]}'.rstrip())
+            return json.loads(result.stdout) if expect == 0 else result
+        app = owner('app', 'create', 'Hosted app', '--slug', 'hosted-app')['app']
+        check(app['hostname'] == 'hosted-app.' + APP_DOMAIN, f"the hostname is the slug under DROP_APP_DOMAIN: {app['hostname']}")
+        set_result = owner('secret', 'set', 'hosted-app', 'API_KEY', stdin=SECRET_SENTINEL + '\n')
+        check(set_result['secret']['version'] == 1 and set_result['secret']['length'] == len(SECRET_SENTINEL)
+              and set_result['deployment_id'] == app['nib_app_id'] + '-dep-2', 'secret set stores a version and bumps the deployment')
+        check(SECRET_SENTINEL not in json.dumps(owner('secret', 'list', 'hosted-app')) + json.dumps(owner('app', 'show', 'hosted-app')),
+              'secret list and app show never return the value')
+        stored = [p for p in (hosted / 'fake-aws' / 'secrets').rglob('*') if p.is_file() and p.name == '1']
+        check(len(stored) == 1 and stored[0].read_text(encoding='utf-8') == SECRET_SENTINEL
+              and (stored[0].parent / 'name').read_text(encoding='utf-8').strip() == '/drop/apps/' + app['id'] + '/API_KEY',
+              'the value is in the secret store at <prefix>/apps/<app id>/<NAME>')
+        check(owner('secret', 'delete', 'hosted-app', 'API_KEY')['deployment_id'] == app['nib_app_id'] + '-dep-3', 'secret delete bumps the deployment')
     finally:
         server.send_signal(signal.SIGTERM)
         try:
@@ -812,6 +867,12 @@ def hosted_scenario(pc, r):
         used = conn.execute("SELECT count(*) FROM invites WHERE used_by != ''").fetchone()[0]
     check(users == [('owner@example.test', 'admin'), ('invitee@example.test', 'admin')] and used == 1,
           f'only the owner (an admin) and the invited address (with the invite\'s role) got accounts: {users}')
+    with closing(sqlite3.connect(db)) as conn:
+        dump = '\n'.join(str(row) for table in [t[0] for t in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")]
+                          for row in conn.execute(f'SELECT * FROM `{table}`'))
+    output_text = (hosted / 'serve.log').read_text(encoding='utf-8', errors='replace')
+    check('API_KEY' in dump and SECRET_SENTINEL not in dump, 'the database holds the secret name and never its value')
+    check(SECRET_SENTINEL not in output_text, 'the server output never holds the secret value')
 
 
 def codes_scenario(pc, r):

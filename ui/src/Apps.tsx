@@ -1,12 +1,8 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type FormEvent,
-} from "react";
-import { api, NAME_LIMIT, type App } from "./api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { api } from "./api";
+import { dropApi, type App, type Quota } from "./dropApi";
 import { message } from "./errors";
+import { appHash, viewHashes } from "./routes";
 
 const dateFormat = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
@@ -18,33 +14,46 @@ export function formatDate(value: string): string {
   return Number.isNaN(date.getTime()) ? value : dateFormat.format(date);
 }
 
-/** The project's apps, newest first, and a form to add one. */
+export const stateLabels: Record<App["desired_state"], string> = {
+  running: "Running",
+  "on-request": "On request",
+  stopped: "Stopped",
+};
+
+/** "2 of 3 apps", or "4 apps" for an admin (no quota). */
+export function quotaText(quota: Quota): string {
+  const apps = (n: number) => `${n} ${n === 1 ? "app" : "apps"}`;
+  return quota.unlimited
+    ? `${apps(quota.used)} (admins have no quota)`
+    : `${quota.used} of ${apps(quota.limit)}`;
+}
+
+/** The account's apps, newest first, with its quota. */
 export default function Apps() {
   const [apps, setApps] = useState<App[] | null>(null);
+  const [quota, setQuota] = useState<Quota | null>(null);
+  const [archived, setArchived] = useState(false);
   const [error, setError] = useState("");
-  const [name, setName] = useState("");
-  const [slug, setSlug] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState("");
   const mounted = useRef(true);
   const reads = useRef(0);
   const load = useCallback(async () => {
     const read = ++reads.current;
     try {
-      const rows = await api.listApps();
+      const list = await dropApi.listApps(archived);
       if (mounted.current && read === reads.current) {
-        setApps(rows);
+        setApps(list.apps);
+        setQuota(list.quota);
         setError("");
       }
     } catch (e) {
       if (mounted.current && read === reads.current) setError(message(e));
     }
-  }, []);
+  }, [archived]);
   useEffect(() => {
     mounted.current = true;
     void load();
     let stop: (() => void) | undefined;
-    // Changes from the CLI or another tab appear without a reload.
+    // Changes from the CLI, MCP or another tab appear without a reload.
     api
       .watchApps(() => void load())
       .then((unsubscribe) => {
@@ -57,72 +66,31 @@ export default function Apps() {
       stop?.();
     };
   }, [load]);
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setBusy(true);
-    setError("");
-    setStatus("");
-    try {
-      await api.addApp(name, slug);
-      if (!mounted.current) return;
-      setName("");
-      setSlug("");
-      setStatus("App added.");
-      await load();
-    } catch (e) {
-      if (mounted.current) setError(message(e));
-    } finally {
-      if (mounted.current) setBusy(false);
-    }
-  };
-  const remaining = NAME_LIMIT - name.trim().length;
+  const full = quota !== null && !quota.unlimited && quota.used >= quota.limit;
   return (
-    <section className="panel" aria-labelledby="apps-title">
-      <h2 id="apps-title">Your apps</h2>
-      <form className="add" onSubmit={submit}>
-        <label htmlFor="new-app-name">App name</label>
+    <section className="panel wide" aria-labelledby="apps-title">
+      <div className="row heading">
+        <h2 id="apps-title">Your apps</h2>
+        {full ? (
+          <span className="quiet">Quota reached</span>
+        ) : (
+          <a className="button primary" href={viewHashes["app-new"]}>
+            New app
+          </a>
+        )}
+      </div>
+      {quota && <p className="quiet">{quotaText(quota)}</p>}
+      <label className="check">
         <input
-          id="new-app-name"
-          name="name"
-          value={name}
-          maxLength={NAME_LIMIT}
-          required
-          aria-describedby="app-name-remaining"
-          onChange={(event) => setName(event.target.value)}
-          placeholder="Hello app"
+          type="checkbox"
+          checked={archived}
+          onChange={(event) => {
+            setApps(null);
+            setArchived(event.target.checked);
+          }}
         />
-        <p id="app-name-remaining" className="quiet">
-          {remaining} characters left
-        </p>
-        <label htmlFor="new-app-slug">Slug</label>
-        <div className="row">
-          <input
-            id="new-app-slug"
-            name="slug"
-            value={slug}
-            maxLength={32}
-            required
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-            aria-describedby="app-slug-help"
-            onChange={(event) => setSlug(event.target.value)}
-            placeholder="hello-app"
-          />
-          <button
-            className="primary"
-            disabled={busy || !name.trim() || !slug.trim()}
-          >
-            Add
-          </button>
-        </div>
-        <p id="app-slug-help" className="quiet">
-          3-32 lowercase letters, digits and hyphens; unique
-        </p>
-      </form>
-      <p role="status" className="quiet">
-        {status}
-      </p>
+        Show archived apps
+      </label>
       {error && (
         <p role="alert" className="error">
           {error}
@@ -131,17 +99,24 @@ export default function Apps() {
       {apps === null ? (
         !error && <p className="quiet">Loading apps…</p>
       ) : apps.length === 0 ? (
-        <p className="empty">No apps yet. Add the first one above.</p>
+        <p className="empty">
+          {archived ? "No archived apps." : "No apps yet. Create the first one."}
+        </p>
       ) : (
         <ol className="apps" aria-label="Apps, newest first">
           {apps.map((app) => (
             <li key={app.id}>
               <p>
-                <span>{app.name}</span> <code className="slug">{app.slug}</code>
+                <a href={appHash(app.id)}>{app.name}</a>{" "}
+                <code className="slug">{app.slug}</code>
               </p>
-              <time dateTime={app.created.replace(" ", "T")}>
-                {formatDate(app.created)}
-              </time>
+              <p className="quiet">
+                {app.archived ? "Archived" : stateLabels[app.desired_state]}
+                {app.hostname && <> · {app.hostname}</>} ·{" "}
+                <time dateTime={app.created.replace(" ", "T")}>
+                  {formatDate(app.created)}
+                </time>
+              </p>
             </li>
           ))}
         </ol>

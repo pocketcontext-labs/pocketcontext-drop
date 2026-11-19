@@ -121,12 +121,16 @@ func TestSQLReaderDeniesSQLiteInternals(t *testing.T) {
 	defer db.Close()
 	if _, err := db.Exec(`PRAGMA journal_mode=WAL;
 		CREATE TABLE users(id TEXT PRIMARY KEY, email TEXT, password TEXT, tokenKey TEXT);
-		CREATE TABLE apps(id TEXT PRIMARY KEY, owner TEXT, name TEXT, slug TEXT, created TEXT, updated TEXT);
+		CREATE TABLE apps(id TEXT PRIMARY KEY, owner TEXT, name TEXT, slug TEXT, nib_app_id TEXT, hostname TEXT, desired_state TEXT,
+			idle_timeout_ms INTEGER, vcpu INTEGER, memory_mib INTEGER, disk_mib INTEGER, http_port INTEGER, executable_name TEXT,
+			health_kind TEXT, health_path TEXT, deployment_seq INTEGER, archived BOOLEAN, archived_at TEXT, env JSON, created TEXT, updated TEXT);
+		CREATE TABLE app_secret_names(id TEXT PRIMARY KEY, app TEXT, name TEXT, ssm_version INTEGER, length INTEGER, set_via TEXT,
+			updated_by TEXT, created TEXT, updated TEXT);
 		CREATE TABLE events(id TEXT PRIMARY KEY, actor TEXT, app TEXT, subject_user TEXT, action TEXT, detail JSON, created TEXT);
 		CREATE VIRTUAL TABLE apps_fts USING fts5(name);
 		INSERT INTO users VALUES ('account00000001','account@example.localhost','hash-a','key-a');
-		INSERT INTO apps VALUES ('record000000001','account00000001','Hello','hello','2026-01-01','2026-01-01'),
-			('record000000002','account00000001','Hello again','hello-again','2026-01-02','2026-01-02');
+		INSERT INTO apps(id, owner, name, slug, env, created, updated) VALUES ('record000000001','account00000001','Hello','hello','{}','2026-01-01','2026-01-01'),
+			('record000000002','account00000001','Hello again','hello-again','{}','2026-01-02','2026-01-02');
 		INSERT INTO apps_fts(name) SELECT name FROM apps;`); err != nil {
 		t.Fatal(err)
 	}
@@ -173,6 +177,7 @@ func TestSQLReaderDeniesSQLiteInternals(t *testing.T) {
 		"SELECT password FROM users",
 		"SELECT * FROM users",
 		"SELECT email FROM users",
+		"SELECT env FROM apps",
 		"INSERT INTO apps(id, name) VALUES ('x', 'y')",
 		"UPDATE apps SET name = 'changed'",
 		"DELETE FROM apps",

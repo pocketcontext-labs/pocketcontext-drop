@@ -1,9 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  addApp,
   api,
   connection,
-  listApps,
   logout,
   pb,
   refreshSession,
@@ -16,8 +14,6 @@ const user = { id: "user00000000001", collectionId: "_pb_users_auth_", collectio
 const token = `synthetic.${btoa(JSON.stringify({ exp: 4102444800 }))}.signature`;
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
-const page = (items: Record<string, unknown>[]) => ({ page: 1, perPage: 100, totalItems: -1, totalPages: -1, items });
-const row = (id: string, name = `Hello ${id}`) => ({ id, name, slug: `app-${id}`, created: "2026-10-25 10:00:00.000Z" });
 
 beforeEach(() => pb.authStore.save(token, user));
 afterEach(() => {
@@ -25,32 +21,23 @@ afterEach(() => {
   pb.authStore.clear();
 });
 
-describe("reads", () => {
-  it("lists the account's apps newest first through the records API", async () => {
-    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(json(page([row("app000000000002"), row("app000000000001")])));
-    expect((await listApps()).map(g => g.id)).toEqual(["app000000000002", "app000000000001"]);
-    const url = new URL(String(fetch.mock.calls[0][0]));
-    expect(url.pathname).toBe("/api/collections/apps/records");
-    expect(Object.fromEntries(url.searchParams)).toMatchObject({ page: "1", perPage: "100", sort: "-created,-id", fields: "id,name,slug,created", skipTotal: "true" });
-    expect(String(fetch.mock.calls[0][0])).not.toMatch(/context/);
-  });
-  it("refuses malformed rows and anonymous reads", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(json(page([{ id: "x' OR 1", name: "m", slug: "s", created: "c" }])));
-    await expect(listApps()).rejects.toThrow(/Invalid app/);
-    pb.authStore.clear();
-    await expect(listApps()).rejects.toThrow(/sign in/);
-  });
+describe("requests", () => {
   it("clears the session when the server rejects its token", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(json({ message: "Unauthorized" }, 401));
-    await expect(listApps()).rejects.toMatchObject({ status: 401 });
+    await expect(pb.send("/api/drop/op", { method: "POST", body: { op: "app.list" } })).rejects.toMatchObject({ status: 401 });
     expect(pb.authStore.token).toBe("");
+  });
+  it("keeps the session when an operation is refused for the role", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(json({ status: 403, code: "forbidden", message: "Admins only.", data: {} }, 403));
+    await expect(pb.send("/api/drop/op", { method: "POST", body: { op: "user.list" } })).rejects.toMatchObject({ status: 403 });
+    expect(pb.authStore.token).toBe(token);
   });
   it("discards a response that arrives after the account changed", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
       pb.authStore.save(token, { ...user, id: "user00000000002" });
-      return json(page([row("app000000000001")]));
+      return json({ result: { apps: [] } });
     });
-    await expect(listApps()).rejects.toThrow(/Session changed/);
+    await expect(pb.send("/api/drop/op", { method: "POST", body: { op: "app.list" } })).rejects.toThrow(/Session changed/);
   });
 });
 
@@ -80,13 +67,6 @@ describe("connection", () => {
 });
 
 describe("writes", () => {
-  it("creates a trimmed app through the collection API", async () => {
-    const create = vi.fn().mockResolvedValue(row("app000000000003", "Hi"));
-    vi.spyOn(pb, "collection").mockReturnValue({ create } as never);
-    expect(await addApp("  Hi  ", " app-app000000000003 ")).toEqual(row("app000000000003", "Hi"));
-    expect(pb.collection).toHaveBeenCalledWith("apps");
-    expect(create).toHaveBeenCalledWith({ name: "Hi", slug: "app-app000000000003" });
-  });
   it("validates the name and slug before sending", () => {
     expect(() => validName("   ")).toThrow(/Name/);
     expect(() => validName("x".repeat(81))).toThrow(/80/);

@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"testing"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropserver"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/droptest"
 )
@@ -37,7 +35,7 @@ func TestUserAndInviteIsolation(t *testing.T) {
 	h.MustOp(owner, "user.set", map[string]any{"user": b.Id, "app_quota": 4})
 	// An app of A and an event about it, written as an operation would.
 	appA := createApp(t, h, a.Id, "app-of-a")
-	if err := dropserver.WriteEvent(h.App, dropserver.EventRecord{Actor: a.Id, App: appA, Action: "app.create", Detail: map[string]any{"slug": "app-of-a"}}); err != nil {
+	if err := dropserver.WriteEvent(h.App, dropserver.EventRecord{Actor: a.Id, App: appA, Action: "app.set", Detail: map[string]any{"changed": []string{"name"}}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -72,8 +70,8 @@ func TestUserAndInviteIsolation(t *testing.T) {
 	wantError(t, h.Op(aToken, "invite.revoke", map[string]any{"invite": invite}), 403, "forbidden")
 
 	// Events: an account sees those of its own apps, admins all of them.
-	if n := listCount(t, h, "/api/collections/events/records", aToken); n != 1 {
-		t.Errorf("A lists %d events, want the one of its app", n)
+	if n := listCount(t, h, "/api/collections/events/records", aToken); n != 2 {
+		t.Errorf("A lists %d events, want the two of its app", n)
 	}
 	if n := listCount(t, h, "/api/collections/events/records", bToken); n != 0 {
 		t.Errorf("B lists %d events", n)
@@ -104,19 +102,12 @@ func TestUserAndInviteIsolation(t *testing.T) {
 	}
 }
 
-// createApp saves a placeholder app owned by an account.
+// createApp creates an app owned by an account through app.create.
 func createApp(t *testing.T, h *droptest.Hosted, owner, slug string) string {
 	t.Helper()
-	collection, err := h.App.FindCollectionByNameOrId("apps")
+	user, err := h.App.FindRecordById("users", owner)
 	if err != nil {
 		t.Fatal(err)
 	}
-	record := core.NewRecord(collection)
-	record.Set("owner", owner)
-	record.Set("name", slug)
-	record.Set("slug", slug)
-	if err := h.App.Save(record); err != nil {
-		t.Fatal(err)
-	}
-	return record.Id
+	return h.MustOp(h.Token(user), "app.create", map[string]any{"name": slug, "slug": slug})["app"].(map[string]any)["id"].(string)
 }

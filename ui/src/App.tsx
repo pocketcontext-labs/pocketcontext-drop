@@ -1,12 +1,15 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { ACCOUNT_EMAIL, api, pb, type AuthMode } from "./api";
 import AdminUsers from "./AdminUsers";
+import AppNew from "./AppNew";
+import AppPage from "./AppPage";
 import Apps from "./Apps";
 import Brand from "./Brand";
 import Connect from "./Connect";
 import { dropApi, type Me } from "./dropApi";
 import Login from "./Login";
 import {
+  appRouteFromHash,
   browserNavigation,
   inviteEmailFromHash,
   isSigninHash,
@@ -104,7 +107,7 @@ function NotFound() {
   );
 }
 
-function Workspace({ view }: { view: View }) {
+function Workspace({ view, hash }: { view: View; hash: string }) {
   const email = accountEmail();
   // The account's role decides which pages it has; the server checks it on
   // every operation regardless.
@@ -125,7 +128,10 @@ function Workspace({ view }: { view: View }) {
     };
   }, []);
   let page;
+  const app = view === "app" ? appRouteFromHash(hash) : null;
   if (view === "connect") page = <Connect />;
+  else if (view === "app-new") page = <AppNew />;
+  else if (app) page = <AppPage key={app.id} id={app.id} tab={app.tab} />;
   else if (view === "admin-users")
     page = me?.admin ? (
       <AdminUsers me={me} />
@@ -144,7 +150,11 @@ function Workspace({ view }: { view: View }) {
         <nav className="nav" aria-label="Pages">
           <a
             href={viewHashes.apps}
-            aria-current={view === "apps" ? "page" : undefined}
+            aria-current={
+              view === "apps" || view === "app" || view === "app-new"
+                ? "page"
+                : undefined
+            }
           >
             Apps
           </a>
@@ -183,6 +193,7 @@ export default function App() {
   const signedIn = useSyncExternalStore(subscribe, identity, () => "");
   const [emailLink, setEmailLink] = useState(() => readEmailLoginLink());
   const [view, setView] = useState(() => viewFromHash(location.hash));
+  const [hash, setHash] = useState(() => location.hash);
   const [signinHash, setSigninHash] = useState(currentSigninHash);
   const [returning, setReturning] = useState(false);
   const [checkFailed, setCheckFailed] = useState(false);
@@ -194,6 +205,7 @@ export default function App() {
       if (link) setEmailLink(link);
       setSigninHash(currentSigninHash());
       setView(viewFromHash(location.hash));
+      setHash(location.hash);
     };
     window.addEventListener("hashchange", receive);
     return () => window.removeEventListener("hashchange", receive);
@@ -261,6 +273,7 @@ export default function App() {
           }
           history.replaceState(null, "", location.pathname + (target ?? "#/"));
           setView(viewFromHash(target ?? ""));
+          setHash(target ?? "");
           setEmailLink(null);
         }}
       />
@@ -287,5 +300,5 @@ export default function App() {
       </Status>
     );
   // Remount per session so no state survives a change of identity.
-  return <Workspace key={signedIn} view={view} />;
+  return <Workspace key={signedIn} view={view} hash={hash} />;
 }

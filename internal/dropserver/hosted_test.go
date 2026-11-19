@@ -1,7 +1,6 @@
 package dropserver_test
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -95,51 +94,41 @@ func TestLocalReadsAndWritesArePrivate(t *testing.T) {
 	}
 }
 
-// TestAppsBelongToTheirOwner: each account sees only its own apps, and a
-// create or update request cannot choose or move the owner.
-func TestAppsBelongToTheirOwner(t *testing.T) {
+// TestAppRecordsAreReadOnly: apps change only through operations. Record
+// writes are refused even on the unfiltered local router with the owner's
+// own token, and app.create sets the owner to the caller.
+func TestAppRecordsAreReadOnly(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	owner := h.Owner()
-	other, otherToken := h.User("other@example.test", "user")
+	other, _ := h.User("other@example.test", "user")
 	ownerToken := h.Token(owner)
-	// Writes are local only; send them to the unfiltered router as the local
-	// reader does, with the account's own token.
-	router := func(method, path, authorization, body string) map[string]any {
+	created := h.MustOp(ownerToken, "app.create", map[string]any{"name": "Owner app", "slug": "owner-app"})["app"].(map[string]any)
+	if created["owner"] != owner.Id {
+		t.Fatalf("app.create chose owner %v", created["owner"])
+	}
+	if r := h.Op(ownerToken, "app.create", map[string]any{"name": "Theirs", "slug": "their-app", "owner": other.Id}); r.Status != 400 {
+		t.Fatalf("an owner field was accepted: %d %s", r.Status, r.Raw)
+	}
+	router := func(method, path, body string) int {
 		r := httptest.NewRequest(method, "http://127.0.0.1:8100"+path, strings.NewReader(body))
 		r.Header.Set("Content-Type", "application/json")
-		r.Header.Set("Authorization", authorization)
+		r.Header.Set("Authorization", ownerToken)
 		w := httptest.NewRecorder()
 		h.Server.Router().ServeHTTP(w, r)
-		if w.Code != 200 {
-			t.Fatalf("%s %s: %d %s", method, path, w.Code, w.Body)
+		return w.Code
+	}
+	id := created["id"].(string)
+	for _, c := range []struct{ method, path, body string }{
+		{"POST", "/api/collections/apps/records", `{"name":"Direct","slug":"direct-app"}`},
+		{"PATCH", "/api/collections/apps/records/" + id, `{"owner":"` + other.Id + `"}`},
+		{"DELETE", "/api/collections/apps/records/" + id, ""},
+		{"POST", "/api/collections/app_secret_names/records", `{"app":"` + id + `","name":"X"}`},
+	} {
+		if code := router(c.method, c.path, c.body); code != http.StatusForbidden {
+			t.Errorf("%s %s: %d", c.method, c.path, code)
 		}
-		var out map[string]any
-		_ = json.Unmarshal(w.Body.Bytes(), &out)
-		return out
 	}
-	created := router("POST", "/api/collections/apps/records", ownerToken, `{"name":"Owner app","slug":"owner-app","owner":"`+other.Id+`"}`)
-	if created["owner"] != owner.Id {
-		t.Fatalf("create chose owner %v", created["owner"])
-	}
-	moved := router("PATCH", "/api/collections/apps/records/"+created["id"].(string), ownerToken, `{"owner":"`+other.Id+`"}`)
-	if moved["owner"] != owner.Id {
-		t.Fatalf("update moved the app to %v", moved["owner"])
-	}
-	router("POST", "/api/collections/apps/records", otherToken, `{"name":"Other app","slug":"other-app"}`)
-	list := func(authorization string) string {
-		w := h.Request("GET", "/api/collections/apps/records", authorization, "")
-		if w.Code != http.StatusOK {
-			t.Fatalf("list: %d %s", w.Code, w.Body)
-		}
-		return w.Body.String()
-	}
-	if body := list(ownerToken); !strings.Contains(body, "owner-app") || strings.Contains(body, "other-app") {
-		t.Fatalf("owner sees %s", body)
-	}
-	if body := list(otherToken); strings.Contains(body, "owner-app") || !strings.Contains(body, "other-app") {
-		t.Fatalf("other account sees %s", body)
-	}
-	if w := h.Request("GET", "/api/collections/apps/records/"+created["id"].(string), otherToken, ""); w.Code != 404 {
-		t.Fatalf("other account viewed the owner's app: %d", w.Code)
+	if fresh, _ := h.App.FindRecordById("apps", id); fresh.GetString("owner") != owner.Id {
+		t.Fatal("the app moved")
 	}
 }
