@@ -2,7 +2,7 @@
 
 PocketContext Drop: a private, invite-only service that runs people's apps (one Linux executable each) on a PocketContext-managed host. It builds on the shared library [pocketcontext-core](https://github.com/pocketcontext-labs/pocketcontext-core), pinned to an exact release in `go.mod`, and is one Go executable with nothing else needed at run time: a server on PocketBase with hosted multi-account mode (email sign-in, remote MCP with OAuth) behind a TLS-terminating proxy, a browser reader, a command-line client and an agent skill for Claude Code, Codex and Antigravity.
 
-**Status: hosted foundation.** Derived from the PocketContext family template (see [origin](docs/origin.md)), Drop now serves people in hosted mode on pocketcontext-core 0.3.0: several accounts (`AccountsMulti`), email sign-in with a six-digit code, remote MCP with OAuth and a default-deny route allowlist, behind a Cloudflare Tunnel or load balancer ([Hosting](docs/hosting.md)). Only the owner can sign in until invites arrive. The data model is still a placeholder, `apps` (an owner, a name and a unique slug); later milestones add invites and roles, apps with releases and secrets, nodes and the host agent. A local project (one account, loopback only) remains for developing the reader. The repository is private.
+**Status: hosted foundation.** Derived from the PocketContext family template (see [origin](docs/origin.md)), Drop now serves people in hosted mode on pocketcontext-core 0.3.0: several accounts (`AccountsMulti`), email sign-in with a six-digit code, remote MCP with OAuth and a default-deny route allowlist, behind a Cloudflare Tunnel or load balancer ([Hosting](docs/hosting.md)). Drop is invite-only: every account is an admin or a user, and admins invite people by email address (the invite returns a sign-in link to share; no invite email is sent). Every write goes through one operation route, `POST /api/drop/op` ([Operations](docs/ops.md)), which checks the account and its role and records an event. The app model is still a placeholder, `apps` (an owner, a name and a unique slug); later milestones add apps with releases and secrets, nodes and the host agent. A local project (one account, loopback only) remains for developing the reader. The repository is private.
 
 **Linux only** (amd64 and arm64). The server and its host agent run only on Linux, and people need only a browser, remote MCP and `curl` for uploads; a build for any other system refuses to run (`cmd/drop/main_other.go`). A future laptop client would be a separate pure-Go program.
 
@@ -31,6 +31,8 @@ bin/drop add "Hello app" --slug hello-app
 bin/drop list
 bin/drop search "hello"
 bin/drop sql "SELECT id, name, slug, created FROM apps ORDER BY created DESC LIMIT 20"
+bin/drop invite create friend@example.com   # the local account is an admin
+bin/drop user list
 bin/drop skill                   # Claude Code, Codex, Antigravity
 bin/drop stop
 ```
@@ -41,7 +43,7 @@ Without `--db`, the database is `bin/drop.db`. The server listens on `http://127
 
 ## Authentication
 
-**Hosted** (`serve --hosted`): the owner (`DROP_OWNER_EMAIL`) and, later, invited people sign in with their email address: the reader sends a sign-in email with a six-digit code and a link, and sessions last 30 days, renewed while the reader is in use. Each account sees only its own records. Password sign-in, single-use links and the local routes are not on the hosted origin. See [Hosting](docs/hosting.md).
+**Hosted** (`serve --hosted`): the owner (`DROP_OWNER_EMAIL`) and invited people sign in with their email address: the reader sends a sign-in email with a six-digit code and a link, and sessions last 30 days, renewed while the reader is in use. Each account sees only its own records; only an address with an open invite gets an account, with the invite's role (`admin` or `user`). Password sign-in, single-use links and the local routes are not on the hosted origin. See [Hosting](docs/hosting.md).
 
 **Local** (plain `serve`, for developing the reader): a project has exactly one account, created by `init`, with no name or email to choose (`users` holds one hidden record). The reader asks only for its password. `open` signs the browser in with a single-use link valid for two minutes; `login-code` issues one-time codes for remote clients (see below). The CLI needs no password: it reads a random key that the server writes to the private cache at start and exchanges it, in the `X-Drop-Local-Key` header, for an ordinary `users` token. Anyone who can read that key can already read the database. All APIs, including SQL and search, still require a token, CORS allows only the server's own origin, and requests for any other `Host` are refused, so web pages cannot reach the server through `127.0.0.1`. The local server listens on loopback only. `/api/bundle/instance` answers `{"app": "drop", ...}` so the CLI and the launcher can tell this server from another program on the port.
 
@@ -80,7 +82,7 @@ Hosted mode serves plain HTTP behind a TLS-terminating proxy (default `:80`, or 
 
 ## Data model
 
-`apps` (`owner`, `name`, unique `slug`, `created`, `updated`), the placeholder model, belong to the account that created them: collection rules show and change only the requester's own apps. The reader reads them through the records API; the local CLI also reads them through authenticated read-only SQL (`/api/context/query`) and search (`/api/context/search`), which read whole tables and so stay on the loopback server. Writes use the PocketBase records API on the loopback server. See [docs/data-model.md](docs/data-model.md), including how to add a collection.
+Accounts (`users`) carry a role, an app quota and a suspension flag; `invites` hold who may sign in; `events` record every change made through an operation. They are written only by Drop's operations and account hooks. `apps` (`owner`, `name`, unique `slug`, `created`, `updated`), the placeholder model, belong to the account that created them: collection rules show and change only the requester's own apps. The reader reads them through the records API; the local CLI also reads them through authenticated read-only SQL (`/api/context/query`) and search (`/api/context/search`), which read whole tables and so stay on the loopback server. Writes use the PocketBase records API on the loopback server. See [docs/data-model.md](docs/data-model.md), including how to add a collection.
 
 ## Build
 
@@ -118,17 +120,17 @@ Open the reader at the project port (18100 in this example) and sign in with the
 
 Hot reload does not type-check. Run `pnpm typecheck`, `pnpm test` and `pnpm build` in `ui/` after changes, plus `node --test tests/dev_launcher.test.mjs` after launcher changes.
 
-The browser checks use synthetic data. Install their pinned Chromium once with `(cd ui && pnpm exec playwright install chromium)`, then run `node tests/reader_ui_browser.mjs --binary bin/drop` (sign-in, adding apps, a duplicate slug, listing and the Connect page at desktop and mobile widths; `--screenshots DIR` keeps screenshots) and `node tests/ui_dev_browser.mjs --binary bin/drop` (hot reload and development routing, including a second browser behind a same-port loopback forward and the refusal of a forward on another port). Both accept `--browser /path/to/chromium`; `ui_dev_browser.mjs` also accepts `--playwright /absolute/path/to/playwright/index.mjs`. CI runs both on Linux amd64 and arm64; they cannot start Chromium on a host without its system libraries.
+The browser checks use synthetic data. Install their pinned Chromium once with `(cd ui && pnpm exec playwright install chromium)`, then run `node tests/reader_ui_browser.mjs --binary bin/drop` (sign-in, adding apps, a duplicate slug, listing, the Users page (invite, sign-in link, revoke) and the Connect page at desktop and mobile widths; `--screenshots DIR` keeps screenshots) and `node tests/ui_dev_browser.mjs --binary bin/drop` (hot reload and development routing, including a second browser behind a same-port loopback forward and the refusal of a forward on another port). Both accept `--browser /path/to/chromium`; `ui_dev_browser.mjs` also accepts `--playwright /absolute/path/to/playwright/index.mjs`. CI runs both on Linux amd64 and arm64; they cannot start Chromium on a host without its system libraries.
 
 ## Tests
 
 | Command | Checks |
 | --- | --- |
-| `make test` | Go unit tests with the tags in `build-tags.txt` (the route golden table and sign-in email in `internal/droppolicy`; hosted Multi startup, owner sign-in with the emailed code, the public boundary and app ownership in `internal/dropserver` through the `internal/droptest` helpers; hooks and SQLite features in `internal/appconfig`; client and MCP; vendored server), `tests/dev_launcher.test.mjs`, `tests/test_release.py` |
+| `make test` | Go unit tests with the tags in `build-tags.txt` (the route golden table and sign-in email in `internal/droppolicy`; hosted Multi startup, owner sign-in with the emailed code, invite-only sign-in and roles, the operation framework, invites, accounts, idempotency keys, user and invite isolation, the public boundary and app ownership in `internal/dropserver`; the operation registry against its handlers and the reader's list in `internal/dropapi` through the `internal/droptest` helpers; hooks and SQLite features in `internal/appconfig`; client and MCP; vendored server), `tests/dev_launcher.test.mjs`, `tests/test_release.py` |
 | `(cd ui && pnpm typecheck && pnpm test)` | reader types and unit tests (Vitest) |
 | `make names` | `tests/name_check.py`: the retired product name appears nowhere in the repository or binary |
 | `make identity` | `tests/identity_check.py`: no template identity (name, module, port, hello-world collection, identity fields) left in the repository or binary |
-| `make e2e` | `tests/public_routes.py` (on a loopback server: the frozen anonymous route table, foreign-Host refusal and loopback-only listening; refusal of hosted options without `--hosted`, of invalid hosted options and of `open --public`) and `tests/e2e.py`: init, CLI, the single local account and authentication on every API, app ownership, SQL policy, search, skill, lease, conflict and recover, refusal of other releases' databases, remote mode, login codes, and a real hosted server (`--hosted-init`, the public boundary, MCP discovery, an unknown address getting no account), in a temporary folder |
+| `make e2e` | `tests/public_routes.py` (on a loopback server: the frozen anonymous route table, foreign-Host refusal and loopback-only listening; refusal of hosted options without `--hosted`, of invalid hosted options and of `open --public`) and `tests/e2e.py`: init, CLI, the single local account (an admin) and authentication on every API, invites, accounts, operations and idempotency keys, app ownership, SQL policy, search, skill, lease, conflict and recover, refusal of other releases' databases, remote mode, login codes, and a real hosted server (`--hosted-init`, the public boundary, MCP discovery, an unknown address getting no account, an invite through the private socket giving the invited address an account with its role), in a temporary folder |
 | `node tests/reader_ui_browser.mjs` | the embedded reader in Chromium |
 | `node tests/ui_dev_browser.mjs` | hot reload through `serve --ui-dev`, and a same-port loopback forward |
 
@@ -152,11 +154,12 @@ While the repository is private, download with `gh release download vX.Y.Z -R po
 | --- | --- |
 | `internal/appconfig` | the runtime on pocketcontext-core, built from `droppolicy` and `dropserver` |
 | `internal/droppolicy` | `Identity`, `Text` (with the sign-in email), `Policy` (`AccountsMulti`, budget, session, OAuth scope), the hosted route allowlist and its golden table |
-| `internal/dropserver` | hooks: `AllowSignIn`, app ownership, the SQL and search reads |
-| `internal/droptest` | hosted test server helpers: owner and email sign-in, OAuth, MCP |
+| `internal/dropapi` | the operations' wire contract: request, result and error shapes and the registry of operation names, roles and inputs |
+| `internal/dropserver` | hooks and accounts (`AllowSignIn`, roles, invites), the operation framework (`POST /api/drop/op`) and its operations, events, idempotency keys, app ownership, the SQL and search reads |
+| `internal/droptest` | hosted test server helpers: owner and email sign-in, invited accounts, operations, OAuth, MCP |
 | `internal/buildinfo` | version and commit stamped at build time |
 | `cmd/drop` | entry point (`main.go`, Linux) and the refusal on every other system (`main_other.go`) |
-| `internal/client` | CLI commands, hosted serve options (`serve_hosted.go`), the placeholder apps (`apps.go`), remote mode, skill installation, MCP adapter, help |
+| `internal/client` | CLI commands, hosted serve options (`serve_hosted.go`), the placeholder apps (`apps.go`), operations and the account commands (`ops.go`), remote mode, skill installation, MCP adapter, help |
 | `internal/pocketcontext` | vendored PocketContext server (SQL reads, search, tracing); see `VENDORED.md`. The project, sync-safe database handling, local routes, hosted mode and UI development proxy live in [pocketcontext-core](https://github.com/pocketcontext-labs/pocketcontext-core) |
 | `pb_hooks`, `pb_migrations` | schema and server-side rules |
 | `server.json` | SQL column allowlist and search index configuration (local only) |
@@ -165,4 +168,4 @@ While the repository is private, download with `gh release download vX.Y.Z -R po
 | `skills/drop` | skill template (`SKILL.remote.md` for `skill --url`); `drop skill` fills in absolute paths |
 | `scripts` | `dev.mjs` launcher, `release.py`, installer template, license notices |
 | `tests` | `e2e.py`, `public_routes.py` and `testdata/public_routes.json`, `name_check.py`, `identity_check.py`, `test_release.py`, `dev_launcher.test.mjs`, browser checks |
-| `docs` | data model, origin, [Hosting](docs/hosting.md) and [MCP](docs/mcp.md) manuals |
+| `docs` | data model, [Operations](docs/ops.md), origin, [Hosting](docs/hosting.md) and [MCP](docs/mcp.md) manuals |

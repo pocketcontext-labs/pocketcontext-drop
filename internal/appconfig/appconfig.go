@@ -33,6 +33,7 @@ func mustRuntime() *appserver.Runtime {
 	if err != nil {
 		panic(err)
 	}
+	dropserver.UseRuntime(rt)
 	return rt
 }
 

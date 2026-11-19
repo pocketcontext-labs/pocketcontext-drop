@@ -34,14 +34,17 @@ const spentCode = /Too many wrong codes|expired or was already used/;
 export default function Login({
   emailLink,
   onComplete,
+  initialEmail = "",
 }: {
   emailLink?: EmailLoginLink;
   onComplete?: () => void;
+  /** The address of an invite's sign-in URL. */
+  initialEmail?: string;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [sentTo, setSentTo] = useState("");
-  const [address, setAddress] = useState("");
+  const [address, setAddress] = useState(initialEmail);
   const [otpId, setOtpId] = useState("");
   const [code, setCode] = useState("");
   const [codeSpent, setCodeSpent] = useState(false);

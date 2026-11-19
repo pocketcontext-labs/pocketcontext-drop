@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"ganigeorgiev.com/pocketbase/pocketbase/core"
-
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/appconfig"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/droptest"
 )
@@ -59,9 +57,8 @@ func TestOwnerSignsInWithCode(t *testing.T) {
 	}
 }
 
-// TestUnknownAddressGetsNoAccount: until invites exist (M3) nobody but the
-// owner can sign in. Another address gets the same answer, no email and no
-// account.
+// TestUnknownAddressGetsNoAccount: Drop is invite-only. An address without an
+// invite gets the same answer, no email and no account.
 func TestUnknownAddressGetsNoAccount(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	for _, email := range []string{"stranger@example.test", "account@drop.invalid"} {
@@ -103,25 +100,8 @@ func TestLocalReadsAndWritesArePrivate(t *testing.T) {
 func TestAppsBelongToTheirOwner(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	owner := h.Owner()
-	users, err := h.App.FindCollectionByNameOrId("users")
-	if err != nil {
-		t.Fatal(err)
-	}
-	other := core.NewRecord(users)
-	other.SetEmail("other@example.test")
-	other.SetRandomPassword()
-	other.SetVerified(true)
-	if err := h.App.Save(other); err != nil {
-		t.Fatal(err)
-	}
-	token := func(r *core.Record) string {
-		s, err := r.NewAuthToken()
-		if err != nil {
-			t.Fatal(err)
-		}
-		return s
-	}
-	ownerToken, otherToken := token(owner), token(other)
+	other, otherToken := h.User("other@example.test", "user")
+	ownerToken := h.Token(owner)
 	// Writes are local only; send them to the unfiltered router as the local
 	// reader does, with the account's own token.
 	router := func(method, path, authorization, body string) map[string]any {

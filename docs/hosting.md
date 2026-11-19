@@ -6,10 +6,13 @@ Hosted mode comes from pocketcontext-core 0.3.0 ("Multiple hosted accounts" in i
 
 ## Accounts
 
-- **The owner** is `DROP_OWNER_EMAIL`. `--hosted-init` creates a new database with the owner as its only account; an ordinary start refuses a missing database, a database whose accounts lack the owner (an owner change needs explicit maintenance) and a local database (one holding the local account).
-- **Other accounts** exist only when `Hooks.AllowSignIn` admits an address (`internal/dropserver/hooks.go`). Until invites arrive it admits nobody, so only the owner can sign in; any other address gets the same answer and no email.
-- Addresses are canonical (trimmed, lower-cased ASCII); case variants are one account. An account that never signed in is unverified and pruned by core after 15 minutes; one that has signed in is never deleted (`pb_hooks/account_access.js`).
-- Each account sees only its own records: the collection rules filter by owner, and record writes are not public routes.
+- **The owner** is `DROP_OWNER_EMAIL`. `--hosted-init` creates a new database with the owner as its only account; an ordinary start refuses a missing database, a database whose accounts lack the owner (an owner change needs explicit maintenance) and a local database (one holding the local account). The owner is always an admin (made so again at every start).
+- **Invite-only.** Other accounts exist only when `Hooks.AllowSignIn` admits an address (`internal/dropserver/accounts.go`): it needs an open (unused, unrevoked) and unexpired invite. Any other address gets the same answer as an invited one, no email and no account.
+- **Invites.** An admin invites an address in the reader's Users page (`#/admin/users`), with `drop invite create EMAIL` on the server host (the CLI reaches the hosted server through its private socket and acts as the owner) or, later, through MCP. An invite has a role (`user` or `admin`), an app quota (default 3) and lasts 7 days (1-30). Drop sends no invite email: the invite returns a sign-in URL (`https://HOST/#/invite?email=…`, no credential in it) that the admin shares. The invitee signs in there with the ordinary sign-in code email; that first request creates the account with the invite's role and quota and uses the invite up. If they never complete the sign-in, core prunes the account after 15 minutes and the invite opens again.
+- **Roles.** Every account is an `admin` or a `user` (one OAuth scope, `drop`). Admins invite, revoke invites and change accounts (`user.set`: role, quota, suspension); nobody changes their own role or suspension, or the owner's. Every call is checked on the server ([Operations](ops.md)).
+- **Suspension** ends the account's sessions at once and refuses its sign-ins; an account that has signed in is never deleted (`pb_hooks/account_access.js`).
+- Addresses are canonical (trimmed, lower-cased ASCII); case variants are one account.
+- Each account sees only its own records: the collection rules filter by owner (admins also read invites and every event), and record writes are not public routes.
 - Hosted accounts all carry the same name, so the reader shows email addresses.
 
 ## Sign-in
@@ -18,7 +21,7 @@ The reader asks for an email address and sends a sign-in email with a six-digit 
 
 ## What is public
 
-The hosted origin answers only the allowlist in `internal/droppolicy/routes.go` (golden table `internal/droppolicy/testdata/public_routes.json`), plus the routes core adds: the sign-in email routes, `/up` (for health checks, on any Host) and, with `--mcp`, `/mcp`, `/oauth/*` and `/.well-known/*`. Everything else answers 404, including the SQL and search reads (`/api/context/*`, which read whole tables and stay local), every record write, `/api/batch`, `/api/files/*`, `/_/` and all local administration. Requests for any Host other than `--domain` are refused.
+The hosted origin answers only the allowlist in `internal/droppolicy/routes.go` (golden table `internal/droppolicy/testdata/public_routes.json`): the reader, `POST /api/drop/op` and `GET /api/drop/me` ([Operations](ops.md)), record reads of `apps`, `invites` and `events` (their rules decide who sees what), realtime and session renewal, plus the routes core adds: the sign-in email routes, `/up` (for health checks, on any Host) and, with `--mcp`, `/mcp`, `/oauth/*` and `/.well-known/*`. Everything else answers 404, including the SQL and search reads (`/api/context/*`, which read whole tables and stay local), every record write, `/api/batch`, `/api/files/*`, `/_/` and all local administration. Requests for any Host other than `--domain` are refused.
 
 ## Configuration
 
@@ -47,7 +50,7 @@ drop serve --hosted --headless --mcp --domain drop.example.com --db /var/lib/dro
 - `--hosted-init` creates the database on the first start; leave it out afterwards. `--hosted-restore` (excluding `--hosted-init`) invalidates copied browser, email and MCP credentials before serving a deliberately restored backup.
 - `--hosted-http-address IP:PORT` is the plain HTTP listener, a literal IP and a port (default `:80`). Bind it to loopback when the proxy runs on the same host.
 - `--hosted-proxy-header` and `--hosted-proxy-networks` go together. The header is `CF-Connecting-IP` (Cloudflare Tunnel) or `X-Forwarded-For` (a load balancer; the rightmost entry is used), and the networks are the comma-separated CIDR prefixes the proxy connects from. Only then does Drop key its per-client limits on the real client; without them every request counts as the proxy's address. A prefix that would trust every peer is refused.
-- Hosted mode keeps only a private local socket (for `stop`, `status` and the local key), never a loopback TCP port, so the CLI's data commands (`add`, `list`, `sql` and the others) do not run against a hosted server.
+- Hosted mode keeps only a private local socket (for `stop`, `status`, the local key and the owner's account commands `invite`, `user` and `op`), never a loopback TCP port, so the CLI's app commands (`add`, `list`, `sql` and the others) do not run against a hosted server.
 - The plain HTTP server's write timeout is 5 minutes, so long-lived streams (realtime) reconnect; idle connections close after 120 s.
 
 ### Development: Cloudflare Tunnel
@@ -68,7 +71,8 @@ Behind an AWS Application Load Balancer, listen on `0.0.0.0:8100`, use `--hosted
 1. `curl -fsS https://HOST/up` answers 200.
 2. `curl -s -o /dev/null -w '%{http_code}' https://HOST/api/context/schema` answers 404.
 3. `https://HOST/.well-known/oauth-protected-resource` names `https://HOST/mcp`, and an anonymous `POST https://HOST/mcp` answers 401.
-4. Sign in as the owner in a browser with the emailed code.
+4. Sign in as the owner in a browser with the emailed code; the Users link appears.
+5. On the host, `drop --db /var/lib/drop/project/drop.db invite list` answers `{"invites": [], …}` (run as the service user, so it finds the server's private socket).
 
 ## Remote MCP
 

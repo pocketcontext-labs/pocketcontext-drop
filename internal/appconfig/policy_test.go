@@ -23,6 +23,7 @@ func TestRealHooksAllowAccountsButKeepSignedIn(t *testing.T) {
 		record.SetEmail(email)
 		record.SetRandomPassword()
 		record.SetVerified(verified)
+		record.Set("role", "user") // the Go hooks (not loaded here) set it on real saves
 		if err := app.Save(record); err != nil {
 			t.Fatalf("%s: %v", email, err)
 		}

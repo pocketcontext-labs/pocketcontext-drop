@@ -211,6 +211,9 @@ parsed:
 		"login-code":     {{"ttl"}, nil},
 		"login":          {nil, {"password-stdin", "code-stdin"}},
 		"logout":         {nil, nil},
+		"invite":         {{"role", "quota", "expires-days", "state", "limit"}, nil},
+		"user":           {{"role", "quota", "limit"}, {"suspend", "unsuspend"}},
+		"op":             {{"idempotency-key"}, nil},
 	}
 	s, known := spec[command]
 	if !known {
@@ -346,7 +349,11 @@ parsed:
 	case "skill":
 		return installSkills(p.DB, p.URL(), a.flags["agent"], a.flags["dir"], pretty)
 	}
-	c, err := New(p)
+	connect := New
+	if opCommands[command] {
+		connect = newOpsClient
+	}
+	c, err := connect(p)
 	if err != nil {
 		return err
 	}
@@ -425,6 +432,8 @@ func runData(c *Client, command string, a *args, pretty bool) error {
 	var data any
 	var err error
 	switch command {
+	case "invite", "user", "op":
+		data, err = runOps(c, command, a)
 	case "whoami":
 		me, err := c.Must("POST", "/api/collections/users/auth-refresh", nil)
 		if err != nil {

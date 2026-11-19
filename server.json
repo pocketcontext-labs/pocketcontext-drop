@@ -8,6 +8,15 @@
       "slug",
       "created",
       "updated"
+    ],
+    "events": [
+      "id",
+      "actor",
+      "app",
+      "subject_user",
+      "action",
+      "detail",
+      "created"
     ]
   },
   "timeoutMs": 2000,

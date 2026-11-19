@@ -2177,12 +2177,12 @@
  {
   "method": "GET",
   "path": "/api/drop/me",
-  "allow": false
+  "allow": true
  },
  {
   "method": "HEAD",
   "path": "/api/drop/me",
-  "allow": false
+  "allow": true
  },
  {
   "method": "OPTIONS",
@@ -2232,7 +2232,7 @@
  {
   "method": "POST",
   "path": "/api/drop/op",
-  "allow": false
+  "allow": true
  },
  {
   "method": "PUT",
@@ -2702,12 +2702,12 @@
  {
   "method": "GET",
   "path": "/api/collections/invites/records",
-  "allow": false
+  "allow": true
  },
  {
   "method": "HEAD",
   "path": "/api/collections/invites/records",
-  "allow": false
+  "allow": true
  },
  {
   "method": "OPTIONS",
@@ -2772,12 +2772,12 @@
  {
   "method": "GET",
   "path": "/api/collections/invites/records/aaaaaaaaaaaaaaa",
-  "allow": false
+  "allow": true
  },
  {
   "method": "HEAD",
   "path": "/api/collections/invites/records/aaaaaaaaaaaaaaa",
-  "allow": false
+  "allow": true
  },
  {
   "method": "OPTIONS",
@@ -3927,12 +3927,12 @@
  {
   "method": "GET",
   "path": "/api/collections/events/records",
-  "allow": false
+  "allow": true
  },
  {
   "method": "HEAD",
   "path": "/api/collections/events/records",
-  "allow": false
+  "allow": true
  },
  {
   "method": "OPTIONS",
@@ -3997,12 +3997,12 @@
  {
   "method": "GET",
   "path": "/api/collections/events/records/aaaaaaaaaaaaaaa",
-  "allow": false
+  "allow": true
  },
  {
   "method": "HEAD",
   "path": "/api/collections/events/records/aaaaaaaaaaaaaaa",
-  "allow": false
+  "allow": true
  },
  {
   "method": "OPTIONS",

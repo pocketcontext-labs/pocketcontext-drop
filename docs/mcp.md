@@ -4,7 +4,7 @@ Hosted Drop offers a remote Model Context Protocol (MCP) endpoint at `https://HO
 
 ## Tools
 
-Drop's tools are not there yet: the endpoint authenticates, answers the protocol and lists no tools. A later release adds exactly two, `drop_read` and `drop_write`, which call Drop's operations with the caller's own account, so every call is checked against that account's role and ownership on the server. No tool runs shell commands, reads host files or administers the server. A new tool needs the owner's approval.
+Drop's tools are not there yet: the endpoint authenticates, answers the protocol and lists no tools. A later release adds exactly two, `drop_read` and `drop_write`, which call Drop's operations ([Operations](ops.md), `POST /api/drop/op`) with the caller's own account, so every call is checked against that account's role and ownership on the server; `drop_write`'s op enum and table come from the registry in `internal/dropapi`. No tool runs shell commands, reads host files or administers the server. A new tool needs the owner's approval.
 
 ## Connect and consent
 

@@ -279,3 +279,40 @@ label input {
 .apps li.row {
   justify-content: space-between;
 }
+
+select {
+  font: inherit;
+  color: inherit;
+  padding: 8px 10px;
+  background: var(--field);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.add .row label,
+.apps li.user label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+}
+.add .row {
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.add .row input[type="number"],
+.apps li.user input[type="number"] {
+  width: 88px;
+}
+.apps li.user {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.invite-link {
+  margin-top: 12px;
+}
+
+.invite-link .endpoint {
+  overflow-wrap: anywhere;
+}

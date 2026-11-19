@@ -9,9 +9,12 @@ import (
 )
 
 // readableCollections are the collections whose record reads are public
-// routes; their list and view rules decide who sees which record. Record
-// writes are never public: Drop's writes go through its own operations.
-var readableCollections = map[string]bool{"apps": true}
+// routes; their list and view rules decide who sees which record (invites:
+// admins only; events: admins, and each account those of its own apps).
+// Record writes are never public: Drop's writes go through its own
+// operations. users records stay off (core's common denied list); admins
+// list accounts with the user.list operation.
+var readableCollections = map[string]bool{"apps": true, "invites": true, "events": true}
 
 var recordID = regexp.MustCompile(`^[a-z0-9]{15}$`)
 
@@ -24,7 +27,7 @@ func PublicRoute(method, p string) bool {
 	read := method == http.MethodGet || method == http.MethodHead
 	if read {
 		switch p {
-		case "/", "/api/bundle/auth-mode", "/api/bundle/version", "/api/realtime":
+		case "/", "/api/bundle/auth-mode", "/api/bundle/version", "/api/realtime", "/api/drop/me":
 			return true
 		}
 		if strings.HasPrefix(p, "/assets/") && appserver.ReaderAssetName(strings.TrimPrefix(p, "/assets/")) {
@@ -36,7 +39,9 @@ func PublicRoute(method, p string) bool {
 	}
 	if method == http.MethodPost {
 		switch p {
-		case "/api/realtime", "/api/collections/users/auth-refresh":
+		// /api/drop/op is every write: the operation framework checks the
+		// account, its role and the input (internal/dropserver/ops.go).
+		case "/api/realtime", "/api/collections/users/auth-refresh", "/api/drop/op":
 			return true
 		}
 	}

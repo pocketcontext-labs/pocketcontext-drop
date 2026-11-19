@@ -1,16 +1,33 @@
 // Hash routes of the reader (as in Crew): `#/apps` (the default), `#/connect`,
-// `#/login?otpId=…&otp=…` (the link of a sign-in email) and
-// `#/signin?next=/oauth/authorize?…` (OAuth consent sends the browser here to
-// sign in and come back).
+// `#/admin/users` (admins only; anyone else sees Not found),
+// `#/invite?email=…` (the sign-in URL of an invite: the sign-in page with the
+// address filled in), `#/login?otpId=…&otp=…` (the link of a sign-in email)
+// and `#/signin?next=/oauth/authorize?…` (OAuth consent sends the browser here
+// to sign in and come back).
 
-export type View = "apps" | "connect";
+export type View = "apps" | "connect" | "admin-users";
 export const viewHashes: Record<View, string> = {
   apps: "#/apps",
   connect: "#/connect",
+  "admin-users": "#/admin/users",
 };
 /** The page of a hash; anything unknown is the apps page. */
 export function viewFromHash(hash: string): View {
-  return /^#\/connect(?:\?.*)?$/.test(hash) ? "connect" : "apps";
+  if (/^#\/connect(?:\?.*)?$/.test(hash)) return "connect";
+  if (/^#\/admin\/users(?:\?.*)?$/.test(hash)) return "admin-users";
+  return "apps";
+}
+
+/** The address of an invite's sign-in URL (`#/invite?email=…`), or "". */
+export function inviteEmailFromHash(hash: string): string {
+  const match = /^#\/invite\?(.*)$/.exec(hash);
+  if (!match) return "";
+  const emails = new URLSearchParams(match[1]).getAll("email");
+  const email = emails.length === 1 ? emails[0].trim() : "";
+  // Printable ASCII without spaces, as the server accepts for invites.
+  return email.length <= 254 && /^[\x21-\x7e]+@[\x21-\x7e]+$/.test(email)
+    ? email
+    : "";
 }
 
 export type EmailLoginLink = { otpId: string; password: string };
@@ -97,7 +114,8 @@ export function loginReturnHash(hash: string): string | null {
     const target = oauthTargetFromHash(hash);
     return target ? signinHash(target) : null;
   }
-  return viewFromHash(hash) === "connect" ? viewHashes.connect : null;
+  const view = viewFromHash(hash);
+  return view === "apps" ? null : viewHashes[view];
 }
 
 export function rememberLoginReturn(hash: string) {
@@ -113,7 +131,8 @@ export function rememberLoginReturn(hash: string) {
 
 /** Only the exact forms loginReturnHash writes; anything else in storage is refused. */
 function isStoredReturn(hash: string): boolean {
-  if (hash === viewHashes.connect) return true;
+  if (hash === viewHashes.connect || hash === viewHashes["admin-users"])
+    return true;
   const target = oauthTargetFromHash(hash);
   return target !== null && hash === signinHash(target);
 }

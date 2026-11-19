@@ -1,15 +1,50 @@
 # Data model
 
-Drop stores one placeholder collection so far, `apps` (an owner, a name and a unique slug). A hosted Drop holds several accounts (the owner and, later, invited people; see [Hosting](hosting.md)), and each account sees and changes only its own apps. A local project, for developing the reader, keeps exactly one hidden account. Every request must prove which account it is. The schema lives in `pb_migrations/`; the rules below are enforced by PocketBase collection rules, by `pb_hooks/`, by Go hooks in `internal/dropserver` and by the SQL and search configuration in `server.json`.
+Drop stores accounts with roles (`users`), `invites`, `events`, the private idempotency keys of its operations (`op_keys`) and one placeholder collection, `apps` (an owner, a name and a unique slug). A hosted Drop holds several accounts (the owner and the people an admin invited; see [Hosting](hosting.md)), and each account sees and changes only its own apps. A local project, for developing the reader, keeps exactly one hidden account, an admin. Every request must prove which account it is. The schema lives in `pb_migrations/`; the rules below are enforced by PocketBase collection rules, by `pb_hooks/`, by Go hooks and operations in `internal/dropserver` and by the SQL and search configuration in `server.json`. Writes to `users`, `invites` and `events` happen only in Go: through Drop's operations ([Operations](ops.md), `POST /api/drop/op`) and the account hooks; every client rule that would write them is closed.
 
-The placeholder is temporary. Drop's real model (hosted multi-account mode with invites and roles, apps with owners, releases, secrets, nodes and placements) replaces it in later milestones; no database with `1810000100_apps.js` has been released, so those milestones may replace that migration instead of adding to it.
+The `apps` placeholder is temporary. Drop's real app model (apps with releases, secrets, nodes and placements) replaces it in later milestones; no database with `1810000100_apps.js` has been released, so those milestones may replace that migration instead of adding to it.
 
 ## The account
 
-- `users` is PocketBase's built-in auth collection, configured by `pb_migrations/1810000000_users.js`: password sign-in by email locally, 7-day tokens, no OAuth2, OTP or MFA. All list, create, update, delete and manage rules are closed; an account may view only its own record. The SQL reader never exposes it.
-- **Hosted** (`serve --hosted`, `Policy.Accounts` = `AccountsMulti`): core switches the collection to email sign-in (one-time codes and links, password sign-in off, 30-day sessions) and creates accounts itself: the owner (`DROP_OWNER_EMAIL`) on `--hosted-init`, and any other address only when `Hooks.AllowSignIn` (`internal/dropserver/hooks.go`) admits it. It admits nobody yet, so the owner is the only hosted account; invites come next. Core prunes accounts that never signed in (unverified). `Runtime.IsOwner` tells the owner apart; what each account may do is Drop's decision.
-- **Local**: one record, created by `init` through the local-key route `POST /api/bundle/account` in `pocketcontext-core` (`appserver/local.go`) (the PocketBase installer is disabled). Its email is the fixed internal address `account@drop.invalid` (`Identity.LocalAccountEmail`, mirrored as `ACCOUNT_EMAIL` in `ui/src/api.ts`); nobody chooses or sees it, and the reader and `login --url` ask only for the password. `password` changes the password, which also revokes earlier tokens. Core refuses to serve locally a database that has held hosted accounts, and to serve hosted a database that holds the local account.
-- `pb_hooks/account_access.js` accepts more than one account (core decides which exist), lets core delete an account that never signed in but refuses to delete one that has (on every path: REST, superuser, internal saves), turns an invalid bearer token into an explicit 401 instead of an anonymous request on every route (including the SQL and search endpoints), and delivers realtime messages only to authenticated clients.
+- `users` is PocketBase's built-in auth collection, configured by `pb_migrations/1810000000_users.js` (password sign-in by email locally, 7-day tokens, no OAuth2, OTP or MFA) and `1820000000_drop_users.js`, which adds Drop's fields and rules:
+
+  | Field | Type | Rules |
+  | --- | --- | --- |
+  | `role` | select `admin` or `user` | required; set at creation (below), changed only by `user.set` |
+  | `app_quota` | number 0-100 | the invite's quota (default 3); admins are exempt; changed by `user.set` |
+  | `suspended` | bool | changed by `user.set`; a suspended account cannot sign in or renew a session |
+  | `invited_by` | relation to `users` | the admin whose invite created the account |
+
+  The list rule and every create, update, delete and manage rule are closed; an account may view only its own record (`@request.auth.collectionName = 'users' && @request.auth.suspended = false && id = @request.auth.id`), and users records are never a public route of the hosted origin. Admins list accounts with the `user.list` operation. The auth rule is `suspended = false`. The SQL reader never exposes the collection.
+- **Hosted** (`serve --hosted`, `Policy.Accounts` = `AccountsMulti`): core switches the collection to email sign-in (one-time codes and links, password sign-in off, 30-day sessions) and creates accounts itself: the owner (`DROP_OWNER_EMAIL`) on `--hosted-init`, and any other address only when `Hooks.AllowSignIn` admits it. Drop is invite-only: `AllowSignIn` (`internal/dropserver/accounts.go`) admits an address only with an open (unused, unrevoked) and unexpired invite. Core prunes accounts that never signed in (unverified) after 15 minutes. `Runtime.IsOwner` tells the owner apart.
+- **Account creation** (`OnRecordCreate("users")`, model level, so it covers core's creation and every other save): the owner's address (captured from the hosted configuration before anything is created) and, locally, the local account get `role = admin`; any other address needs an open invite, else the save is refused (defence in depth behind `AllowSignIn`), and takes the invite's `role` and `app_quota`, with `invited_by`. Every account gets `emailVisibility = true` and `suspended = false`, and the invite is marked used (`used_at`, `used_by`). When core prunes an account that never signed in, its invite opens again (unless the address has a newer open invite), so the person can still sign in before it expires. At every start the owner is made an admin again.
+- **Local**: one record, created by `init` through the local-key route `POST /api/bundle/account` in `pocketcontext-core` (`appserver/local.go`) (the PocketBase installer is disabled). Its email is the fixed internal address `account@drop.invalid` (`Identity.LocalAccountEmail`, mirrored as `ACCOUNT_EMAIL` in `ui/src/api.ts`); nobody chooses or sees it, and the reader and `login --url` ask only for the password. It is an admin. `password` changes the password, which also revokes earlier tokens. Core refuses to serve locally a database that has held hosted accounts, and to serve hosted a database that holds the local account.
+- `pb_hooks/account_access.js` accepts more than one account (core decides which exist), lets core delete an account that never signed in but refuses to delete one that has (on every path: REST, superuser, internal saves; suspend it instead), turns an invalid bearer token into an explicit 401 instead of an anonymous request on every route (including the SQL and search endpoints), and delivers realtime messages only to authenticated clients.
+
+## Invites
+
+`pb_migrations/1820000100_invites.js` creates `invites`, written only by the `invite.*` operations and the account hooks:
+
+| Field | Type | Rules |
+| --- | --- | --- |
+| `email`, `email_lower` | text, at most 254 | the canonical (trimmed, lower-cased ASCII) address |
+| `role` | select `admin` or `user` | the role the account gets |
+| `app_quota` | number 0-100 | the quota the account gets |
+| `invited_by` | relation to `users` | required: the admin who invited |
+| `expires_at` | date | required: 1-30 days after creation (default 7) |
+| `used_at`, `used_by` | date, relation to `users` | set when the account is created |
+| `revoked_at` | date | set by `invite.revoke`, or when an expired invite is replaced |
+| `created`, `updated` | autodate | |
+
+A partial unique index allows one open invite per address (`email_lower` where `used_at` and `revoked_at` are empty); used and revoked invites stay as history. List and view rules: admins only (`@request.auth.collectionName = 'users' && @request.auth.suspended = false && @request.auth.role = 'admin'`); writes closed.
+
+## Events
+
+`pb_migrations/1820000900_events.js` creates `events`, one row per change made through an operation (and, later, the agent routes): `actor` (relation to `users`), `app` (relation to `apps`), `subject_user` (relation to `users`), `action` (the operation, such as `invite.create`), `detail` (JSON, at most 8 KiB, never a secret value) and `created`. Indexes on `(app, created)` and `(created)`. List and view rules: admins see every event, and an account the events of its own apps (`app.owner = @request.auth.id`); writes closed. A node relation (`actor_node`) comes with the nodes collection.
+
+## Idempotency keys
+
+`pb_migrations/1820000950_op_keys.js` creates `op_keys`, private to the server (every rule closed, never a public route or an SQL table): `key_hash` and `input_hash` (SHA-256, hidden), `op`, `result` (hidden JSON, empty for results shown only once), `stored` and `created`. A unique index on `key_hash`. Rows expire after 24 hours and are pruned hourly; see [Operations](ops.md#idempotency-keys).
 
 ## Apps
 
@@ -36,6 +71,7 @@ Reads go through the records API (`GET /api/collections/apps/records`, a public 
 | Table | Columns |
 | --- | --- |
 | `apps` | `id`, `owner`, `name`, `slug`, `created`, `updated` |
+| `events` | `id`, `actor`, `app`, `subject_user`, `action`, `detail`, `created` |
 
 `POST /api/context/query {"sql": "SELECT ..."}` (`drop sql`) runs one read-only `SELECT` and returns `{columns, rows, truncated}`; `GET /api/context/schema` (`drop schema`) lists the readable tables, columns and search indexes with `"permissionModel": "shared"`. Both require a `users` token. The vendored SQL reader (`internal/pocketcontext/sqlread`) reads the live working database through read-only connections and authorizes every statement with an SQLite authorizer: only listed columns of listed tables, an allowlist of functions, no writes, `PRAGMA`, `ATTACH`, `sqlite_schema`, `dbstat`, `pragma_*` table-valued functions, FTS shadow tables or auth collections. Results are bounded (`maxRows` 500, `maxBytes` 1 MiB, `timeoutMs` 2000); `truncated` says a limit was hit. The column allowlist is the only read restriction and SQL reads whole tables, whoever owns the rows, so these reads stay on the loopback server (the owner's local key) and are never public routes; list only what the owner may read and never secrets.
 
@@ -53,11 +89,11 @@ A built index may also restrict its rows with `"where"`, a predicate over the co
 
 ## Reader
 
-The reader (`ui/`) asks the server how people sign in (`GET /api/bundle/auth-mode`). On the hosted origin it signs in by email (`ui/src/Login.tsx`, from Crew: the address, then the six-digit code from the email, or the email's link at `#/login`, which asks to confirm); locally it uses the password, a single-use link from `open` or a one-time code from `login-code` (`ui/src/SignIn.tsx`). Hash routes (`ui/src/routes.ts`): `#/apps` (the default) lists the account's apps newest first through the records API and adds one (name and slug, local only); `#/connect` shows the MCP address and the account's connected apps with Disconnect; `#/signin?next=/oauth/authorize?…` is where the OAuth consent page sends a browser to sign in and come back. Realtime events on `apps` refresh the list. The header shows a hosted account's email, never the local account's address. It stores its session in `localStorage` under `drop.reader.auth`.
+The reader (`ui/`) asks the server how people sign in (`GET /api/bundle/auth-mode`). On the hosted origin it signs in by email (`ui/src/Login.tsx`, from Crew: the address, then the six-digit code from the email, or the email's link at `#/login`, which asks to confirm); locally it uses the password, a single-use link from `open` or a one-time code from `login-code` (`ui/src/SignIn.tsx`). Hash routes (`ui/src/routes.ts`): `#/apps` (the default) lists the account's apps newest first through the records API and adds one (name and slug, local only); `#/admin/users` (admins only; anyone else sees Not found) invites people (showing the sign-in link with Copy), lists and revokes invites and changes accounts' role, quota and suspension through Drop's operations (`ui/src/dropApi.ts`); `#/connect` shows the MCP address and the account's connected apps with Disconnect; `#/invite?email=…` (an invite's sign-in URL) opens the email sign-in with the address filled in; `#/signin?next=/oauth/authorize?…` is where the OAuth consent page sends a browser to sign in and come back. The reader asks `/api/drop/me` for the account's role to show the Users link. Realtime events on `apps` refresh the list. The header shows a hosted account's email, never the local account's address. It stores its session in `localStorage` under `drop.reader.auth`.
 
 ## Hosted origin
 
-The hosted origin answers only the allowlist in `internal/droppolicy/routes.go` (golden table `internal/droppolicy/testdata/public_routes.json`, test `internal/droppolicy/routes_test.go`) plus the routes core adds; see [Hosting](hosting.md). Record reads of `apps` are public routes and the collection rules decide what each account sees; record writes, `users` records, the SQL and search reads and all local administration are not. The frozen loopback route table `tests/testdata/public_routes.json` (`tests/public_routes.py`) is separate and unaffected.
+The hosted origin answers only the allowlist in `internal/droppolicy/routes.go` (golden table `internal/droppolicy/testdata/public_routes.json`, test `internal/droppolicy/routes_test.go`) plus the routes core adds; see [Hosting](hosting.md). Record reads of `apps`, `invites` and `events` are public routes and the collection rules decide what each account sees, as are `POST /api/drop/op` and `GET /api/drop/me` (the operation framework checks the account and its role); record writes, `users` records, `op_keys`, the SQL and search reads and all local administration are not. The frozen loopback route table `tests/testdata/public_routes.json` (`tests/public_routes.py`) is separate and unaffected.
 
 ## Databases from other releases
 
@@ -67,7 +103,7 @@ The hosted origin answers only the allowlist in `internal/droppolicy/routes.go` 
 
 To add a collection:
 
-1. **Migration.** Add `pb_migrations/<timestamp>_<name>.js` with a number above the existing ones. Never edit a migration that has shipped; add a new one. Give every rule `signedIn` (`@request.auth.id != '' && @request.auth.collectionName = 'users'`) narrowed to the requester's own records (an owner field), or `null` where clients must not act; never an empty rule, which would admit anonymous requests, and never a rule that lets one account read another's records. Add indexes for the reads you expect.
+1. **Migration.** Add `pb_migrations/<timestamp>_<name>.js` with a number above the existing ones. Drop's own collections close every write rule (`null`) and change records only through operations ([Operations](ops.md), "Adding an operation"); the placeholder `apps` is the exception until it is replaced. Never edit a migration that has shipped; add a new one. Give every rule `signedIn` (`@request.auth.id != '' && @request.auth.collectionName = 'users'`) narrowed to the requester's own records (an owner field), or `null` where clients must not act; never an empty rule, which would admit anonymous requests, and never a rule that lets one account read another's records. Add indexes for the reads you expect.
 2. **Hooks.** Only when the model needs them: in `pb_hooks/<name>.js` with a `<name>.pb.js` registration, set server-managed fields on create and refuse changes to immutable fields on every update path (`onRecordUpdate`, which covers REST, batch and internal saves). Hooks run in-process: no `$os` calls (`internal/appconfig/hooks_test.go` enforces it). The runtime is PocketBase's goja, not a browser or Node: there is no `URL` constructor and no `fetch`, so validate addresses with a regular expression. A `json` field's `e.record.get(name)` is the raw JSON bytes, not a parsed value (`Array.isArray` is true and `length` counts bytes): read it with `JSON.parse(String(e.record.get(name)))`, treating an empty string or `null` as unset.
 3. **SQL exposure.** List the readable columns in `server.json` `tables`, never secrets or auth collections. The list is the whole read policy of SQL: there are no per-requester filters, which is why SQL stays local.
 4. **Search.** For full-text search add an index under `search.indexes` with the collection, its text `columns` and a `snippetColumn` (and `where` to leave rows out); every column must also be listed under `tables`. Excerpts come only from the `snippetColumn`, so a match in another column is ranked but its words may not appear in the excerpt. Never list auth or system collections.

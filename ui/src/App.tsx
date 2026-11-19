@@ -1,11 +1,14 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { ACCOUNT_EMAIL, api, pb, type AuthMode } from "./api";
+import AdminUsers from "./AdminUsers";
 import Apps from "./Apps";
 import Brand from "./Brand";
 import Connect from "./Connect";
+import { dropApi, type Me } from "./dropApi";
 import Login from "./Login";
 import {
   browserNavigation,
+  inviteEmailFromHash,
   isSigninHash,
   oauthTargetFromHash,
   readEmailLoginLink,
@@ -66,7 +69,8 @@ function SignInGate() {
       active = false;
     };
   }, [attempt]);
-  if (mode === "email") return <Login />;
+  if (mode === "email")
+    return <Login initialEmail={inviteEmailFromHash(location.hash)} />;
   if (mode === "password") return <SignIn />;
   return (
     <Status>
@@ -89,8 +93,50 @@ function SignInGate() {
   );
 }
 
+function NotFound() {
+  return (
+    <section className="panel" aria-labelledby="not-found-title">
+      <h2 id="not-found-title">Not found</h2>
+      <p>
+        This page does not exist. <a href={viewHashes.apps}>Go to your apps</a>.
+      </p>
+    </section>
+  );
+}
+
 function Workspace({ view }: { view: View }) {
   const email = accountEmail();
+  // The account's role decides which pages it has; the server checks it on
+  // every operation regardless.
+  const [me, setMe] = useState<Me | null>(null);
+  const [meFailed, setMeFailed] = useState(false);
+  useEffect(() => {
+    let active = true;
+    dropApi.me().then(
+      (value) => {
+        if (active) setMe(value);
+      },
+      () => {
+        if (active) setMeFailed(true);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, []);
+  let page;
+  if (view === "connect") page = <Connect />;
+  else if (view === "admin-users")
+    page = me?.admin ? (
+      <AdminUsers me={me} />
+    ) : me || meFailed ? (
+      <NotFound />
+    ) : (
+      <p role="status" className="quiet">
+        Loading…
+      </p>
+    );
+  else page = <Apps />;
   return (
     <div className="app">
       <header className="topbar">
@@ -102,6 +148,14 @@ function Workspace({ view }: { view: View }) {
           >
             Apps
           </a>
+          {me?.admin && (
+            <a
+              href={viewHashes["admin-users"]}
+              aria-current={view === "admin-users" ? "page" : undefined}
+            >
+              Users
+            </a>
+          )}
           <a
             href={viewHashes.connect}
             aria-current={view === "connect" ? "page" : undefined}
@@ -120,9 +174,7 @@ function Workspace({ view }: { view: View }) {
           </button>
         </div>
       </header>
-      <main className="content">
-        {view === "connect" ? <Connect /> : <Apps />}
-      </main>
+      <main className="content">{page}</main>
     </div>
   );
 }

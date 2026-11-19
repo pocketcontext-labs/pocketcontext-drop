@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  inviteEmailFromHash,
   loginReturnHash,
   oauthTargetFromHash,
   readEmailLoginLink,
@@ -15,8 +16,15 @@ describe("routes", () => {
   it("knows its pages and defaults to the apps", () => {
     expect(viewFromHash("#/connect")).toBe("connect");
     expect(viewFromHash("#/apps")).toBe("apps");
-    expect(viewFromHash("#/admin/users")).toBe("apps");
+    expect(viewFromHash("#/admin/users")).toBe("admin-users");
+    expect(viewFromHash("#/admin/nodes")).toBe("apps");
     expect(viewFromHash("")).toBe("apps");
+  });
+  it("reads the address of an invite's sign-in URL", () => {
+    expect(inviteEmailFromHash("#/invite?email=friend%40example.test")).toBe("friend@example.test");
+    expect(inviteEmailFromHash("#/invite?email=a%40b&email=c%40d")).toBe("");
+    expect(inviteEmailFromHash("#/invite?email=not-an-address")).toBe("");
+    expect(inviteEmailFromHash("#/apps?email=friend%40example.test")).toBe("");
   });
   it("reads only well-formed email links", () => {
     expect(readEmailLoginLink("#/login?otpId=abc123&otp=12345678")).toEqual({ otpId: "abc123", password: "12345678" });

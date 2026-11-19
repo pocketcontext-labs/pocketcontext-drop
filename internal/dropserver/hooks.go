@@ -1,9 +1,11 @@
 // Package dropserver is Drop's server-side product code: the hooks core calls
-// at each point the server diverges, and (in later milestones) Drop's
-// operations, agent routes and account rules.
+// at each point the server diverges, the account rules (accounts.go) and the
+// operation framework behind POST /api/drop/op (ops.go), with its operations
+// (ops_*.go). Later milestones add the agent routes.
 package dropserver
 
 import (
+	"context"
 	"path/filepath"
 
 	"ganigeorgiev.com/pocketbase/pocketbase/core"
@@ -16,26 +18,30 @@ import (
 // Hooks returns the product code at each point the server diverges.
 func Hooks() appserver.Hooks {
 	return appserver.Hooks{
+		PreRegister: func(app core.App, _ *appserver.Project, opts appserver.ServeOptions) error {
+			rememberAccounts(app, opts)
+			return nil
+		},
 		Register: func(app core.App, ctx appserver.RegisterContext) error {
 			// The SQL and search reads (owner's local key only; never public).
 			server.RegisterDatabase(app, filepath.Join(ctx.AppDir, "server.json"), ctx.LivePath)
 			bindAppOwnership(app)
+			bindAccounts(app)
+			app.OnServe().BindFunc(func(e *core.ServeEvent) error {
+				registerOpRoutes(e)
+				return e.Next()
+			})
 			return nil
+		},
+		// After core has checked or created the owner.
+		OnServeStart: func(e *core.ServeEvent, _ *appserver.Project) error {
+			return ensureOwnerAdmin(e.App)
+		},
+		Background: func(ctx context.Context, app core.App) {
+			runOpKeyPruning(ctx, app)
 		},
 		AllowSignIn: AllowSignIn,
 	}
-}
-
-// AllowSignIn decides whether a hosted sign-in for an address without an
-// account creates one. Core asks it for every address that passes its limits,
-// existing accounts (the owner included) too, and ignores the answer for
-// those, so the owner always signs in.
-//
-// TODO(M3): allow an address that holds an open, unexpired invite. Until
-// invites exist nobody but the owner can sign in, so no other account is
-// ever created.
-func AllowSignIn(core.App, string) (bool, error) {
-	return false, nil
 }
 
 // bindAppOwnership makes every app belong to the account that created it. The

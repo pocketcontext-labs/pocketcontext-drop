@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type ConnectedApp, type Connection } from "./api";
+import CopyButton from "./CopyButton";
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
 
@@ -67,24 +68,6 @@ function ConnectedApps() {
         </ul>
       )}
     </section>
-  );
-}
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      type="button"
-      className="secondary"
-      onClick={() =>
-        void navigator.clipboard?.writeText(text).then(
-          () => setCopied(true),
-          () => setCopied(false),
-        )
-      }
-    >
-      {copied ? "Copied" : "Copy"}
-    </button>
   );
 }
 

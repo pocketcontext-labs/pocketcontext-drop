@@ -77,8 +77,13 @@ func NewHosted(t *testing.T, opts Options) *Hosted {
 	t.Helper()
 	root := Root(t)
 	app := core.NewBaseApp(core.BaseAppConfig{DataDir: t.TempDir()})
+	hooks := dropserver.Hooks()
+	// As the server does: before maintenance and the JS hooks, then Register.
+	if err := hooks.PreRegister(app, nil, appserver.ServeOptions{Hosted: true, HostedConfig: HostedConfig()}); err != nil {
+		t.Fatal(err)
+	}
 	jsvm.MustRegister(app, appconfig.Runtime.HooksConfig(root, ""))
-	if err := dropserver.Hooks().Register(app, appserver.RegisterContext{AppDir: root, LivePath: filepath.Join(app.DataDir(), "data.db")}); err != nil {
+	if err := hooks.Register(app, appserver.RegisterContext{AppDir: root, LivePath: filepath.Join(app.DataDir(), "data.db")}); err != nil {
 		t.Fatal(err)
 	}
 	if err := app.Bootstrap(); err != nil {
@@ -301,4 +306,106 @@ func (h *Hosted) MCP(authorization, method string, params any) *httptest.Respons
 	w := httptest.NewRecorder()
 	h.Server.Public().ServeHTTP(w, r)
 	return w
+}
+
+// Invite records an open invite for an address as an admin's invite.create
+// would (role "user" or "admin", the default quota, seven days), straight in
+// the database, and returns its id.
+func (h *Hosted) Invite(email, role string) string {
+	h.T.Helper()
+	collection, err := h.App.FindCollectionByNameOrId("invites")
+	if err != nil {
+		h.T.Fatal(err)
+	}
+	invite := core.NewRecord(collection)
+	invite.Set("email", strings.ToLower(email))
+	invite.Set("email_lower", strings.ToLower(email))
+	invite.Set("role", role)
+	invite.Set("app_quota", 3)
+	invite.Set("invited_by", h.Owner().Id)
+	invite.Set("expires_at", time.Now().UTC().Add(7*24*time.Hour))
+	if err := h.App.Save(invite); err != nil {
+		h.T.Fatal(err)
+	}
+	return invite.Id
+}
+
+// User creates a signed-in (verified) account for an address with a role, as
+// an invite and a first sign-in would, and returns it with an auth token.
+func (h *Hosted) User(email, role string) (*core.Record, string) {
+	h.T.Helper()
+	h.Invite(email, role)
+	users, err := h.App.FindCollectionByNameOrId("users")
+	if err != nil {
+		h.T.Fatal(err)
+	}
+	user := core.NewRecord(users)
+	user.SetEmail(email)
+	user.SetRandomPassword()
+	user.SetVerified(true)
+	if err := h.App.Save(user); err != nil {
+		h.T.Fatal(err)
+	}
+	return user, h.Token(user)
+}
+
+// Token issues an auth token for an account.
+func (h *Hosted) Token(user *core.Record) string {
+	h.T.Helper()
+	token, err := user.NewAuthToken()
+	if err != nil {
+		h.T.Fatal(err)
+	}
+	return token
+}
+
+// OpResult is one answer of POST /api/drop/op.
+type OpResult struct {
+	Status   int
+	Result   map[string]any
+	Replayed bool
+	Error    map[string]any // the error body when Status is not 200
+	Raw      string
+}
+
+// Op calls one operation through the public handler with an Authorization
+// value (empty for anonymous) and an optional idempotency key.
+func (h *Hosted) Op(authorization, op string, input any, idempotencyKey ...string) OpResult {
+	h.T.Helper()
+	body := map[string]any{"op": op}
+	if input != nil {
+		body["input"] = input
+	}
+	if len(idempotencyKey) > 0 {
+		body["idempotency_key"] = idempotencyKey[0]
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		h.T.Fatal(err)
+	}
+	w := h.Request(http.MethodPost, "/api/drop/op", authorization, string(raw))
+	out := OpResult{Status: w.Code, Raw: w.Body.String()}
+	if w.Code == http.StatusOK {
+		var ok struct {
+			Result   map[string]any `json:"result"`
+			Replayed bool           `json:"replayed"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &ok); err != nil {
+			h.T.Fatalf("%s answer %s: %v", op, w.Body, err)
+		}
+		out.Result, out.Replayed = ok.Result, ok.Replayed
+	} else {
+		_ = json.Unmarshal(w.Body.Bytes(), &out.Error)
+	}
+	return out
+}
+
+// MustOp is Op that fails the test unless the operation succeeds.
+func (h *Hosted) MustOp(authorization, op string, input any) map[string]any {
+	h.T.Helper()
+	r := h.Op(authorization, op, input)
+	if r.Status != http.StatusOK {
+		h.T.Fatalf("%s: %d %s", op, r.Status, r.Raw)
+	}
+	return r.Result
 }

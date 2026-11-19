@@ -284,9 +284,13 @@ def scenario(pc):
     check(pc.json('list') == [], 'a new project has no apps')
     schema = pc.json('schema')
     tables = {t['name']: sorted(c['name'] for c in t['columns']) for t in schema['tables']}
-    check(tables == {'apps': ['created', 'id', 'name', 'owner', 'slug', 'updated']}, f'the SQL schema exposes only apps: {tables}')
+    check(tables == {'apps': ['created', 'id', 'name', 'owner', 'slug', 'updated'],
+                     'events': ['action', 'actor', 'app', 'created', 'detail', 'id', 'subject_user']},
+          f'the SQL schema exposes only apps and events: {tables}')
     check(schema['permissionModel'] == 'shared' and schema['search']['indexes'] == ['apps'] and 'isolation' not in schema['search']
           and 'snapshotLimits' not in schema, 'reads use the live database and a shared apps index')
+
+    accounts_scenario(pc, me['id'])
 
     first = add(pc, 'Hello from the espresso machine ✓')
     second = pc.json('add', '-', '--slug', 'cafe-app', stdin='Café app for everyone 😀\n')
@@ -403,6 +407,36 @@ def scenario(pc):
     every = pc.json('skill')
     check(every['installed']['claude-code'] == str(target) and every['installed']['codex'].startswith('skipped')
           and every['installed']['antigravity'].startswith('skipped'), 'skill skips agents whose configuration folder is missing')
+
+
+def accounts_scenario(pc, account_id):
+    """Operations as the local account, which is an admin: invites, accounts, op and idempotency keys."""
+    me = pc.json('op', 'me')
+    check(me['id'] == account_id and me['role'] == 'admin' and me['admin'] and me['owner'], f'the local account is the admin owner: {me}')
+    created = pc.json('invite', 'create', 'Friend@Example.test', '--quota', '2')
+    invite = created['invite']
+    check(invite['email'] == 'friend@example.test' and invite['role'] == 'user' and invite['app_quota'] == 2 and invite['state'] == 'open',
+          f'invite create invites a lower-cased address: {invite}')
+    check(created['sign_in_url'] == pc.url + '/#/invite?email=friend%40example.test', f"the sign-in URL opens the reader: {created['sign_in_url']}")
+    again = pc.run('invite', 'create', 'friend@example.test', expect=4)
+    check('invite_exists' in again.stderr, 'a second open invite for the address is refused with exit 4')
+    pc.run('invite', 'create', 'not-an-address', expect=1)
+    listed = pc.json('invite', 'list', '--state', 'open')
+    check([i['id'] for i in listed['invites']] == [invite['id']] and not listed['has_more'], 'invite list shows the open invite')
+    check(pc.json('invite', 'revoke', invite['id'])['invite']['state'] == 'revoked', 'invite revoke closes it')
+    users = pc.json('user', 'list')['users']
+    check(len(users) == 1 and users[0]['id'] == account_id and users[0]['owner'], 'user list shows the one local account')
+    pc.run('user', 'set', account_id, '--role', 'user', expect=1)
+    pc.run('user', 'set', account_id, expect=2)
+    key_input = '{"email":"retry@example.test"}'
+    first = pc.json('op', 'invite.create', key_input, '--idempotency-key', 'e2e-1')
+    second = pc.json('op', 'invite.create', '-', '--idempotency-key', 'e2e-1', stdin=key_input)
+    check(first['invite']['id'] == second['invite']['id'], 'a retried operation with its idempotency key replays the first result')
+    pc.run('op', 'invite.create', '{"email":"other@example.test"}', '--idempotency-key', 'e2e-1', expect=4)
+    pc.run('op', 'no.such', expect=2)
+    rows = pc.json('sql', "SELECT action, actor FROM events ORDER BY created")['rows']
+    check([r[0] for r in rows] == ['invite.create', 'invite.revoke', 'invite.create'] and all(r[1] == account_id for r in rows),
+          f'each change wrote one event: {rows}')
 
 
 def single_user_scenario(pc):
@@ -626,6 +660,7 @@ def remote_scenario(pc, r):
     remote_me = r.json('whoami')
     check(remote_me == {'id': me, 'url': pc.url}, 'remote whoami reports the same account without a database')
     check(app_names(r.json('list')) == app_names(pc.json('list')), 'the remote client sees the same apps')
+    check(r.json('op', 'me')['id'] == remote_me['id'], 'operations work with --url')
     added = add(r, 'Rooibosquartz app from the other computer')
     check(app_names(r.json('list'))[0] == 'Rooibosquartz app from the other computer', 'remote list shows the remote app')
     check([g['id'] for g in r.json('search', 'rooibosquartz')['apps']] == [added['id']], 'remote search finds the remote app')
@@ -754,6 +789,15 @@ def hosted_scenario(pc, r):
         check(hosted_request(port, 'POST', '/mcp', {})[0] == 401, 'MCP requires OAuth')
         status, body = hosted_request(port, 'POST', '/api/collections/users/request-otp', {'email': 'stranger@example.test'})
         check(status == 200 and 'otpId' in json.loads(body), 'an unknown address gets the ordinary sign-in answer')
+        check(hosted_request(port, 'POST', '/api/drop/op', {'op': 'me'})[0] == 401, 'operations require a session')
+        invited = subprocess.run([str(pc.binary), '--db', str(db), 'invite', 'create', 'invitee@example.test', '--role', 'admin'],
+                                 capture_output=True, text=True, encoding='utf-8', env=r.env, timeout=60)
+        check(invited.returncode == 0, f'the owner invites through the private socket: {invited.stderr}')
+        check(json.loads(invited.stdout)['sign_in_url'] == f'https://{HOSTED_DOMAIN}/#/invite?email=invitee%40example.test',
+              'the sign-in URL is on the hosted domain')
+        # The sign-in email cannot be sent here (no SMTP server), but the
+        # invited address gets its account before the send.
+        hosted_request(port, 'POST', '/api/collections/users/request-otp', {'email': 'Invitee@Example.test'})
     finally:
         server.send_signal(signal.SIGTERM)
         try:
@@ -764,8 +808,10 @@ def hosted_scenario(pc, r):
         output.close()
     check(server.returncode == 0, 'the hosted server stops cleanly')
     with closing(sqlite3.connect(db)) as conn:
-        users = conn.execute('SELECT email FROM users').fetchall()
-    check(users == [('owner@example.test',)], 'hosted initialization created only the owner, and nobody else got an account')
+        users = conn.execute('SELECT email, role FROM users ORDER BY created').fetchall()
+        used = conn.execute("SELECT count(*) FROM invites WHERE used_by != ''").fetchone()[0]
+    check(users == [('owner@example.test', 'admin'), ('invitee@example.test', 'admin')] and used == 1,
+          f'only the owner (an admin) and the invited address (with the invite\'s role) got accounts: {users}')
 
 
 def codes_scenario(pc, r):

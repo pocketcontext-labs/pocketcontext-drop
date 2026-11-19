@@ -72,6 +72,9 @@ func TestDataHelpDocumentsShapes(t *testing.T) {
 		"add":    {`"id"`, `"name"`, `"slug"`, `"created"`, "80"},
 		"list":   {`"name"`, `"slug"`, "500"},
 		"search": {`"generation"`, `"apps"`, `"nextOffset"`, "exit 4"},
+		"invite": {`"invite"`, `"sign_in_url"`, `"invites"`, "no email is sent", "exit 4"},
+		"user":   {`"users"`, "app_quota", "suspended"},
+		"op":     {"--idempotency-key", "exit 4", "docs/ops.md"},
 	} {
 		for _, want := range wants {
 			if !strings.Contains(commandHelp[command].text, want) {

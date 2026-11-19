@@ -144,6 +144,26 @@ try {
   await page.getByRole('link', { name: 'Apps' }).click();
   await page.getByRole('heading', { name: 'Your apps' }).waitFor();
   ok('the Connect page says remote MCP is hosted only, and the Apps link returns');
+
+  // The local account is an admin: it has the Users page.
+  await page.getByRole('link', { name: 'Users' }).click();
+  await page.getByRole('heading', { name: 'Users', exact: true }).waitFor();
+  assert.equal(new URL(page.url()).hash, '#/admin/users');
+  await page.getByLabel('Email').fill('friend@example.test');
+  await page.getByRole('button', { name: 'Invite' }).click();
+  await page.getByText(`${origin}/#/invite?email=friend%40example.test`, { exact: true }).waitFor();
+  const invites = page.getByRole('list', { name: 'Invites, newest first' });
+  await invites.getByText('friend@example.test', { exact: true }).waitFor();
+  page.once('dialog', dialog => void dialog.accept());
+  await invites.getByRole('button', { name: 'Revoke' }).click();
+  await invites.getByText(/Revoked/).waitFor();
+  const cliInvites = await cli(['invite', 'list']);
+  assert.equal(cliInvites.invites[0].state, 'revoked', 'the CLI sees the invite revoked in the reader');
+  await page.getByRole('button', { name: 'Suspend' }).first().isDisabled().then(disabled => assert(disabled, 'the owner cannot be suspended'));
+  await page.screenshot({ path: path.join(screenshots, 'admin-users-light.png'), fullPage: true });
+  await page.getByRole('link', { name: 'Apps' }).click();
+  await page.getByRole('heading', { name: 'Your apps' }).waitFor();
+  ok('the admin invites from the Users page, gets the sign-in link and revokes the invite');
   await page.screenshot({ path: path.join(screenshots, 'reader-light.png'), fullPage: true });
 
   const lightBackground = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);

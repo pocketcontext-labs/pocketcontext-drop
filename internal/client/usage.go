@@ -47,6 +47,19 @@ Apps (reads use SQL and full-text search; every request needs a sign-in):
   sql|query SQL|-                    run one read-only SELECT
   whoami | schema                    the session's account ID; the readable schema
 
+Accounts (admins; Drop is invite-only, and no invite email is sent):
+  invite create EMAIL [--role user|admin] [--quota N] [--expires-days N]
+                                     invite an address; prints the sign-in URL to share
+  invite list [--state all|open]     invites, newest first, with their state
+  invite revoke INVITE_ID            close an open invite
+  user list                          accounts with role, quota and suspension
+  user set USER_ID|EMAIL [--role user|admin] [--quota N] [--suspend | --unsuspend]
+                                     change an account
+  op NAME [INPUT_JSON|-] [--idempotency-key KEY]
+                                     call any operation (docs/ops.md)
+  On a hosted server of this machine these act as the owner through the
+  private socket.
+
 Remote client (the server runs on another computer, reached through an SSH
 forward of the same port; --url URL or DROP_URL):
   login --url URL --code-stdin
@@ -63,7 +76,7 @@ forward of the same port; --url URL or DROP_URL):
                        computer)
   skill --url URL [--agent A] [--dir DIR]
                        install the agent skill for the remote server
-  App commands work with --url. URL must be http://127.0.0.1:PORT or
+  App, account and op commands work with --url. URL must be http://127.0.0.1:PORT or
   http://localhost:PORT. Remote mode never creates a database or starts a
   server; serve, start, ensure-running, stop, flush, recover, init, password
   and login-code are not available with --url.

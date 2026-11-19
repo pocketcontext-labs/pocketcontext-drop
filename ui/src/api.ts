@@ -91,12 +91,22 @@ pb.send = async <T = unknown>(
       throw new Error("Session changed");
     return result;
   } catch (error) {
-    const status = (error as { status?: number }).status;
+    const { status, response } = error as {
+      status?: number;
+      response?: { code?: unknown };
+    };
+    // An operation the account's role does not allow is refused with 403
+    // "forbidden"; the session itself is fine.
+    const refusedOperation =
+      path === "/api/drop/op" &&
+      status === 403 &&
+      response?.code === "forbidden";
     if (
       generation === sessionGeneration &&
       token &&
       token === authStore.token &&
-      (status === 401 || status === 403)
+      (status === 401 || status === 403) &&
+      !refusedOperation
     )
       authStore.clear();
     throw error;

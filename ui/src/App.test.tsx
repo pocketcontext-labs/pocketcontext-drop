@@ -2,11 +2,16 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { api, pb } from "./api";
 import App from "./App";
+import { dropApi, type Me } from "./dropApi";
 import { browserNavigation } from "./routes";
 
 const token = `synthetic.${btoa(JSON.stringify({ exp: 4102444800 }))}.signature`;
 const user = { id: "user00000000001", collectionId: "_pb_users_auth_", collectionName: "users", email: "owner@example.test" };
-beforeEach(() => history.replaceState(null, "", "/"));
+const member: Me = { id: user.id, email: user.email, role: "user", admin: false, owner: false, app_quota: 3 };
+beforeEach(() => {
+  history.replaceState(null, "", "/");
+  vi.spyOn(dropApi, "me").mockResolvedValue(member);
+});
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -100,4 +105,40 @@ it("does not treat another collection's token as a reader session", async () => 
   render(<App />);
   act(() => pb.authStore.save(token, { ...user, collectionName: "_superusers" }));
   expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
+});
+
+it("shows admins the Users page and everyone else Not found there", async () => {
+  history.replaceState(null, "", "/#/admin/users");
+  pb.authStore.save(token, user);
+  vi.spyOn(api, "refreshSession").mockResolvedValue();
+  render(<App />);
+  expect(await screen.findByRole("heading", { name: "Not found" })).toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Users" })).not.toBeInTheDocument();
+  cleanup();
+  vi.spyOn(dropApi, "me").mockResolvedValue({ ...member, role: "admin", admin: true, owner: true });
+  vi.spyOn(dropApi, "listUsers").mockResolvedValue([
+    { id: user.id, email: user.email, role: "admin", app_quota: 3, suspended: false, owner: true, signed_in: true, invited_by: "", created: "2026-11-19 10:00:00.000Z" },
+  ]);
+  vi.spyOn(dropApi, "listInvites").mockResolvedValue([]);
+  const create = vi.spyOn(dropApi, "createInvite").mockResolvedValue({
+    invite: { id: "inv000000000001", email: "friend@example.test", role: "user", app_quota: 3, state: "open", invited_by: user.id, expires_at: "2026-11-26 10:00:00.000Z", used_at: "", used_by: "", revoked_at: "", created: "2026-11-19 10:00:00.000Z" },
+    sign_in_url: "https://drop.example.test/#/invite?email=friend%40example.test",
+  });
+  render(<App />);
+  expect(await screen.findByRole("heading", { name: "Users" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Users" })).toBeInTheDocument();
+  expect(await screen.findByText("No invites yet.")).toBeInTheDocument();
+  // The owner's own role and suspension cannot be changed.
+  expect(screen.getByRole("button", { name: "Suspend" })).toBeDisabled();
+  fireEvent.change(screen.getByLabelText("Email"), { target: { value: "friend@example.test" } });
+  fireEvent.click(screen.getByRole("button", { name: "Invite" }));
+  expect(await screen.findByText("https://drop.example.test/#/invite?email=friend%40example.test")).toBeInTheDocument();
+  expect(create).toHaveBeenCalledWith({ email: "friend@example.test", role: "user", app_quota: 3 });
+});
+
+it("fills in the address of an invite's sign-in URL", async () => {
+  history.replaceState(null, "", "/#/invite?email=friend%40example.test");
+  vi.spyOn(api, "loginMode").mockResolvedValue("email");
+  render(<App />);
+  expect(await screen.findByLabelText("Email")).toHaveValue("friend@example.test");
 });
