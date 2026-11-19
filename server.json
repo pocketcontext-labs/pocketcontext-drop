@@ -1,0 +1,41 @@
+{
+  "authCollection": "users",
+  "tables": {
+    "apps": [
+      "id",
+      "name",
+      "slug",
+      "created",
+      "updated"
+    ]
+  },
+  "public": {
+    "collections": [
+      "apps"
+    ]
+  },
+  "timeoutMs": 2000,
+  "maxRows": 500,
+  "maxBytes": 1048576,
+  "tracing": {
+    "enabled": false,
+    "service": "drop",
+    "delivery": "buffer",
+    "captureSql": true,
+    "maxBytes": 16777216
+  },
+  "search": {
+    "maxIndexBytes": 8388608,
+    "cacheBytes": 67108864,
+    "indexes": {
+      "apps": {
+        "collection": "apps",
+        "columns": [
+          "name",
+          "slug"
+        ],
+        "snippetColumn": "name"
+      }
+    }
+  }
+}

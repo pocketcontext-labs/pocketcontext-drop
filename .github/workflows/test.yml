@@ -1,0 +1,73 @@
+name: Test
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        # Drop is Linux only (amd64 and arm64).
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Build and test the reader
+        working-directory: ui
+        run: |
+          npm install --global pnpm@10.33.2
+          pnpm install --frozen-lockfile
+          pnpm typecheck
+          pnpm test
+          pnpm build
+      - name: Shared library pin and build tags
+        run: |
+          ! grep -q '^replace' go.mod
+          test -z "$(go env GOWORK | grep -v '^off$')"
+          grep -Eq '^[[:space:]]*github.com/pocketcontext-labs/pocketcontext-core v[0-9]+\.[0-9]+\.[0-9]+$' go.mod
+          go mod download github.com/pocketcontext-labs/pocketcontext-core
+          diff build-tags.txt "$(go list -m -f '{{.Dir}}' github.com/pocketcontext-labs/pocketcontext-core)/build-tags.txt"
+      - name: Development launcher tests
+        run: node --test tests/dev_launcher.test.mjs
+      - name: Unit tests
+        run: CGO_ENABLED=1 go test -tags "$(cat build-tags.txt)" ./...
+      - name: Release script tests
+        run: python3 -B -m unittest discover -s tests -p test_release.py
+      - name: Build the binary
+        run: |
+          CGO_ENABLED=1 go build -trimpath -tags "$(cat build-tags.txt)" -o bin/drop ./cmd/drop
+          echo "EXE=bin/drop" >> "$GITHUB_ENV"
+      # Any other system builds only cmd/drop/main_other.go, which refuses to run.
+      - name: Other systems are refused
+        run: |
+          for os in darwin windows freebsd; do
+            test "$(GOOS=$os go list -f '{{join .GoFiles " "}}' ./cmd/drop)" = main_other.go
+            ! GOOS=$os go list -deps ./cmd/drop | grep -q pocketcontext-drop/internal
+          done
+      - name: Development reader browser regression
+        run: |
+          pnpm --dir ui exec playwright install --with-deps chromium
+          node tests/ui_dev_browser.mjs --binary "$EXE"
+          node tests/reader_ui_browser.mjs --binary "$EXE"
+      - name: Name check of the repository and binary
+        run: python3 tests/name_check.py --binary "$EXE"
+      # Fails on any template identity left in the repository or the binary.
+      - name: Identity check of the repository and binary
+        run: python3 tests/identity_check.py --binary "$EXE"
+      - name: Frozen anonymous route table
+        run: python3 tests/public_routes.py --binary "$EXE"
+      - name: End-to-end test with synthetic apps
+        run: python3 tests/e2e.py --binary "$EXE"

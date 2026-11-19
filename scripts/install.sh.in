@@ -1,0 +1,131 @@
+#!/bin/sh
+# Published installers contain a fixed release version. Download all assets from
+# that version, even if another release becomes latest while this script runs.
+
+drop_fail() {
+    printf 'drop: %s\n' "$*" >&2
+    exit 1
+}
+
+drop_cleanup() {
+    if [ -n "$pc_stage" ]; then
+        rm -f "$pc_stage"
+    fi
+    if [ -n "$pc_tmp" ]; then
+        rm -rf "$pc_tmp"
+    fi
+}
+
+drop_install() (
+    # Keep every action inside this function. A truncated download cannot run
+    # the installer before the shell has received its complete function body.
+    set -f
+    umask 077
+    [ "$#" -le 1 ] || drop_fail 'usage: install.sh DIRECTORY'
+    pc_requested_dir=${1:-}
+    pc_version='@VERSION@'
+    case "$pc_version" in
+        ''|*[!0-9.]*|.*|*..*|*.) drop_fail 'invalid release version' ;;
+    esac
+    pc_saved_ifs=$IFS
+    IFS=.
+    set -- $pc_version
+    IFS=$pc_saved_ifs
+    [ "$#" -eq 3 ] || drop_fail 'invalid release version'
+    case "${HOME:-}" in
+        /*) ;;
+        *) drop_fail 'HOME must be an absolute directory path' ;;
+    esac
+    for pc_tool in curl tar uname mktemp mkdir chmod mv rm; do
+        command -v "$pc_tool" >/dev/null 2>&1 || drop_fail "required command is missing: $pc_tool"
+    done
+    command -v sha256sum >/dev/null 2>&1 || drop_fail 'required command is missing: sha256sum'
+    pc_os=$(uname -s) || drop_fail 'could not detect operating system'
+    pc_arch=$(uname -m) || drop_fail 'could not detect architecture'
+    case "$pc_os/$pc_arch" in
+        Linux/x86_64|Linux/amd64) pc_platform=linux_amd64 ;;
+        Linux/aarch64|Linux/arm64) pc_platform=linux_arm64 ;;
+        *) drop_fail "unsupported platform: $pc_os/$pc_arch (Drop runs on Linux amd64 and arm64 only)" ;;
+    esac
+    # The binary belongs in the project folder beside drop.db. There is no
+    # default folder: the caller names it.
+    pc_bindir=${pc_requested_dir:-${DROP_INSTALL_DIR:-}}
+    [ -n "$pc_bindir" ] || drop_fail 'name the installation directory (the project folder): install.sh DIRECTORY or DROP_INSTALL_DIR=DIRECTORY'
+    case "$pc_bindir" in
+        /*) ;;
+        *) drop_fail 'the installation directory must be an absolute path' ;;
+    esac
+    pc_destination=$pc_bindir/drop
+    if [ -L "$pc_destination" ] || { [ -e "$pc_destination" ] && [ ! -f "$pc_destination" ]; }; then
+        drop_fail "destination must be a regular file or absent: $pc_destination"
+    fi
+    pc_archive=drop_${pc_version}_${pc_platform}.tar.gz
+    pc_base=https://github.com/pocketcontext-labs/pocketcontext-drop/releases/download/v${pc_version}
+    pc_stage=
+    pc_tmp=$(mktemp -d "${TMPDIR:-/tmp}/drop-install.XXXXXXXX") || drop_fail 'could not create temporary directory'
+    trap 'drop_cleanup' 0
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    curl --disable --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+        --connect-timeout 15 --retry 2 --output "$pc_tmp/checksums.txt" \
+        "$pc_base/checksums.txt" || drop_fail 'checksum download failed'
+    pc_expected=
+    while IFS=' ' read -r pc_hash pc_name pc_extra || [ -n "$pc_hash$pc_name$pc_extra" ]; do
+        if [ "$pc_name" = "$pc_archive" ]; then
+            [ -z "$pc_expected" ] || drop_fail 'duplicate archive checksum'
+            [ -z "$pc_extra" ] || drop_fail 'invalid archive checksum entry'
+            case "$pc_hash" in
+                ''|*[!0-9a-f]*) drop_fail 'invalid archive checksum' ;;
+            esac
+            [ "${#pc_hash}" -eq 64 ] || drop_fail 'invalid archive checksum'
+            pc_expected=$pc_hash
+        fi
+    done < "$pc_tmp/checksums.txt"
+    [ -n "$pc_expected" ] || drop_fail 'archive is missing from checksums.txt'
+    curl --disable --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+        --connect-timeout 15 --retry 2 --output "$pc_tmp/$pc_archive" \
+        "$pc_base/$pc_archive" || drop_fail 'archive download failed'
+    pc_actual=$(sha256sum < "$pc_tmp/$pc_archive") || drop_fail 'checksum calculation failed'
+    pc_actual=${pc_actual%% *}
+    [ "$pc_actual" = "$pc_expected" ] || drop_fail 'archive checksum mismatch'
+    tar -tzf "$pc_tmp/$pc_archive" > "$pc_tmp/members" || drop_fail 'invalid release archive'
+    pc_seen_binary= pc_seen_notices=
+    while IFS= read -r pc_member || [ -n "$pc_member" ]; do
+        case "$pc_member" in
+            drop)
+                [ -z "$pc_seen_binary" ] || drop_fail 'duplicate archive executable'
+                pc_seen_binary=yes ;;
+            THIRD_PARTY_NOTICES.txt)
+                [ -z "$pc_seen_notices" ] || drop_fail 'duplicate archive notices'
+                pc_seen_notices=yes ;;
+            *) drop_fail 'unexpected release archive member' ;;
+        esac
+    done < "$pc_tmp/members"
+    [ "$pc_seen_binary$pc_seen_notices" = yesyes ] || drop_fail 'release archive is incomplete'
+    tar -tvzf "$pc_tmp/$pc_archive" > "$pc_tmp/details" || drop_fail 'could not inspect release archive'
+    pc_regular_count=0
+    while IFS= read -r pc_detail || [ -n "$pc_detail" ]; do
+        case "$pc_detail" in
+            -*) pc_regular_count=$((pc_regular_count + 1)) ;;
+            *) drop_fail 'archive members must be regular files' ;;
+        esac
+    done < "$pc_tmp/details"
+    [ "$pc_regular_count" -eq 2 ] || drop_fail 'invalid release archive listing'
+    mkdir -p "$pc_bindir" || drop_fail "could not create $pc_bindir"
+    pc_stage=$(mktemp "$pc_bindir/.drop.XXXXXXXX") || drop_fail 'could not create installation staging file'
+    # Stream only the executable into our own file. Never let archive paths,
+    # ownership or permission metadata control filesystem extraction.
+    tar -xOzf "$pc_tmp/$pc_archive" drop > "$pc_stage" || drop_fail 'archive extraction failed'
+    [ -s "$pc_stage" ] || drop_fail 'archive executable is empty'
+    chmod 0755 "$pc_stage" || drop_fail 'could not set executable permissions'
+    if [ -L "$pc_destination" ] || { [ -e "$pc_destination" ] && [ ! -f "$pc_destination" ]; }; then
+        drop_fail "destination must be a regular file or absent: $pc_destination"
+    fi
+    mv -f "$pc_stage" "$pc_destination" || drop_fail 'could not replace executable'
+    pc_stage=
+    printf 'Installed Drop %s at %s\n' "$pc_version" "$pc_destination"
+    printf 'Next: "%s" init   (asks for the reader password; the database drop.db is created beside the binary)\n' "$pc_destination"
+)
+
+drop_install "$@"

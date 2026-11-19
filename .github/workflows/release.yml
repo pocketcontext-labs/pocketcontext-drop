@@ -1,0 +1,181 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]*.[0-9]*.[0-9]*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build and validate (X.Y.Z); manual runs never publish'
+        required: true
+        default: '0.1.0'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  metadata:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      commit: ${{ steps.release.outputs.commit }}
+      publish: ${{ steps.release.outputs.publish }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate release source and version
+        id: release
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: python3 scripts/release.py metadata --version "$REQUESTED_VERSION"
+      - name: Check release assembly and validation
+        run: python3 -B -m unittest discover -s tests -p test_release.py -v
+
+  native:
+    needs: metadata
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux_amd64
+            runner: ubuntu-24.04
+          - platform: linux_arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+      RELEASE_COMMIT: ${{ needs.metadata.outputs.commit }}
+      RELEASE_PLATFORM: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.metadata.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Build and test the reader
+        working-directory: ui
+        run: |
+          npm install --global pnpm@10.33.2
+          pnpm install --frozen-lockfile
+          pnpm typecheck
+          pnpm test
+          pnpm build
+      - name: Unit tests
+        run: CGO_ENABLED=1 go test -tags "$(cat build-tags.txt)" ./...
+      - name: Build and inspect the release binary; package notices
+        run: python3 scripts/release.py build --version "$RELEASE_VERSION" --commit "$RELEASE_COMMIT" --platform "$RELEASE_PLATFORM" --output dist
+      - name: End-to-end test of the release binary
+        run: |
+          exe="dist/$RELEASE_PLATFORM/drop"
+          "$exe" version | grep -F "drop $RELEASE_VERSION ($RELEASE_COMMIT)"
+          python3 tests/name_check.py --binary "$exe"
+          python3 tests/identity_check.py --binary "$exe"
+          python3 tests/public_routes.py --binary "$exe"
+          python3 tests/e2e.py --binary "$exe"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-${{ matrix.platform }}
+          path: |
+            dist/*.tar.gz
+            dist/*.json
+          if-no-files-found: error
+          retention-days: 7
+
+  assemble:
+    needs: [metadata, native]
+    runs-on: ubuntu-24.04
+    env:
+      RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+      RELEASE_COMMIT: ${{ needs.metadata.outputs.commit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.metadata.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: native-*
+          path: dist/native
+      - name: Assemble complete version-bound release
+        run: python3 scripts/release.py assemble --version "$RELEASE_VERSION" --commit "$RELEASE_COMMIT" --artifacts dist/native --output dist/release
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-${{ needs.metadata.outputs.version }}
+          path: dist/release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    needs: [metadata, assemble]
+    if: needs.metadata.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    concurrency:
+      group: drop-release-publication
+      cancel-in-progress: false
+    env:
+      RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+      RELEASE_COMMIT: ${{ needs.metadata.outputs.commit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.metadata.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-${{ needs.metadata.outputs.version }}
+          path: dist/release
+      - name: Upload, verify and publish immutable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/release.py publish --version "$RELEASE_VERSION" --commit "$RELEASE_COMMIT" --assets dist/release
+
+  # Download the published release with the repository token (the repository
+  # is private, so its download URLs need authentication), check it against
+  # checksums.txt, unpack the executable into a folder whose path contains
+  # spaces and run the end-to-end test.
+  installed:
+    needs: [metadata, publish]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux_amd64
+            runner: ubuntu-24.04
+          - platform: linux_arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    env:
+      RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+      RELEASE_PLATFORM: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.metadata.outputs.commit }}
+          persist-credentials: false
+      - name: Download, verify and unpack the published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          dir="$RUNNER_TEMP/Release download/Drop"
+          mkdir -p "$dir"
+          gh release download "v$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/assets"
+          (cd "$RUNNER_TEMP/assets" && sha256sum -c checksums.txt)
+          tar -xOzf "$RUNNER_TEMP/assets/drop_${RELEASE_VERSION}_${RELEASE_PLATFORM}.tar.gz" drop > "$dir/drop"
+          chmod 0755 "$dir/drop"
+          echo "EXE=$dir/drop" >> "$GITHUB_ENV"
+      - name: End-to-end test of the published binary
+        run: python3 tests/e2e.py --binary "$EXE"
