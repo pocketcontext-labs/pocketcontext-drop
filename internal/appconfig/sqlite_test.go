@@ -128,7 +128,10 @@ func TestSQLReaderDeniesSQLiteInternals(t *testing.T) {
 			updated_by TEXT, created TEXT, updated TEXT);
 		CREATE TABLE releases(id TEXT PRIMARY KEY, app TEXT, sha256 TEXT, size_bytes INTEGER, s3_key TEXT, note TEXT, created_by TEXT,
 			created TEXT);
-		CREATE TABLE events(id TEXT PRIMARY KEY, actor TEXT, app TEXT, subject_user TEXT, action TEXT, detail JSON, created TEXT);
+		CREATE TABLE events(id TEXT PRIMARY KEY, actor TEXT, actor_node TEXT, app TEXT, subject_user TEXT, action TEXT, detail JSON, created TEXT);
+		CREATE TABLE placements(id TEXT PRIMARY KEY, app TEXT, node TEXT, generation INTEGER, created_by TEXT, created TEXT, updated TEXT);
+		CREATE TABLE node_reports(id TEXT PRIMARY KEY, node TEXT, app TEXT, nib_app_id TEXT, deployment_id TEXT, phase TEXT, message TEXT,
+			restart_count INTEGER, last_exit_code INTEGER, has_exit_code BOOLEAN, converged_at TEXT, observed_at TEXT);
 		CREATE VIRTUAL TABLE apps_fts USING fts5(name);
 		INSERT INTO users VALUES ('account00000001','account@example.localhost','hash-a','key-a');
 		INSERT INTO apps(id, owner, name, slug, env, created, updated) VALUES ('record000000001','account00000001','Hello','hello','{}','2026-01-01','2026-01-01'),

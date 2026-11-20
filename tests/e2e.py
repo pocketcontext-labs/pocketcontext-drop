@@ -22,6 +22,8 @@ import time
 import urllib.error
 import urllib.request
 
+import fake_agent
+
 PASSWORD = 'synthetic test password'
 # The sign-in identity of the project's one account (bundle.AccountEmail).
 ACCOUNT_EMAIL = 'account@drop.invalid'
@@ -292,8 +294,11 @@ def scenario(pc):
                                      'deployment_seq', 'current_release', 'archived', 'archived_at', 'created', 'updated']),
                      'releases': sorted(['id', 'app', 'sha256', 'size_bytes', 's3_key', 'note', 'created_by', 'created']),
                      'app_secret_names': sorted(['id', 'app', 'name', 'ssm_version', 'length', 'set_via', 'updated_by', 'created', 'updated']),
-                     'events': ['action', 'actor', 'app', 'created', 'detail', 'id', 'subject_user']},
-          f'the SQL schema exposes apps (no env or args), secret names, releases and events: {tables}')
+                     'events': ['action', 'actor', 'actor_node', 'app', 'created', 'detail', 'id', 'subject_user'],
+                     'placements': sorted(['id', 'app', 'node', 'generation', 'created_by', 'created', 'updated']),
+                     'node_reports': sorted(['id', 'node', 'app', 'nib_app_id', 'deployment_id', 'phase', 'message', 'restart_count',
+                                             'last_exit_code', 'has_exit_code', 'converged_at', 'observed_at'])},
+          f'the SQL schema exposes apps (no env or args), secret names, releases, events, placements and node reports (never nodes): {tables}')
     check(schema['permissionModel'] == 'shared' and schema['search']['indexes'] == ['apps'] and 'isolation' not in schema['search']
           and 'snapshotLimits' not in schema, 'reads use the live database and a shared apps index')
 
@@ -902,6 +907,8 @@ def hosted_scenario(pc, r):
         deployed = owner('release', 'deploy', 'hosted-app', uploaded['release']['id'])
         check(not deployed['deployment_bumped'] and deployed['deployment_id'] == app['nib_app_id'] + '-dep-4',
               'deploying the current release again starts no deployment')
+
+        nodes_scenario(pc, r, owner, port, hosted, app)
     finally:
         server.send_signal(signal.SIGTERM)
         try:
@@ -924,6 +931,74 @@ def hosted_scenario(pc, r):
     check(SECRET_SENTINEL not in output_text, 'the server output never holds the secret value')
     token = link['path'].rsplit('/', 1)[1]
     check(token not in dump and token not in output_text, 'the upload token is in neither the database nor the server output')
+
+
+def nodes_scenario(pc, r, owner, port, hosted, app):
+    """Nodes, placements and the agent API with the fake agent (tests/fake_agent.py) against the real binary."""
+    host_id = 'host-e2e-0001'
+    owner('secret', 'set', 'hosted-app', 'API_KEY', stdin=SECRET_SENTINEL + '\n')
+    created = owner('node', 'create', 'node-one', '--host-id', host_id)
+    password = created['password']
+    check(len(password) == 40 and created['identity'] == 'node-one' and created['collection'] == 'nodes',
+          'node create prints the agent password once with its sign-in identity')
+    agent = fake_agent.FakeAgent(port, HOSTED_DOMAIN, 'node-one', password, host_id, hosted / 'fake-aws')
+    try:
+        check(agent.login('x' * 40) == 400 and agent.login() == 200 and agent.refresh() == 200,
+              'the node signs in with its password on the hosted origin and refreshes its token')
+        status, _ = agent.request('POST', '/api/drop/op', {'op': 'me'})
+        check(status == 403, 'a node token cannot call operations')
+        status, _ = agent.request('GET', '/api/collections/apps/records')
+        status_users, _ = agent.request('GET', '/api/collections/users/records')
+        check(status == 200 and status_users == 404, 'a node token reads no app record and no account')
+        check(agent.request('GET', '/api/drop/agent/desired', token='')[0] == 401, 'the agent routes need a node token')
+        agent.subscribe()
+        empty = agent.pull()
+        check(empty['apps'] == [] and empty['rejected'] == [], 'a new node has an empty desired document')
+        placed = owner('place', 'hosted-app', 'node-one')
+        check(placed['placement']['node_name'] == 'node-one' and not placed['moved'], 'drop place puts the app on the node')
+        seq = agent.next_seq(empty['desiredSeq'])
+        desired = agent.pull()
+        check(desired['desiredSeq'] == seq and [a['appId'] for a in desired['apps']] == [app['nib_app_id']],
+              'the placement wakes the agent through realtime nodes/<id>, and the pull carries the app')
+        entry = desired['apps'][0]
+        check(entry['deploymentId'] == app['nib_app_id'] + '-dep-5' and entry['hostnames'] == [{'hostname': 'hosted-app.' + APP_DOMAIN, 'kind': 'platform'}],
+              f"the app's deployment and hostname: {entry['deploymentId']}")
+        check(SECRET_SENTINEL not in json.dumps(desired) and agent.resolve(entry) == {'API_KEY': SECRET_SENTINEL},
+              'the document names the secret version only; the agent resolves the value from the store')
+        check(owner('app', 'status', 'hosted-app')['phase'] == 'pending', 'the app is pending until the node reports')
+        status, result = agent.report(agent.report_body(desired, extra_apps=[
+            {'appId': 'd-' + 'z' * 15, 'deploymentId': '', 'phase': 'running', 'message': '', 'restartCount': 0, 'lastExitCode': None, 'convergedAt': ''}]))
+        check(status == 200 and result['accepted'] == 1 and result['ignored'] == ['d-' + 'z' * 15] and result['desiredSeq'] == seq,
+              f'the report is taken for the placed app only: {result}')
+        shown = owner('app', 'status', 'hosted-app')
+        check(shown['phase'] == 'running' and shown['node'] == 'node-one', f'app status shows the reported phase: {shown}')
+        wrong = agent.report_body(desired)
+        wrong['hostId'] = 'another-host'
+        check(agent.report(wrong)[0] == 409, 'a report for another host is refused')
+        owner('app', 'stop', 'hosted-app')
+        stopped_seq = agent.next_seq(seq)
+        stopped = agent.pull()
+        check(stopped['desiredSeq'] == stopped_seq and stopped['apps'][0]['desiredState'] == 'stopped',
+              'app stop bumps desired_seq and the pull says stopped')
+        owner('app', 'set', 'hosted-app', '--name', 'Renamed hosted app')
+        check(agent.pull()['desiredSeq'] == stopped_seq, 'a rename does not change the desired document')
+        listed = owner('node', 'list')['nodes']
+        check(len(listed) == 1 and listed[0]['online'] and listed[0]['apps'] == 1 and listed[0]['agent_version'] == agent.version,
+              f'node list shows the node online with its app: {listed}')
+        rotated = owner('node', 'rotate-secret', 'node-one')['password']
+        after = (agent.request('GET', '/api/drop/agent/desired')[0], agent.login())
+        check(after == (401, 400), f'rotating the password ends the old token and password: {after} {agent.last_error}')
+    finally:
+        agent.close()
+    # The standalone fake agent: one contract pass, as a separate process.
+    run = subprocess.run([sys.executable, str(Path(__file__).with_name('fake_agent.py')), '--port', str(port), '--domain', HOSTED_DOMAIN,
+                          '--node', 'node-one', '--host-id', host_id, '--fake-aws', str(hosted / 'fake-aws')],
+                         input=rotated + '\n', capture_output=True, text=True, timeout=120)
+    check(run.returncode == 0 and json.loads(run.stdout)['apps'] == [app['nib_app_id']],
+          f'tests/fake_agent.py passes the contract with the new password: {run.stdout[-300:]} {run.stderr[-300:]}')
+    owner('node', 'set-state', 'node-one', 'disabled')
+    disabled = fake_agent.FakeAgent(port, HOSTED_DOMAIN, 'node-one', rotated, host_id)
+    check(disabled.login() == 403, f'a disabled node cannot sign in (403): {disabled.last_error}')
 
 
 def codes_scenario(pc, r):

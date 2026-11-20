@@ -1,5 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { ACCOUNT_EMAIL, api, pb, type AuthMode } from "./api";
+import AdminNodes from "./AdminNodes";
 import AdminUsers from "./AdminUsers";
 import AppNew from "./AppNew";
 import AppPage from "./AppPage";
@@ -132,9 +133,13 @@ function Workspace({ view, hash }: { view: View; hash: string }) {
   if (view === "connect") page = <Connect />;
   else if (view === "app-new") page = <AppNew />;
   else if (app) page = <AppPage key={app.id} id={app.id} tab={app.tab} />;
-  else if (view === "admin-users")
+  else if (view === "admin-users" || view === "admin-nodes")
     page = me?.admin ? (
-      <AdminUsers me={me} />
+      view === "admin-users" ? (
+        <AdminUsers me={me} />
+      ) : (
+        <AdminNodes />
+      )
     ) : me || meFailed ? (
       <NotFound />
     ) : (
@@ -164,6 +169,14 @@ function Workspace({ view, hash }: { view: View; hash: string }) {
               aria-current={view === "admin-users" ? "page" : undefined}
             >
               Users
+            </a>
+          )}
+          {me?.admin && (
+            <a
+              href={viewHashes["admin-nodes"]}
+              aria-current={view === "admin-nodes" ? "page" : undefined}
+            >
+              Nodes
             </a>
           )}
           <a

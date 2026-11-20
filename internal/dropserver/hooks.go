@@ -2,8 +2,8 @@
 // at each point the server diverges, the account rules (accounts.go) and the
 // operation framework behind POST /api/drop/op (ops.go), with its operations
 // (ops_*.go): accounts and invites, apps, their secrets and releases, and the
-// one-time release upload route (upload.go). Later milestones add the agent
-// routes.
+// one-time release upload route (upload.go), nodes and placements
+// (ops_nodes.go) and the agent routes (agent_routes.go, reports.go).
 package dropserver
 
 import (
@@ -32,6 +32,7 @@ func Hooks() appserver.Hooks {
 			app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 				registerOpRoutes(e)
 				registerUploadRoute(e)
+				registerAgentRoutes(e)
 				return e.Next()
 			})
 			return nil

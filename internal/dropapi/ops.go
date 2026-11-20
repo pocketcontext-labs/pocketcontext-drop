@@ -128,6 +128,20 @@ var specs = []Spec{
 		Summary: "A one-time upload link for a new release of an app: PUT a static linux/amd64 ELF executable (at most 90 MiB) to the returned URL within 15 minutes, for example with curl -fT FILE URL. activate:true deploys it once uploaded. The URL is shown once."},
 	{Name: "release.deploy", Role: RoleUser, MCP: true, Input: &ReleaseDeployInput{},
 		Summary: "Make one of an app's releases (by id) its current release and start a new deployment."},
+	{Name: "status", Role: RoleUser, Read: true, Input: &StatusInput{},
+		Summary: "An app's runtime status: phase (archived, no_release, unplaced, pending, deploying, staging, starting, running, sleeping, unhealthy, stopped, failed, unknown...), message, current and reported deployment, restarts and last exit code; the node's name for admins."},
+	{Name: "node.list", Role: RoleAdmin, Read: true, Input: &NodeListInput{},
+		Summary: "Nodes (hosts) by name: state, whether the agent is online, desired_seq, nibrunner's capacity, allocatable and versions, and how many apps each runs."},
+	{Name: "node.create", Role: RoleAdmin, MCP: true, Input: &NodeCreateInput{}, OnceResult: true,
+		Summary: "Add a node: name (its agent's sign-in identity) and nibrunner's host_id. Returns a generated 40-character password for the agent, shown once."},
+	{Name: "node.rotate_secret", Role: RoleAdmin, MCP: true, Input: &NodeRotateSecretInput{}, OnceResult: true,
+		Summary: "Replace a node's password (shown once); the old one and the agent's current tokens stop working until it gets the new one."},
+	{Name: "node.set_state", Role: RoleAdmin, MCP: true, Input: &NodeSetStateInput{},
+		Summary: "Set a node active, draining (keeps its apps, takes no new ones) or disabled (its agent is locked out and its apps stop being updated)."},
+	{Name: "placement.set", Role: RoleAdmin, MCP: true, Input: &PlacementSetInput{},
+		Summary: "Place an app (any account's) on an active node, or move it to another one; its disk size is fixed from the first placement. A moved app stops on the old node, whose copy of its data stays there."},
+	{Name: "placement.clear", Role: RoleAdmin, MCP: true, Input: &PlacementClearInput{},
+		Summary: "Remove an app's placement: its node stops it and keeps its data."},
 }
 
 func init() {

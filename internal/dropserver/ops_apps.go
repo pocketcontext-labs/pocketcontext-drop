@@ -118,8 +118,8 @@ func (c *Ctx) appOut(r *core.Record, emails map[string]string) dropapi.App {
 		HTTPPort: r.GetInt("http_port"), ExecutableName: r.GetString("executable_name"),
 		Args: appArgs(r), Env: appEnv(r), HealthKind: r.GetString("health_kind"), HealthPath: r.GetString("health_path"),
 		DeploymentSeq: r.GetInt("deployment_seq"), DeploymentID: deploymentID(r),
-		CurrentRelease: r.GetString("current_release"),
-		Archived:       r.GetBool("archived"), ArchivedAt: dateString(r, "archived_at"),
+		CurrentRelease: r.GetString("current_release"), DiskLocked: !r.GetDateTime("first_placed_at").IsZero(),
+		Archived: r.GetBool("archived"), ArchivedAt: dateString(r, "archived_at"),
 		Created: dateString(r, "created"), Updated: dateString(r, "updated"),
 	}
 }
@@ -411,8 +411,11 @@ func appSet(c *Ctx, in *dropapi.AppSetInput) (any, error) {
 			changed = append(changed, f.field)
 		}
 	}
-	// TODO(M7): refuse a disk change once the app has been placed
-	// (409 disk_locked): the volume's size is fixed at its first placement.
+	// The volume's size is fixed at the app's first placement (it exists on
+	// the node from then on, even after the placement is cleared).
+	if in.DiskMiB != nil && *in.DiskMiB != app.GetInt("disk_mib") && !app.GetDateTime("first_placed_at").IsZero() {
+		return nil, Conflict(dropapi.CodeDiskLocked, "The disk size is fixed once an app has been placed on a node.")
+	}
 	if in.ExecutableName != nil {
 		s.executable = *in.ExecutableName
 		changed = append(changed, "executable_name")

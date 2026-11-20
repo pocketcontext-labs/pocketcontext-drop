@@ -2,7 +2,7 @@
 
 Drop stores accounts with roles (`users`), `invites`, `apps`, the names of their secrets (`app_secret_names`; values live only in SSM), their `releases` (the executables live in S3), one-time `upload_links`, `events` and the private idempotency keys of its operations (`op_keys`). A hosted Drop holds several accounts (the owner and the people an admin invited; see [Hosting](hosting.md)); each account sees and changes only its own apps, and admins see every app. A local project, for developing the reader, keeps exactly one hidden account, an admin. Every request must prove which account it is. The schema lives in `pb_migrations/`; the rules below are enforced by PocketBase collection rules, by `pb_hooks/`, by Go hooks and operations in `internal/dropserver` and by the SQL and search configuration in `server.json`. Every write happens only in Go: through Drop's operations ([Operations](ops.md), `POST /api/drop/op`) and the account hooks; every client rule that would write a collection is closed.
 
-`1820000200_apps.js` replaced the unreleased placeholder `1810000100_apps.js` (an owner, a name and a slug) before any database had shipped. Nodes and placements (M7) come next.
+`1820000200_apps.js` replaced the unreleased placeholder `1810000100_apps.js` (an owner, a name and a slug) before any database had shipped. Nodes, placements and node reports (M7) follow.
 
 ## The account
 
@@ -40,7 +40,7 @@ A partial unique index allows one open invite per address (`email_lower` where `
 
 ## Events
 
-`pb_migrations/1820000900_events.js` creates `events`, one row per change made through an operation (and, later, the agent routes): `actor` (relation to `users`), `app` (relation to `apps`), `subject_user` (relation to `users`), `action` (the operation, such as `invite.create`), `detail` (JSON, at most 8 KiB, never a secret value) and `created`. Indexes on `(app, created)` and `(created)`. List and view rules: admins see every event, and an account the events of its own apps (`app.owner = @request.auth.id`); writes closed. A node relation (`actor_node`) comes with the nodes collection.
+`pb_migrations/1820000900_events.js` creates `events`, one row per change made through an operation (and, later, the agent routes): `actor` (relation to `users`), `app` (relation to `apps`), `subject_user` (relation to `users`), `action` (the operation, such as `invite.create`), `detail` (JSON, at most 8 KiB, never a secret value) and `created`. Indexes on `(app, created)` and `(created)`. List and view rules: admins see every event, and an account the events of its own apps (`app.owner = @request.auth.id`); writes closed. `1820001000_nodes.js` adds `actor_node` (relation to `nodes`): the node behind an event of the agent routes (`app.phase`), whose `actor` is empty.
 
 ## Idempotency keys
 
@@ -63,7 +63,7 @@ A partial unique index allows one open invite per address (`email_lower` where `
 | `idle_timeout_ms` | number 60000-86400000 | required (default 300000); the sleep timeout of an on-request app |
 | `vcpu` | number 1-2 | required (default 1) |
 | `memory_mib` | number 128-4096 | required (default 512) |
-| `disk_mib` | number 256-16384 | required (default 1024); fixed once placed (M7) |
+| `disk_mib` | number 256-16384 | required (default 1024); fixed once placed (`first_placed_at`) |
 | `http_port` | number 1024-65535 | required (default 8080) |
 | `executable_name` | text | required, `^[a-z][a-z0-9-]{0,31}$` (default `server`): the file `/app/<name>` |
 | `args` | json, at most 4 KiB | a list of strings |
@@ -72,6 +72,7 @@ A partial unique index allows one open invite per address (`email_lower` where `
 | `deployment_seq` | number 1-999999999 | required: the deployment number, bumped when the instance configuration changes ([Operations](ops.md#deployments)) |
 | `current_release` | relation to `releases` | the release the app runs, set by `release.deploy` or an upload link with `activate` (added by `1820000300_releases.js`); empty before the first deploy |
 | `archived`, `archived_at` | bool, date | set by `app.archive`, cleared by `app.restore` |
+| `first_placed_at` | date | set by the first `placement.set` (added by `1820001100_placements.js`): from then on the disk cannot change |
 | `created`, `updated` | autodate | |
 
 Unique indexes on `slug` and `nib_app_id`, and an index on `(owner, created)`. List and view rules: `@request.auth.collectionName = 'users' && @request.auth.suspended = false && (@request.auth.role = 'admin' || owner = @request.auth.id)`; create, update and delete are closed (superusers only). The value rules are `internal/appspec`, shared with the node's renderer; the migration repeats the ranges and patterns as a second check. Quota: an account has at most `app_quota` non-archived apps (admins are exempt).
@@ -86,6 +87,18 @@ Unique indexes on `slug` and `nib_app_id`, and an index on `(owner, created)`. L
 
 What the node needs to run a release (M7 and M9) is `sha256`, `s3_key` and `size_bytes` of the app's `current_release`: the desired-state route fills `render.Release{SHA256, S3Key, SizeBytes}` from them, and the agent downloads `s3_key` and refuses bytes whose size or digest differ. An app without a current release is not rendered.
 
+## Nodes
+
+`pb_migrations/1820001000_nodes.js` creates `nodes`, an **auth** collection (never `users`): the hosts that run apps, one agent each ([Agent API](agent-api.md)). Fields: `name` (`^[a-z][a-z0-9-]{1,30}$`, unique: the password identity field), `host_id` (nibrunner's `hostId`), `ec2_instance_id`, `private_ip`, `state` (`active`, `draining`, `disabled`), `desired_seq` (bumped when the node's desired document changes) and `desired_hash` (that document's content hash), and from the agent's reports `capacity`, `allocatable`, `versions` (JSON, at most 2 KiB each), `host_state`, `agent_version`, `accepted_revision`, `last_heartbeat`, `last_report_at`, plus `created`, `updated` and PocketBase's auth fields (`password` at least 32 characters, `tokenKey`; `email` optional and unused). Auth: password only (identity `name`), no OTP, OAuth2 or MFA, tokens for 3600 s, auth rule `state != 'disabled'`. List rule: admins; view rule: admins, and a node its own record (`@request.auth.collectionName = 'nodes' && id = @request.auth.id`, which also governs the realtime subscription `nodes/<id>`); create, update, delete and manage closed. Not a public record route and not an SQL table. Heartbeat fields are written at most every five minutes in steady state.
+
+## Placements
+
+`pb_migrations/1820001100_placements.js` creates `placements`, which node runs an app: `app` (unique: one node per app in v0), `node`, `generation` (up by one per move), `created_by`, `created`, `updated`. List and view: admins, and a node its own placements; writes closed (`placement.set`, `placement.clear`). It also adds `apps.first_placed_at`.
+
+## Node reports
+
+`pb_migrations/1820001200_node_reports.js` creates `node_reports`, the last phase each node reported for each app placed on it: `node`, `app`, `nib_app_id` (unique with `node`), `deployment_id`, `phase` (`pending`, `staging`, `staging_failed`, `secret_failed`, `deploying`, `starting`, `running`, `sleeping`, `unhealthy`, `stopped`, `failed`, `unknown`), `message` (at most 2000), `restart_count`, `last_exit_code` with `has_exit_code`, `converged_at`, `observed_at` (when the phase was first reported). A row is rewritten only when something in it changes. List and view: admins, and the app's owner; writes closed. The `status` operation reads it.
+
 ## Upload links
 
 `pb_migrations/1820000500_upload_links.js` creates `upload_links`, private to the server (every rule closed, never a public route or an SQL table): `app` (relation to `apps`), `token_hash` (the SHA-256 of the 32-character token, hidden; the token itself is shown once and never stored), `created_by` (relation to `users`), `note`, `activate` (deploy on upload), `expires_at` (15 minutes after creation), `used_at` and `release` (set by the one successful upload) and `created`. A unique index on `token_hash` and an index on `expires_at`. Unused links are deleted a day after they expire (hourly); used links stay with their release. See [Operations](ops.md#releases).
@@ -99,7 +112,9 @@ What the node needs to run a release (M7 and M9) is `sha256`, `s3_key` and `size
 | `apps` | `id`, `owner`, `name`, `slug`, `nib_app_id`, `hostname`, `desired_state`, `idle_timeout_ms`, `vcpu`, `memory_mib`, `disk_mib`, `http_port`, `executable_name`, `health_kind`, `health_path`, `deployment_seq`, `current_release`, `archived`, `archived_at`, `created`, `updated` (not `env` or `args`) |
 | `app_secret_names` | `id`, `app`, `name`, `ssm_version`, `length`, `set_via`, `updated_by`, `created`, `updated` |
 | `releases` | `id`, `app`, `sha256`, `size_bytes`, `s3_key`, `note`, `created_by`, `created` |
-| `events` | `id`, `actor`, `app`, `subject_user`, `action`, `detail`, `created` |
+| `events` | `id`, `actor`, `actor_node`, `app`, `subject_user`, `action`, `detail`, `created` |
+| `placements` | `id`, `app`, `node`, `generation`, `created_by`, `created`, `updated` |
+| `node_reports` | `id`, `node`, `app`, `nib_app_id`, `deployment_id`, `phase`, `message`, `restart_count`, `last_exit_code`, `has_exit_code`, `converged_at`, `observed_at` |
 
 `POST /api/context/query {"sql": "SELECT ..."}` (`drop sql`) runs one read-only `SELECT` and returns `{columns, rows, truncated}`; `GET /api/context/schema` (`drop schema`) lists the readable tables, columns and search indexes with `"permissionModel": "shared"`. Both require a `users` token. The vendored SQL reader (`internal/pocketcontext/sqlread`) reads the live working database through read-only connections and authorizes every statement with an SQLite authorizer: only listed columns of listed tables, an allowlist of functions, no writes, `PRAGMA`, `ATTACH`, `sqlite_schema`, `dbstat`, `pragma_*` table-valued functions, FTS shadow tables or auth collections. Results are bounded (`maxRows` 500, `maxBytes` 1 MiB, `timeoutMs` 2000); `truncated` says a limit was hit. The column allowlist is the only read restriction and SQL reads whole tables, whoever owns the rows, so these reads stay on the loopback server (the owner's local key) and are never public routes; list only what the owner may read and never secrets.
 

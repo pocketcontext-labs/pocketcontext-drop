@@ -49,6 +49,7 @@ Apps (through Drop's operations; APP is an app's id or slug):
                                      what the app runs with changes
   app env APP KEY=VALUE|-KEY ...     set or remove plain environment variables
   app start|stop|archive|restore APP
+  app status APP                     runtime phase: pending, running, sleeping, failed...
   secret list APP                    secret names, versions and lengths
   secret set APP NAME                store a secret value read from standard
                                      input (kept in SSM, never shown again)
@@ -65,7 +66,7 @@ Whole-table reads (the local server or --url; never the hosted origin):
   sql|query SQL|-                    run one read-only SELECT
   whoami | schema                    the session's account ID; the readable schema
 
-Accounts (admins; Drop is invite-only, and no invite email is sent):
+Accounts and nodes (admins; Drop is invite-only, and no invite email is sent):
   invite create EMAIL [--role user|admin] [--quota N] [--expires-days N]
                                      invite an address; prints the sign-in URL to share
   invite list [--state all|open]     invites, newest first, with their state
@@ -73,6 +74,11 @@ Accounts (admins; Drop is invite-only, and no invite email is sent):
   user list                          accounts with role, quota and suspension
   user set USER_ID|EMAIL [--role user|admin] [--quota N] [--suspend | --unsuspend]
                                      change an account
+  node list                          nodes (hosts) with state, online and capacity
+  node create NAME --host-id HOST_ID add a node; prints its agent password once
+  node rotate-secret NODE            replace a node's password (shown once)
+  node set-state NODE active|draining|disabled
+  place APP NODE | place APP --clear put an app on a node, or take it off
   op NAME [INPUT_JSON|-] [--idempotency-key KEY]
                                      call any operation (docs/ops.md)
   On a hosted server of this machine these act as the owner through the
@@ -94,7 +100,7 @@ forward of the same port; --url URL or DROP_URL):
                        computer)
   skill --url URL [--agent A] [--dir DIR]
                        install the agent skill for the remote server
-  App, secret, release, account and op commands work with --url. URL must be http://127.0.0.1:PORT or
+  App, secret, release, account, node, place and op commands work with --url. URL must be http://127.0.0.1:PORT or
   http://localhost:PORT. Remote mode never creates a database or starts a
   server; serve, start, ensure-running, stop, flush, recover, init, password
   and login-code are not available with --url.

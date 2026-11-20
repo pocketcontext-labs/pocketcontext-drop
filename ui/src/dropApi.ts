@@ -26,6 +26,13 @@ export const OPS = [
   "release.list",
   "release.upload_link",
   "release.deploy",
+  "status",
+  "node.list",
+  "node.create",
+  "node.rotate_secret",
+  "node.set_state",
+  "placement.set",
+  "placement.clear",
 ] as const;
 export type Op = (typeof OPS)[number];
 
@@ -91,6 +98,8 @@ export interface App {
   deployment_id: string;
   /** The id of the release the app runs; empty before its first deploy. */
   current_release: string;
+  /** True once the app has been placed on a node: the disk size is fixed. */
+  disk_locked: boolean;
   archived: boolean;
   archived_at: string;
   created: string;
@@ -153,6 +162,54 @@ export interface UploadResult {
   deployed: boolean;
   deployment_id: string;
 }
+export type NodeState = "active" | "draining" | "disabled";
+/** A node (host) as admins see it (internal/dropapi Node). */
+export interface DropNode {
+  id: string;
+  name: string;
+  host_id: string;
+  ec2_instance_id: string;
+  private_ip: string;
+  state: NodeState;
+  desired_seq: number;
+  online: boolean;
+  last_heartbeat: string;
+  last_report_at: string;
+  host_state: string;
+  agent_version: string;
+  accepted_revision: string;
+  capacity: Record<string, unknown>;
+  allocatable: Record<string, unknown>;
+  versions: Record<string, unknown>;
+  apps: number;
+  created: string;
+}
+/** A node's agent password, shown once (node.create, node.rotate_secret). */
+export interface NodeSecret {
+  node: DropNode;
+  password: string;
+  identity: string;
+  collection: string;
+}
+/** An app's runtime status (internal/dropapi Status). */
+export interface AppStatus {
+  app: string;
+  phase: string;
+  message: string;
+  desired_state: DesiredState;
+  deployment_id: string;
+  reported_deployment_id: string;
+  hostname: string;
+  placed: boolean;
+  /** The node's name, for admins only. */
+  node?: string;
+  restart_count: number;
+  last_exit_code: number | null;
+  converged_at: string;
+  observed_at: string;
+  last_seen: string;
+}
+
 /** The largest release (90 MiB, dropapi.MaxReleaseBytes). */
 export const MAX_RELEASE_BYTES = 90 * 1024 * 1024;
 
@@ -367,6 +424,36 @@ function uploadRelease(
   });
 }
 
+async function appStatus(app: string): Promise<AppStatus> {
+  return op("status", { app });
+}
+async function listNodes(): Promise<DropNode[]> {
+  return (await op<{ nodes: DropNode[] }>("node.list", { limit: 500 })).nodes;
+}
+async function createNode(input: {
+  name: string;
+  host_id: string;
+  ec2_instance_id?: string;
+  private_ip?: string;
+}): Promise<NodeSecret> {
+  return op("node.create", input);
+}
+async function rotateNodeSecret(node: string): Promise<NodeSecret> {
+  return op("node.rotate_secret", { node });
+}
+async function setNodeState(node: string, state: NodeState): Promise<DropNode> {
+  return (await op<{ node: DropNode }>("node.set_state", { node, state })).node;
+}
+async function placeApp(
+  app: string,
+  node: string,
+): Promise<{ moved: boolean; previous_node?: string }> {
+  return op("placement.set", { app, node });
+}
+async function clearPlacement(app: string): Promise<{ cleared_node: string }> {
+  return op("placement.clear", { app });
+}
+
 export const dropApi = {
   me,
   listUsers,
@@ -385,4 +472,11 @@ export const dropApi = {
   createUploadLink,
   deployRelease,
   uploadRelease,
+  appStatus,
+  listNodes,
+  createNode,
+  rotateNodeSecret,
+  setNodeState,
+  placeApp,
+  clearPlacement,
 };

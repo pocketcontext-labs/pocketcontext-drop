@@ -1,18 +1,26 @@
 // Hash routes of the reader (as in Crew): `#/apps` (the default), `#/apps/new`,
 // `#/apps/<id>` with its tabs `#/apps/<id>/settings`, `#/apps/<id>/env` and
 // `#/apps/<id>/releases`,
-// `#/connect`, `#/admin/users` (admins only; anyone else sees Not found),
+// `#/connect`, `#/admin/users` and `#/admin/nodes` (admins only; anyone else
+// sees Not found),
 // `#/invite?email=…` (the sign-in URL of an invite: the sign-in page with the
 // address filled in), `#/login?otpId=…&otp=…` (the link of a sign-in email)
 // and `#/signin?next=/oauth/authorize?…` (OAuth consent sends the browser here
 // to sign in and come back).
 
-export type View = "apps" | "app-new" | "app" | "connect" | "admin-users";
+export type View =
+  | "apps"
+  | "app-new"
+  | "app"
+  | "connect"
+  | "admin-users"
+  | "admin-nodes";
 export const viewHashes: Record<Exclude<View, "app">, string> = {
   apps: "#/apps",
   "app-new": "#/apps/new",
   connect: "#/connect",
   "admin-users": "#/admin/users",
+  "admin-nodes": "#/admin/nodes",
 };
 
 export type AppTab = "overview" | "settings" | "env" | "releases";
@@ -36,6 +44,7 @@ export function appHash(id: string, tab: AppTab = "overview"): string {
 export function viewFromHash(hash: string): View {
   if (/^#\/connect(?:\?.*)?$/.test(hash)) return "connect";
   if (/^#\/admin\/users(?:\?.*)?$/.test(hash)) return "admin-users";
+  if (/^#\/admin\/nodes(?:\?.*)?$/.test(hash)) return "admin-nodes";
   if (hash === viewHashes["app-new"]) return "app-new";
   if (appRouteFromHash(hash)) return "app";
   return "apps";
@@ -158,6 +167,7 @@ function isStoredReturn(hash: string): boolean {
   if (
     hash === viewHashes.connect ||
     hash === viewHashes["admin-users"] ||
+    hash === viewHashes["admin-nodes"] ||
     hash === viewHashes["app-new"]
   )
     return true;

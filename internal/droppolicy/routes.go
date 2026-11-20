@@ -31,6 +31,9 @@ func PublicRoute(method, p string) bool {
 		switch p {
 		case "/", "/api/bundle/auth-mode", "/api/bundle/version", "/api/realtime", "/api/drop/me":
 			return true
+		// A node's desired document: node tokens only (agent_routes.go).
+		case dropapi.AgentDesiredRoute:
+			return true
 		}
 		if strings.HasPrefix(p, "/assets/") && appserver.ReaderAssetName(strings.TrimPrefix(p, "/assets/")) {
 			return true
@@ -44,6 +47,11 @@ func PublicRoute(method, p string) bool {
 		// /api/drop/op is every write: the operation framework checks the
 		// account, its role and the input (internal/dropserver/ops.go).
 		case "/api/realtime", "/api/collections/users/auth-refresh", "/api/drop/op":
+			return true
+		// The node agent: its sign-in (the nodes auth collection, password
+		// only; Drop caps the body and limits each client address) and its
+		// report (node tokens only). A node token reaches nothing else.
+		case dropapi.NodeAuthRoute, dropapi.NodeRefreshRoute, dropapi.AgentReportRoute:
 			return true
 		}
 	}

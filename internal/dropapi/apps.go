@@ -57,10 +57,13 @@ type App struct {
 	// CurrentRelease is the id of the release the app runs (release.deploy),
 	// empty before its first deploy.
 	CurrentRelease string `json:"current_release"`
-	Archived       bool   `json:"archived"`
-	ArchivedAt     string `json:"archived_at"`
-	Created        string `json:"created"`
-	Updated        string `json:"updated"`
+	// DiskLocked is true once the app has been placed on a node: its disk
+	// size can no longer change.
+	DiskLocked bool   `json:"disk_locked"`
+	Archived   bool   `json:"archived"`
+	ArchivedAt string `json:"archived_at"`
+	Created    string `json:"created"`
+	Updated    string `json:"updated"`
 }
 
 // AppRef names one app by id or slug.

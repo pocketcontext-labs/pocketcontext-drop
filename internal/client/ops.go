@@ -20,7 +20,7 @@ import (
 // forwarded server.
 
 // opCommands are the commands that call operations.
-var opCommands = map[string]bool{"invite": true, "user": true, "op": true, "app": true, "secret": true, "release": true}
+var opCommands = map[string]bool{"invite": true, "user": true, "op": true, "app": true, "secret": true, "release": true, "node": true, "place": true}
 
 // newOpsClient signs in to the project's server as its owner: through the
 // private socket when a hosted server runs (hosted mode has no loopback TCP
@@ -110,6 +110,10 @@ func runOps(c *Client, command string, a *args) (any, error) {
 		return runSecret(c, sub, a)
 	case "release":
 		return runRelease(c, sub, a)
+	case "node":
+		return runNode(c, sub, a)
+	case "place":
+		return runPlace(c, a)
 	}
 	switch command + " " + sub {
 	case "invite create":
@@ -341,8 +345,13 @@ func runApp(c *Client, sub string, a *args) (any, error) {
 			return nil, err
 		}
 		return c.Op("app."+sub, dropapi.AppRef{App: a.pos[1]}, "")
+	case "status":
+		if err := a.need(2, "app status APP"); err != nil {
+			return nil, err
+		}
+		return c.Op("status", dropapi.StatusInput{App: a.pos[1]}, "")
 	}
-	return nil, fail(2, "usage: drop app list|show|create|set|env|start|stop|archive|restore ...")
+	return nil, fail(2, "usage: drop app list|show|status|create|set|env|start|stop|archive|restore ...")
 }
 
 // maxSecretInput bounds what `secret set` reads from standard input.
@@ -377,4 +386,54 @@ func runSecret(c *Client, sub string, a *args) (any, error) {
 		return c.Op("secret.delete", dropapi.SecretDeleteInput{App: a.pos[1], Name: a.pos[2]}, "")
 	}
 	return nil, fail(2, "usage: drop secret list|set|delete ...")
+}
+
+// runNode runs `drop node` (admins): nodes are the hosts that run apps.
+func runNode(c *Client, sub string, a *args) (any, error) {
+	switch sub {
+	case "list":
+		if err := a.need(1, "node list [--limit N]"); err != nil {
+			return nil, err
+		}
+		limit, err := a.intFlag("limit", 0)
+		if err != nil {
+			return nil, err
+		}
+		return c.Op("node.list", dropapi.NodeListInput{Limit: limit}, "")
+	case "create", "add":
+		usage := "node create NAME --host-id HOST_ID [--ec2-instance-id ID] [--private-ip IP]"
+		if err := a.need(2, usage); err != nil {
+			return nil, err
+		}
+		if !a.has("host-id") {
+			return nil, fail(2, "usage: drop %s", usage)
+		}
+		return c.Op("node.create", dropapi.NodeCreateInput{Name: a.pos[1], HostID: a.flags["host-id"],
+			EC2InstanceID: a.flags["ec2-instance-id"], PrivateIP: a.flags["private-ip"]}, "")
+	case "rotate-secret":
+		if err := a.need(2, "node rotate-secret NODE"); err != nil {
+			return nil, err
+		}
+		return c.Op("node.rotate_secret", dropapi.NodeRotateSecretInput{Node: a.pos[1]}, "")
+	case "set-state":
+		if err := a.need(3, "node set-state NODE active|draining|disabled"); err != nil {
+			return nil, err
+		}
+		return c.Op("node.set_state", dropapi.NodeSetStateInput{Node: a.pos[1], State: a.pos[2]}, "")
+	}
+	return nil, fail(2, "usage: drop node list|create|rotate-secret|set-state ...")
+}
+
+// runPlace runs `drop place` (admins): put an app on a node, or clear it.
+func runPlace(c *Client, a *args) (any, error) {
+	if a.bools["clear"] {
+		if err := a.need(1, "place APP --clear"); err != nil {
+			return nil, err
+		}
+		return c.Op("placement.clear", dropapi.PlacementClearInput{App: a.pos[0]}, "")
+	}
+	if err := a.need(2, "place APP NODE | place APP --clear"); err != nil {
+		return nil, err
+	}
+	return c.Op("placement.set", dropapi.PlacementSetInput{App: a.pos[0], Node: a.pos[1]}, "")
 }

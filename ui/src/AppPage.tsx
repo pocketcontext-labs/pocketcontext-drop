@@ -13,6 +13,7 @@ import {
   OpError,
   type App,
   type AppSettings,
+  type AppStatus,
   type DesiredState,
   type HealthKind,
   type Secret,
@@ -41,6 +42,85 @@ export function envNameProblem(name: string): string {
   )
     return `${name} is reserved.`;
   return "";
+}
+
+/** People's names of the runtime phases (internal/dropapi Status). */
+export const phaseLabels: Record<string, string> = {
+  archived: "Archived",
+  no_release: "No release",
+  unplaced: "Not placed",
+  pending: "Pending",
+  staging: "Staging",
+  staging_failed: "Staging failed",
+  secret_failed: "Secrets failed",
+  deploying: "Deploying",
+  starting: "Starting",
+  running: "Running",
+  sleeping: "Sleeping",
+  unhealthy: "Unhealthy",
+  stopped: "Stopped",
+  failed: "Failed",
+  unknown: "Unknown",
+};
+
+/** How often the Overview refreshes the phase. */
+const PHASE_REFRESH_MS = 15000;
+
+/** The app's runtime phase, refreshed while the Overview is open. */
+function Phase({ app }: { app: App }) {
+  const [status, setStatus] = useState<AppStatus | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        const s = await dropApi.appStatus(app.id);
+        if (active) {
+          setStatus(s);
+          setFailed(false);
+        }
+      } catch {
+        if (active) setFailed(true);
+      }
+    };
+    void load();
+    const timer = window.setInterval(() => void load(), PHASE_REFRESH_MS);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+    // Reload at once when the app changes (start, stop, a new deployment).
+  }, [app.id, app.updated, app.deployment_id, app.desired_state]);
+  if (!status)
+    return (
+      <>
+        <dt>Phase</dt>
+        <dd className="quiet">{failed ? "Not available" : "Loading…"}</dd>
+      </>
+    );
+  return (
+    <>
+      <dt>Phase</dt>
+      <dd>
+        <span className={`phase phase-${status.phase}`}>
+          {phaseLabels[status.phase] ?? status.phase}
+        </span>
+        {status.message && (
+          <span className="quiet"> · {status.message}</span>
+        )}
+        {status.restart_count > 0 && (
+          <span className="quiet">
+            {" "}
+            · {status.restart_count} restarts
+            {status.last_exit_code !== null
+              ? `, last exit code ${status.last_exit_code}`
+              : ""}
+          </span>
+        )}
+        {status.node && <span className="quiet"> · node {status.node}</span>}
+      </dd>
+    </>
+  );
 }
 
 function Overview({
@@ -77,6 +157,7 @@ function Overview({
       <dl className="facts">
         <dt>State</dt>
         <dd>{app.archived ? "Archived" : stateLabels[app.desired_state]}</dd>
+        <Phase app={app} />
         <dt>Hostname</dt>
         <dd>
           {app.hostname ? (
@@ -102,7 +183,7 @@ function Overview({
         ) : (
           <>No release yet: upload the app&apos;s executable in <a href={appHash(app.id, "releases")}>Releases</a>.</>
         )}{" "}
-        Placement on a node comes next; until then nothing runs.
+        An admin places the app on a node; until then nothing runs.
       </p>
       {error && (
         <p role="alert" className="error">
@@ -224,7 +305,7 @@ function Settings({
     <NumberInput
       field={field}
       value={numbers[field]}
-      disabled={app.archived}
+      disabled={app.archived || (field === "disk_mib" && app.disk_locked)}
       onChange={(value) => setNumbers((n) => ({ ...n, [field]: value }))}
     />
   );

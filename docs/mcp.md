@@ -19,11 +19,11 @@ There are two MCP servers, one per role, with the same two tools and different e
 | `app` | user | `app.get` | one app (`app`) with its secret names |
 | `releases` | user | `release.list` | an app's releases (`app`); not available until releases exist |
 | `secrets` | user | `secret.list` | an app's secrets (`app`): `name`, `length`, `updated`, `set_via` only |
-| `status` | user | `status` | an app's runtime status (`app`); not available until nodes exist |
+| `status` | user | `status` | an app's runtime status (`app`): phase, message, deployment, restarts; the node's name for admins |
 | `events` | user | `event.list` | events of the caller's apps or of one app (`app`); `all` (admins) every event |
 | `users` | admin | `user.list` | every account |
 | `invites` | admin | `invite.list` | invites and their state |
-| `nodes` | admin | `node.list` | hosts; not available until nodes exist |
+| `nodes` | admin | `node.list` | nodes (hosts): state, online, desired_seq, capacity and app count |
 
 A `what` whose operation is not registered yet stays listed, marked "(not available yet)" in the description, and answers `not_available`. Registering the operation under that name, as a read, makes it work with no MCP change.
 
@@ -36,7 +36,7 @@ The op enum and the op table in the tool description (name, role, input signatur
 - users: `app.create`, `app.set`, `app.start`, `app.stop`, `release.upload_link`, `release.deploy`, `secret.set`, `secret.delete`;
 - admins also: `invite.create`, `invite.revoke`, `user.set`, `node.create`, `node.rotate_secret`, `node.set_state`, `placement.set`, `placement.clear`.
 
-Operations not registered yet (releases, nodes and placements) join the enum when their specs land with `MCP: true`. Reads sent to `drop_write` are refused (use `drop_read`), and so are operations not offered through MCP (`app.archive`, `app.restore`).
+Every operation on these lists is registered (`node.create` and `node.rotate_secret` return a node's agent password once: it passes through the conversation, so the instructions ask admins to hand it only to whoever installs the agent). Reads sent to `drop_write` are refused (use `drop_read`), and so are operations not offered through MCP (`app.archive`, `app.restore`).
 
 ### Errors
 

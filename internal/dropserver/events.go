@@ -13,12 +13,13 @@ var recordID = regexp.MustCompile(`^[a-z0-9]{15}$`)
 // MaxEventDetailBytes bounds an event's detail JSON.
 const MaxEventDetailBytes = 8 << 10
 
-// EventRecord is one events row. Actor is the users account that acted;
-// App and SubjectUser name what it acted on, when anything. Detail never
-// holds a secret value (names and lengths only).
+// EventRecord is one events row. Actor is the users account that acted, or
+// ActorNode the node (the agent routes); App and SubjectUser name what it
+// acted on, when anything. Detail never holds a secret value (names and
+// lengths only).
 type EventRecord struct {
-	Actor, App, SubjectUser, Action string
-	Detail                          map[string]any
+	Actor, ActorNode, App, SubjectUser, Action string
+	Detail                                     map[string]any
 }
 
 // WriteEvent writes one events row with app, normally the operation's
@@ -42,6 +43,7 @@ func WriteEvent(app core.App, e EventRecord) error {
 	}
 	record := core.NewRecord(collection)
 	record.Set("actor", e.Actor)
+	record.Set("actor_node", e.ActorNode)
 	record.Set("app", e.App)
 	record.Set("subject_user", e.SubjectUser)
 	record.Set("action", e.Action)

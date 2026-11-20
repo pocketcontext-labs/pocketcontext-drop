@@ -27,6 +27,7 @@
     "events": [
       "id",
       "actor",
+      "actor_node",
       "app",
       "subject_user",
       "action",
@@ -53,6 +54,29 @@
       "note",
       "created_by",
       "created"
+    ],
+    "placements": [
+      "id",
+      "app",
+      "node",
+      "generation",
+      "created_by",
+      "created",
+      "updated"
+    ],
+    "node_reports": [
+      "id",
+      "node",
+      "app",
+      "nib_app_id",
+      "deployment_id",
+      "phase",
+      "message",
+      "restart_count",
+      "last_exit_code",
+      "has_exit_code",
+      "converged_at",
+      "observed_at"
     ]
   },
   "timeoutMs": 2000,

@@ -216,6 +216,8 @@ parsed:
 		"invite":         {{"role", "quota", "expires-days", "state", "limit"}, nil},
 		"user":           {{"role", "quota", "limit"}, {"suspend", "unsuspend"}},
 		"op":             {{"idempotency-key"}, nil},
+		"node":           {{"host-id", "ec2-instance-id", "private-ip", "limit"}, nil},
+		"place":          {nil, {"clear"}},
 	}
 	s, known := spec[command]
 	if !known {
@@ -436,7 +438,7 @@ func runData(c *Client, command string, a *args, pretty bool) error {
 	var data any
 	var err error
 	switch command {
-	case "invite", "user", "op", "app", "secret", "release":
+	case "invite", "user", "op", "app", "secret", "release", "node", "place":
 		data, err = runOps(c, command, a)
 	case "whoami":
 		me, err := c.Must("POST", "/api/collections/users/auth-refresh", nil)

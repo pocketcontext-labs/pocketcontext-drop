@@ -2127,7 +2127,7 @@
  {
   "method": "POST",
   "path": "/api/collections/nodes/auth-with-password",
-  "allow": false
+  "allow": true
  },
  {
   "method": "PUT",
@@ -2162,7 +2162,7 @@
  {
   "method": "POST",
   "path": "/api/collections/nodes/auth-refresh",
-  "allow": false
+  "allow": true
  },
  {
   "method": "PUT",
@@ -2247,12 +2247,12 @@
  {
   "method": "GET",
   "path": "/api/drop/agent/desired",
-  "allow": false
+  "allow": true
  },
  {
   "method": "HEAD",
   "path": "/api/drop/agent/desired",
-  "allow": false
+  "allow": true
  },
  {
   "method": "OPTIONS",
@@ -2302,7 +2302,7 @@
  {
   "method": "POST",
   "path": "/api/drop/agent/report",
-  "allow": false
+  "allow": true
  },
  {
   "method": "PUT",

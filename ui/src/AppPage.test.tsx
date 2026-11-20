@@ -12,7 +12,7 @@ const app: DropApp = {
   id, name: "Hello app", slug: "hello-app", owner: user.id, owner_email: user.email, nib_app_id: `d-${id}`,
   volume_id: `d-${id}-vol`, hostname: "hello-app.apps.example.test", desired_state: "on-request", idle_timeout_ms: 300000,
   vcpu: 1, memory_mib: 512, disk_mib: 1024, http_port: 8080, executable_name: "server", args: [], env: { WELCOME_TEXT: "hi" },
-  health_kind: "tcp", health_path: "", deployment_seq: 1, deployment_id: `d-${id}-dep-1`, current_release: "", archived: false, archived_at: "",
+  health_kind: "tcp", health_path: "", deployment_seq: 1, deployment_id: `d-${id}-dep-1`, current_release: "", disk_locked: false, archived: false, archived_at: "",
   created: "2026-11-19 10:00:00.000Z", updated: "2026-11-19 10:00:00.000Z",
 };
 
@@ -21,6 +21,11 @@ beforeEach(() => {
   vi.spyOn(dropApi, "me").mockResolvedValue(member);
   vi.spyOn(api, "refreshSession").mockResolvedValue();
   vi.spyOn(api, "watchApps").mockResolvedValue(() => {});
+  vi.spyOn(dropApi, "appStatus").mockResolvedValue({
+    app: id, phase: "unplaced", message: "Waiting for an admin to place the app on a node.", desired_state: "on-request",
+    deployment_id: `d-${id}-dep-1`, reported_deployment_id: "", hostname: "", placed: false, restart_count: 0,
+    last_exit_code: null, converged_at: "", observed_at: "", last_seen: "",
+  });
 });
 afterEach(() => {
   cleanup();
@@ -55,6 +60,20 @@ it("creates an app from #/apps/new and opens its page", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Create app" }));
   await vi.waitFor(() => expect(location.hash).toBe(`#/apps/${id}`));
   expect(create).toHaveBeenCalledWith(expect.objectContaining({ name: "Hello app", slug: "hello-app", http_port: 9000, desired_state: "on-request", health_kind: "tcp" }));
+});
+
+it("shows the runtime phase on the Overview", async () => {
+  history.replaceState(null, "", `/#/apps/${id}`);
+  vi.spyOn(dropApi, "getApp").mockResolvedValue({ app: { ...app, current_release: "rel000000000001" }, secrets: [] });
+  const status = vi.spyOn(dropApi, "appStatus").mockResolvedValue({
+    app: id, phase: "running", message: "", desired_state: "on-request", deployment_id: `d-${id}-dep-1`,
+    reported_deployment_id: `d-${id}-dep-1`, hostname: app.hostname, placed: true, restart_count: 2,
+    last_exit_code: 1, converged_at: "", observed_at: "", last_seen: "",
+  });
+  render(<App />);
+  expect(await screen.findByText("Running")).toBeInTheDocument();
+  expect(screen.getByText(/2 restarts, last exit code 1/)).toBeInTheDocument();
+  expect(status).toHaveBeenCalledWith(id);
 });
 
 it("saves only the changed settings and reports a new deployment", async () => {

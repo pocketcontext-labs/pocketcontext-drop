@@ -253,6 +253,11 @@ func (u *uploader) serve(re *core.RequestEvent) error {
 				}
 			}
 		}
+		if deployed {
+			if err := syncDesiredSeqs(tx); err != nil {
+				return err
+			}
+		}
 		now, err := types.ParseDateTime(u.now().UTC())
 		if err != nil {
 			return err

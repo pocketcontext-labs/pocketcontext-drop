@@ -185,6 +185,11 @@ func serveOp(re *core.RequestEvent, keys *sync.Mutex) error {
 		if err != nil {
 			return err
 		}
+		// Every change that alters a node's desired document bumps its
+		// desired_seq in the same transaction (seq.go).
+		if err := syncDesiredSeqs(tx); err != nil {
+			return err
+		}
 		if encoded, err = json.Marshal(result); err != nil {
 			return err
 		}

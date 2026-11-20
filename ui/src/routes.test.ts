@@ -19,7 +19,8 @@ describe("routes", () => {
     expect(viewFromHash("#/connect")).toBe("connect");
     expect(viewFromHash("#/apps")).toBe("apps");
     expect(viewFromHash("#/admin/users")).toBe("admin-users");
-    expect(viewFromHash("#/admin/nodes")).toBe("apps");
+    expect(viewFromHash("#/admin/nodes")).toBe("admin-nodes");
+    expect(viewFromHash("#/admin/other")).toBe("apps");
     expect(viewFromHash("")).toBe("apps");
     expect(viewFromHash("#/apps/new")).toBe("app-new");
     expect(viewFromHash("#/apps/app000000000001")).toBe("app");

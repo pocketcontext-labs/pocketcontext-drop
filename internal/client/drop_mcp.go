@@ -187,7 +187,7 @@ func dropReadDescription(role dropapi.Role) string {
 func dropInstructions(role dropapi.Role) string {
 	admin := ""
 	if role == dropapi.RoleAdmin {
-		admin = " As an admin you also read accounts and invites and invite people (invite.create returns a sign-in URL for the person to pass on; Drop sends no invite email) and change accounts with user.set: do so only when the person asks, naming the address."
+		admin = " As an admin you also read accounts and invites and invite people (invite.create returns a sign-in URL for the person to pass on; Drop sends no invite email) and change accounts with user.set: do so only when the person asks, naming the address. You also manage nodes (node.create and node.rotate_secret return the node's agent password once: pass it on only to whoever installs the agent) and place apps on them (placement.set, placement.clear), only on the person's request."
 	}
 	return "Drop runs people's apps (one Linux executable each) on PocketContext-managed hosts. Two tools, both with the account that approved this connection: drop_read reads (start with what=me, then apps), drop_write changes things through Drop's operations. Every call is checked on the server against your role and ownership." + admin +
 		" A change to what an app runs with starts a new deployment, which restarts it. " + secretWarning +

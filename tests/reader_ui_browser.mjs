@@ -165,6 +165,7 @@ try {
   await page.screenshot({ path: path.join(screenshots, 'app-releases-light.png'), fullPage: true });
   await page.getByRole('link', { name: 'Overview' }).click();
   await page.getByText(/-dep-3$/).waitFor();
+  await page.getByText('No release', { exact: true }).waitFor();
   await page.getByRole('link', { name: '← Your apps' }).click();
   ok('the app page saves settings and environment variables, each a new deployment, and checks a release file before upload');
 
@@ -196,6 +197,29 @@ try {
   await page.getByRole('link', { name: 'Apps' }).click();
   await page.getByRole('heading', { name: 'Your apps' }).waitFor();
   ok('the admin invites from the Users page, gets the sign-in link and revokes the invite');
+
+  // Nodes: add one (its agent password is shown once) and place an app.
+  await page.getByRole('link', { name: 'Nodes' }).click();
+  await page.getByRole('heading', { name: 'Nodes', level: 2 }).waitFor();
+  assert.equal(new URL(page.url()).hash, '#/admin/nodes');
+  await page.getByText('No nodes yet.').waitFor();
+  await page.getByLabel('Name').fill('node-one');
+  await page.getByLabel('Host id').fill('host-browser-1');
+  await page.getByRole('button', { name: 'Add node' }).click();
+  await page.getByText(/Agent password for node-one/).waitFor();
+  const nodePassword = await page.locator('.invite-link code').textContent();
+  assert.match(nodePassword, /^[A-Za-z0-9]{40}$/, 'a 40-character agent password');
+  await page.getByRole('list', { name: 'Nodes by name' }).getByText('node-one', { exact: true }).waitFor();
+  await page.getByLabel('App (id or slug)').fill('third-app');
+  await page.getByLabel('Node').selectOption('node-one');
+  await page.getByRole('button', { name: 'Place' }).click();
+  await page.getByText('third-app is placed on node-one.').waitFor();
+  await page.screenshot({ path: path.join(screenshots, 'admin-nodes-light.png'), fullPage: true });
+  const cliNodes = await cli(['node', 'list']);
+  assert.equal(cliNodes.nodes[0].apps, 1, 'the CLI sees the placement made in the reader');
+  await page.getByRole('link', { name: 'Apps' }).click();
+  await page.getByRole('heading', { name: 'Your apps' }).waitFor();
+  ok('the admin adds a node from the Nodes page, sees its password once and places an app');
   await page.screenshot({ path: path.join(screenshots, 'reader-light.png'), fullPage: true });
 
   const lightBackground = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);

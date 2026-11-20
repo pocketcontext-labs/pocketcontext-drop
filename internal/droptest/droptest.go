@@ -479,3 +479,37 @@ func (h *Hosted) Upload(path string, body []byte) *httptest.ResponseRecorder {
 	h.Server.Public().ServeHTTP(w, r)
 	return w
 }
+
+// NodeLogin signs a node in the way its agent does (POST
+// /api/collections/nodes/auth-with-password through the public handler) and
+// returns the HTTP status and, on success, the node token.
+func (h *Hosted) NodeLogin(name, password string) (int, string) {
+	h.T.Helper()
+	body, _ := json.Marshal(map[string]string{"identity": name, "password": password})
+	w := h.Request(http.MethodPost, "/api/collections/nodes/auth-with-password", "", string(body))
+	if w.Code != http.StatusOK {
+		return w.Code, ""
+	}
+	var out struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil || out.Token == "" {
+		h.T.Fatalf("node sign-in answer %s: %v", w.Body, err)
+	}
+	return w.Code, out.Token
+}
+
+// Node adds a node through node.create as the owner and returns its id, its
+// password and a node token.
+func (h *Hosted) Node(name, hostID string) (id, password, token string) {
+	h.T.Helper()
+	result := h.MustOp(h.Token(h.Owner()), "node.create", map[string]any{"name": name, "host_id": hostID})
+	node, _ := result["node"].(map[string]any)
+	id, _ = node["id"].(string)
+	password, _ = result["password"].(string)
+	status, token := h.NodeLogin(name, password)
+	if status != http.StatusOK || id == "" {
+		h.T.Fatalf("node %s: sign-in %d", name, status)
+	}
+	return id, password, token
+}

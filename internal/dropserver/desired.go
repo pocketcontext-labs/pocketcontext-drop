@@ -1,0 +1,173 @@
+package dropserver
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"slices"
+	"strings"
+
+	"ganigeorgiev.com/pocketbase/dbx"
+	"ganigeorgiev.com/pocketbase/pocketbase/core"
+
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/appspec"
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/awsx"
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/render"
+)
+
+// The desired document of one node (drop.desired/v1, dropapi.Desired), which
+// the agent pulls from GET /api/drop/agent/desired (agent_routes.go).
+//
+// It maps the node's placements, their apps, current releases and secret
+// names (never values: the server holds no secret reader) into render.App and
+// runs render.Render over them as a check, with the server's limits and no
+// secret values: an app the renderer refuses is moved to Rejected, so the
+// server never sends what the node's renderer would refuse. The node renders
+// again with its own limits, the resolved secret values and its previous
+// document.
+//
+// Left out: apps that are archived or have no current release. The agent
+// turns an app it ran before and no longer receives into a stopped tombstone.
+
+// fallbackHostSuffix is the host suffix of the server's check when it has no
+// app domain (apps then have no hostname, so it never matches anything).
+const fallbackHostSuffix = ".invalid"
+
+// buildDesired returns the desired document of node at its current
+// desired_seq. A whole-document refusal by the renderer (which the
+// operations' validation should make impossible) is an error.
+func buildDesired(app core.App, node *core.Record) (*dropapi.Desired, error) {
+	services := servicesOf(app)
+	placements, err := app.FindRecordsByFilter("placements", "node = {:node}", "", 0, 0, dbx.Params{"node": node.Id})
+	if err != nil {
+		return nil, err
+	}
+	apps := []dropapi.DesiredApp{}
+	for _, p := range placements {
+		record, err := app.FindRecordById("apps", p.GetString("app"))
+		if err != nil || record.GetBool("archived") {
+			continue
+		}
+		desired, ok, err := desiredApp(app, record, services)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			apps = append(apps, desired)
+		}
+	}
+	slices.SortFunc(apps, func(a, b dropapi.DesiredApp) int { return strings.Compare(a.AppID, b.AppID) })
+
+	limits := render.Limits{AllowedHostSuffix: fallbackHostSuffix, SSMPrefix: services.SSMPrefix}
+	if ValidAppDomain(services.AppDomain) {
+		limits.AllowedHostSuffix = "." + services.AppDomain
+	}
+	limits.AllocatableVCPU, limits.AllocatableMemoryMib = allocatable(node)
+	check := render.Input{HostID: node.GetString("host_id"), Limits: limits}
+	for _, a := range apps {
+		check.Apps = append(check.Apps, a.RenderApp(nil))
+	}
+	out, err := render.Render(check)
+	if err != nil {
+		return nil, err
+	}
+	rejected := map[string]bool{}
+	for _, r := range out.Rejected {
+		rejected[r.AppID] = true
+	}
+	d := &dropapi.Desired{
+		Schema: dropapi.DesiredSchema, Node: node.GetString("name"), NodeID: node.Id, HostID: node.GetString("host_id"),
+		Apps: []dropapi.DesiredApp{}, Rejected: []render.AppError{},
+	}
+	for _, a := range apps {
+		if !rejected[a.AppID] {
+			d.Apps = append(d.Apps, a)
+		}
+	}
+	d.Rejected = append(d.Rejected, out.Rejected...)
+	slices.SortFunc(d.Rejected, func(a, b render.AppError) int { return strings.Compare(a.AppID, b.AppID) })
+	if d.ContentHash, err = desiredHash(d); err != nil {
+		return nil, err
+	}
+	d.State = node.GetString("state")
+	d.DesiredSeq = int64(node.GetInt("desired_seq"))
+	return d, nil
+}
+
+// desiredApp maps one placed app; ok is false when it has no current release.
+func desiredApp(app core.App, record *core.Record, services Services) (dropapi.DesiredApp, bool, error) {
+	releaseID := record.GetString("current_release")
+	if releaseID == "" {
+		return dropapi.DesiredApp{}, false, nil
+	}
+	release, err := app.FindRecordById("releases", releaseID)
+	if err != nil || release.GetString("app") != record.Id {
+		return dropapi.DesiredApp{}, false, nil
+	}
+	nibAppID := record.GetString("nib_app_id")
+	a := dropapi.DesiredApp{App: render.App{
+		AppID:          nibAppID,
+		DeploymentID:   deploymentID(record),
+		DesiredState:   record.GetString("desired_state"),
+		IdleTimeoutMs:  int64(record.GetInt("idle_timeout_ms")),
+		Volume:         render.Volume{VolumeID: record.GetString("volume_id"), SizeBytes: int64(record.GetInt("disk_mib")) * appspec.MiB},
+		Release:        render.Release{SHA256: release.GetString("sha256"), S3Key: release.GetString("s3_key"), SizeBytes: int64(release.GetInt("size_bytes"))},
+		ExecutableName: record.GetString("executable_name"),
+		HTTPPort:       record.GetInt("http_port"),
+		Args:           appArgs(record),
+		Resources:      render.Resources{VCPU: record.GetInt("vcpu"), MemoryMib: record.GetInt("memory_mib")},
+		HealthCheck:    render.HealthCheck{Kind: record.GetString("health_kind"), Path: record.GetString("health_path")},
+		Hostnames:      []render.Hostname{},
+		Env:            appEnv(record),
+	}, Secrets: []dropapi.DesiredSecret{}}
+	if a.HealthCheck.Kind != appspec.HealthHTTP {
+		a.HealthCheck.Path = ""
+	}
+	if host := record.GetString("hostname"); host != "" {
+		a.Hostnames = append(a.Hostnames, render.Hostname{Hostname: host, Kind: "platform"})
+	}
+	secrets, err := secretRecords(app, record)
+	if err != nil {
+		return a, false, err
+	}
+	for _, s := range secrets {
+		parameter, err := awsx.SecretParameter(services.SSMPrefix, nibAppID, s.GetString("name"))
+		if err != nil {
+			return a, false, err
+		}
+		a.Secrets = append(a.Secrets, dropapi.DesiredSecret{Name: s.GetString("name"), Parameter: parameter, Version: int64(s.GetInt("ssm_version"))})
+	}
+	return a, true, nil
+}
+
+// allocatable reads nibrunner's allocatable vCPUs and memory from a node's
+// last report (0 when unknown, which skips the check).
+func allocatable(node *core.Record) (vcpu, memoryMib int) {
+	var a struct {
+		VCPUCount float64 `json:"vcpuCount"`
+		MemoryMib float64 `json:"memoryMib"`
+	}
+	_ = node.UnmarshalJSONField("allocatable", &a)
+	if a.VCPUCount > 0 && a.VCPUCount < 1<<20 {
+		vcpu = int(a.VCPUCount)
+	}
+	if a.MemoryMib > 0 && a.MemoryMib < 1<<40 {
+		memoryMib = int(a.MemoryMib)
+	}
+	return vcpu, memoryMib
+}
+
+// desiredHash is the content hash of a desired document: the sha256 of its
+// JSON with desiredSeq, state and contentHash empty (Go encodes struct fields
+// in order and map keys sorted, so equal documents hash equal).
+func desiredHash(d *dropapi.Desired) (string, error) {
+	c := *d
+	c.DesiredSeq, c.State, c.ContentHash = 0, "", ""
+	raw, err := json.Marshal(c)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:]), nil
+}

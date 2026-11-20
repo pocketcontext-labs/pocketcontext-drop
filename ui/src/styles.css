@@ -439,3 +439,18 @@ section > h3 {
   flex: 1;
   max-width: 360px;
 }
+
+/* Runtime phase badges on an app's Overview. */
+.phase {
+  font-weight: 600;
+}
+.phase-running,
+.phase-sleeping {
+  color: var(--accent);
+}
+.phase-failed,
+.phase-staging_failed,
+.phase-secret_failed,
+.phase-unhealthy {
+  color: var(--danger);
+}
