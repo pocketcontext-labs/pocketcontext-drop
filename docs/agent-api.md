@@ -19,7 +19,7 @@ A node is an auth record of the `nodes` collection, never a `users` account. Its
 | `POST /api/collections/nodes/auth-with-password` `{"identity": "<node name>", "password": "<node secret>"}` | 200 `{token, record}` (`record.id` is the node id, `record.collectionName` `nodes`); 400 wrong name or password; 403 a disabled node |
 | `POST /api/collections/nodes/auth-refresh` with `Authorization: <token>` | 200 `{token, record}`; 401 when the token is invalid or ended |
 
-Tokens last 3600 s: refresh every 30 minutes. A 401 on any route means sign in again (with backoff); a 400 on sign-in means the password is wrong (rotated) and a 403 that the node is disabled: keep the current `desired.json` and retry slowly. The sign-in routes take bodies of at most 16 KiB and each client address gets 10 attempts at once, then one every 6 seconds (429 `rate_limited`, `Retry-After`); PocketBase's own auth limit applies as well.
+Tokens last 3600 s: refresh every 30 minutes. A 401 on any route means sign in again (with backoff); a 400 on sign-in means the password is wrong (rotated) and a 403 that the node is disabled: keep the current `desired.json` and retry slowly. The sign-in routes take bodies of at most 16 KiB and each client address gets 10 requests at once over both routes, then one every 6 seconds (429 `rate_limited`, `Retry-After`); PocketBase's own auth limit (2 password sign-ins per 3 seconds per address) applies as well (`TestNodeSignInRateLimit`). After the server restores a backup (`--hosted-restore`) every earlier node token gets 401: sign in again.
 
 ## Wake-up: realtime on `nodes/<id>`
 

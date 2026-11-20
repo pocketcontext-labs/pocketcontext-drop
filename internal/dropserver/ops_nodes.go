@@ -1,6 +1,7 @@
 package dropserver
 
 import (
+	"fmt"
 	"net"
 	"regexp"
 	"strings"
@@ -240,6 +241,39 @@ func dropReportsElsewhere(app core.App, appID, keep string) error {
 	return err
 }
 
+// checkNodeRoom refuses a placement when the app, together with the other
+// (not archived) apps already placed on node, needs more vCPUs or memory than
+// the node's last reported allocatable (an unknown allocatable skips the
+// check). A stopped or on-request app still counts: it can start at any time
+// without another placement.
+func checkNodeRoom(app core.App, node, placed *core.Record) error {
+	vcpu, memory := allocatable(node)
+	if vcpu <= 0 && memory <= 0 {
+		return nil
+	}
+	need := placed.GetInt("vcpu")
+	needMemory := placed.GetInt("memory_mib")
+	if (vcpu > 0 && need > vcpu) || (memory > 0 && needMemory > memory) {
+		return Conflict(dropapi.CodeNodeTooSmall, "The app needs more vCPUs or memory than node "+node.GetString("name")+" can allocate.")
+	}
+	var used struct {
+		VCPU   int `db:"vcpu"`
+		Memory int `db:"memory"`
+	}
+	err := app.DB().NewQuery(`SELECT COALESCE(SUM(a.vcpu), 0) AS vcpu, COALESCE(SUM(a.memory_mib), 0) AS memory
+		FROM placements p JOIN apps a ON a.id = p.app
+		WHERE p.node = {:node} AND p.app != {:app} AND a.archived = FALSE`).
+		Bind(dbx.Params{"node": node.Id, "app": placed.Id}).One(&used)
+	if err != nil {
+		return err
+	}
+	if (vcpu > 0 && used.VCPU+need > vcpu) || (memory > 0 && used.Memory+needMemory > memory) {
+		return Conflict(dropapi.CodeNodeTooSmall, fmt.Sprintf("Node %s has room for %d vCPUs and %d MiB; its other apps already take %d vCPUs and %d MiB, and this app needs %d and %d.",
+			node.GetString("name"), vcpu, memory, used.VCPU, used.Memory, need, needMemory))
+	}
+	return nil
+}
+
 func placementSet(c *Ctx, in *dropapi.PlacementSetInput) (any, error) {
 	app, err := c.anyApp(in.App)
 	if err != nil {
@@ -255,8 +289,8 @@ func placementSet(c *Ctx, in *dropapi.PlacementSetInput) (any, error) {
 	if node.GetString("state") != dropapi.NodeActive {
 		return nil, Conflict(dropapi.CodeNodeUnavailable, "Node "+node.GetString("name")+" is "+node.GetString("state")+": only an active node takes apps.")
 	}
-	if vcpu, memory := allocatable(node); (vcpu > 0 && app.GetInt("vcpu") > vcpu) || (memory > 0 && app.GetInt("memory_mib") > memory) {
-		return nil, Conflict(dropapi.CodeNodeTooSmall, "The app needs more vCPUs or memory than node "+node.GetString("name")+" can allocate.")
+	if err := checkNodeRoom(c.App, node, app); err != nil {
+		return nil, err
 	}
 	placement, err := placementOf(c.App, app.Id)
 	if err != nil {

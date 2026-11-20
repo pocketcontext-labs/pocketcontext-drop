@@ -45,6 +45,9 @@ func Hooks() appserver.Hooks {
 			go runUploadLinkPruning(ctx, app)
 			runOpKeyPruning(ctx, app)
 		},
-		AllowSignIn: AllowSignIn,
+		// --hosted-restore: core rotates the accounts' token keys; Drop adds
+		// the nodes' (restore.go).
+		OnHostedRestore: InvalidateNodeTokens,
+		AllowSignIn:     AllowSignIn,
 	}
 }

@@ -117,7 +117,18 @@ func (u *uploader) release(hash string) {
 // release cap itself (and core's public handler PublicBodyLimit above it).
 func registerUploadRoute(e *core.ServeEvent) {
 	u := newUploader()
-	e.Router.PUT(dropapi.UploadRoutePrefix+"{token}", u.serve).Bind(apis.BodyLimit(0))
+	e.Router.PUT(dropapi.UploadRoutePrefix+"{token}", u.serve).Bind(apis.BodyLimit(0)).BindFunc(redactUploadToken)
+}
+
+// redactUploadToken keeps the token out of PocketBase's request log, which
+// records the URL after the handler returns: the logged path ends in
+// [redacted]. (The handler has already read the token from the path value.)
+func redactUploadToken(re *core.RequestEvent) error {
+	err := re.Next()
+	redacted := *re.Request.URL
+	redacted.Path, redacted.RawPath, redacted.RawQuery = dropapi.UploadRoutePrefix+"[redacted]", "", ""
+	re.Request.URL = &redacted
+	return err
 }
 
 func uploadLinkInvalid() *dropapi.Error {
