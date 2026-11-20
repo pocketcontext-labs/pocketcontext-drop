@@ -203,7 +203,7 @@ try {
   await page.getByRole('heading', { name: 'Nodes', level: 2 }).waitFor();
   assert.equal(new URL(page.url()).hash, '#/admin/nodes');
   await page.getByText('No nodes yet.').waitFor();
-  await page.getByLabel('Name').fill('node-one');
+  await page.getByLabel('Name', { exact: true }).fill('node-one');
   await page.getByLabel('Host id').fill('host-browser-1');
   await page.getByRole('button', { name: 'Add node' }).click();
   await page.getByText(/Agent password for node-one/).waitFor();
@@ -211,7 +211,7 @@ try {
   assert.match(nodePassword, /^[A-Za-z0-9]{40}$/, 'a 40-character agent password');
   await page.getByRole('list', { name: 'Nodes by name' }).getByText('node-one', { exact: true }).waitFor();
   await page.getByLabel('App (id or slug)').fill('third-app');
-  await page.getByLabel('Node').selectOption('node-one');
+  await page.getByLabel('Node', { exact: true }).selectOption('node-one');
   await page.getByRole('button', { name: 'Place' }).click();
   await page.getByText('third-app is placed on node-one.').waitFor();
   await page.screenshot({ path: path.join(screenshots, 'admin-nodes-light.png'), fullPage: true });
