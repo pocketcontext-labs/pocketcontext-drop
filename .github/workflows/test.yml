@@ -44,8 +44,8 @@ jobs:
         run: node --test tests/dev_launcher.test.mjs
       - name: Unit tests
         run: CGO_ENABLED=1 go test -tags "$(cat build-tags.txt)" ./...
-      - name: Release script tests
-        run: python3 -B -m unittest discover -s tests -p test_release.py
+      - name: Python unit tests (release script, leak scan)
+        run: python3 -B -m unittest discover -s tests -p 'test_*.py'
       - name: Build the binary
         run: |
           CGO_ENABLED=1 go build -trimpath -tags "$(cat build-tags.txt)" -o bin/drop ./cmd/drop

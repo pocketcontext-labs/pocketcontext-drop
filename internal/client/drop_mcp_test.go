@@ -25,6 +25,7 @@ import (
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/droppolicy"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropserver"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/droptest"
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/leakscan"
 )
 
 // The operations the M6 ticket (decision 11) puts in drop_write, by role.
@@ -481,6 +482,41 @@ func TestMCPIsolation(t *testing.T) {
 	if n, _ := h.App.CountRecords("app_secret_names"); n != 2 {
 		t.Errorf("%d secret names", n)
 	}
+	// Releases, status, upload links and deploys on B's app: 404 for A.
+	link := mustTool(t, h, b, "drop_write", map[string]any{"op": "release.upload_link", "input": map[string]any{"app": appB, "activate": true}})
+	path, _ := dig(link, "result", "path").(string)
+	if w := h.Upload(path, droptest.ELF(4096, 3)); w.Code != http.StatusOK {
+		t.Fatalf("B's upload: %d %s", w.Code, w.Body)
+	}
+	releaseB := dig(mustTool(t, h, b, "drop_read", map[string]any{"what": "releases", "app": appB}), "current_release").(string)
+	for _, ref := range []string{appB, "app-of-b"} {
+		for _, what := range []string{"releases", "status"} {
+			wantToolError(t, callTool(t, h, a, "drop_read", map[string]any{"what": what, "app": ref}), 404, "not_found")
+		}
+		for op, input := range map[string]map[string]any{
+			"release.upload_link": {}, "release.deploy": {"release": releaseB},
+		} {
+			input["app"] = ref
+			wantToolError(t, callTool(t, h, a, "drop_write", map[string]any{"op": op, "input": input}), 404, "not_found")
+		}
+	}
+	wantToolError(t, callTool(t, h, a, "drop_write", map[string]any{"op": "release.deploy", "input": map[string]any{"app": appA, "release": releaseB}}), 404, "not_found")
+	// Nodes and placements are admins' only.
+	n1, _, nodeToken := h.Node("node-one", "host-mcp-0001")
+	wantToolError(t, callTool(t, h, a, "drop_read", map[string]any{"what": "nodes"}), 403, "forbidden")
+	for op, input := range map[string]map[string]any{
+		"node.create": {"name": "mine", "host_id": "h-2"}, "node.rotate_secret": {"node": n1},
+		"node.set_state": {"node": n1, "state": "disabled"}, "placement.set": {"app": appA, "node": n1}, "placement.clear": {"app": appA},
+	} {
+		wantToolError(t, callTool(t, h, a, "drop_write", map[string]any{"op": op, "input": input}), 403, "forbidden")
+	}
+	if n, _ := h.App.CountRecords("placements"); n != 0 {
+		t.Errorf("%d placements", n)
+	}
+	// A node token is not an OAuth grant: /mcp refuses it.
+	if w := h.MCP("Bearer "+nodeToken, "tools/list", map[string]any{}); w.Code != http.StatusUnauthorized {
+		t.Errorf("node token on /mcp: %d %s", w.Code, w.Body)
+	}
 	// One grant is one account: A's token never acts as B or O.
 	if me := mustTool(t, h, a, "drop_read", map[string]any{"what": "me"}); me["email"] != "a@example.test" {
 		t.Errorf("A's token is %v", me["email"])
@@ -684,4 +720,11 @@ func TestMCPSecretSentinel(t *testing.T) {
 			t.Errorf("diagnostics lack %s", want)
 		}
 	}
+	// The same with internal/leakscan: encoded copies and the raw data files.
+	sources := []leakscan.Source{leakscan.DB("database", h.App.DB()), leakscan.DB("log database", h.App.AuxDB()),
+		leakscan.Path(h.App.DataDir()), leakscan.Text("standard log", std.String()), leakscan.Text("MCP diagnostics", diagnostics)}
+	for i, answer := range answers {
+		sources = append(sources, leakscan.Text(fmt.Sprintf("MCP answer %d", i), answer))
+	}
+	leakscan.Require(t, []leakscan.Sentinel{{Label: "secret value", Value: sentinel}}, sources...)
 }

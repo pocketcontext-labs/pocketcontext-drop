@@ -126,7 +126,7 @@ The browser checks use synthetic data. Install their pinned Chromium once with `
 
 | Command | Checks |
 | --- | --- |
-| `make test` | Go unit tests with the tags in `build-tags.txt` (the route golden table and sign-in email in `internal/droppolicy`; hosted Multi startup, owner sign-in with the emailed code, invite-only sign-in and roles, the operation framework, invites, accounts, idempotency keys, user and invite isolation, the public boundary, app ownership, releases and the one-time upload route in `internal/dropserver`; the operation registry against its handlers and the reader's list in `internal/dropapi` through the `internal/droptest` helpers; hooks and SQLite features in `internal/appconfig`; client and MCP (tools by role, the op table against the registry, a user forcing an admin operation, the MCP isolation matrix and the MCP secret sentinel); vendored server), `tests/dev_launcher.test.mjs`, `tests/test_release.py` |
+| `make test` | Go unit tests with the tags in `build-tags.txt` (the route golden table and sign-in email in `internal/droppolicy`; hosted Multi startup, owner sign-in with the emailed code, invite-only sign-in and roles, the operation framework, invites, accounts, idempotency keys, the isolation suite (accounts A and B, an admin and nodes N1 and N2 across records, operations, upload, agent routes and realtime), limiters, restore and the leak scan, the public boundary, app ownership, releases and the one-time upload route in `internal/dropserver`; the frozen public route list; the operation registry against its handlers and the reader's list in `internal/dropapi` through the `internal/droptest` helpers; hooks and SQLite features in `internal/appconfig`; client and MCP (tools by role, the op table against the registry, a user forcing an admin operation, the MCP isolation matrix and the MCP secret sentinel); vendored server; `internal/leakscan`), `tests/dev_launcher.test.mjs`, `tests/test_release.py`, `tests/test_leak_scan.py` |
 | `(cd ui && pnpm typecheck && pnpm test)` | reader types and unit tests (Vitest) |
 | `make names` | `tests/name_check.py`: the retired product name appears nowhere in the repository or binary |
 | `make identity` | `tests/identity_check.py`: no template identity (name, module, port, hello-world collection, identity fields) left in the repository or binary |
@@ -160,6 +160,7 @@ While the repository is private, download with `gh release download vX.Y.Z -R po
 | `internal/render`, `internal/awsx` | the node's `desired.json` renderer; S3 and SSM clients and fakes |
 | `internal/agent` | the node agent (`drop agent run`, `check` and `render`; [Node agent](docs/agent.md)) |
 | `internal/droptest` | hosted test server helpers: owner and email sign-in, invited accounts, operations, OAuth, MCP |
+| `internal/leakscan` | test support: the secret-leak scan over databases, files, logs and answers (`tests/leak_scan.py` is the Python twin) |
 | `internal/buildinfo` | version and commit stamped at build time |
 | `cmd/drop` | entry point (`main.go`, Linux) and the refusal on every other system (`main_other.go`) |
 | `internal/client` | CLI commands, hosted serve options (`serve_hosted.go`), app search (`apps.go`), operations with the app, secret and account commands (`ops.go`), remote mode, skill installation, the MCP adapter and its two tools (`mcp.go`, `drop_mcp.go`), help |
@@ -170,5 +171,5 @@ While the repository is private, download with `gh release download vX.Y.Z -R po
 | `embed.go` | embeds `pb_hooks`, `pb_migrations`, `server.json`, `ui/dist` and `skills/drop` |
 | `skills/drop` | skill template (`SKILL.remote.md` for `skill --url`); `drop skill` fills in absolute paths |
 | `scripts` | `dev.mjs` launcher, `release.py`, installer template, license notices |
-| `tests` | `e2e.py`, `drop_e2e.py` (the node agent end to end), `fake_agent.py` (the agent API contract), `fixtures/hello` (the test release, built from source), `public_routes.py` and `testdata/public_routes.json`, `name_check.py`, `identity_check.py`, `test_release.py`, `dev_launcher.test.mjs`, browser checks |
+| `tests` | `e2e.py`, `drop_e2e.py` (the node agent end to end), `fake_agent.py` (the agent API contract), `fixtures/hello` (the test release, built from source), `public_routes.py` and `testdata/public_routes.json`, `name_check.py`, `identity_check.py`, `leak_scan.py` (the secret-leak scan) and `test_leak_scan.py`, `test_release.py`, `dev_launcher.test.mjs`, browser checks |
 | `docs` | data model, [Operations](docs/ops.md), origin, [Hosting](docs/hosting.md), [MCP](docs/mcp.md) and [Node agent](docs/agent.md) manuals |

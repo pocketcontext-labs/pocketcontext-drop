@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/pocketcontext-labs/pocketcontext-core/appserver/routepolicytest"
@@ -127,6 +128,66 @@ func TestPublicRouteDeniesLocalReads(t *testing.T) {
 		}
 		if m != "GET" && m != "HEAD" && (PublicRoute(m, "/api/collections/apps/records") || PublicRoute(m, "/api/collections/apps/records/aaaaaaaaaaaaaaa")) {
 			t.Errorf("record %s is public", m)
+		}
+	}
+}
+
+// frozenAllowed is every allowed row of testdata/public_routes.json, written
+// by hand. The route table is frozen (plan M10): -update-routes rewrites the
+// golden file, but it never touches this list, so making a route public takes
+// two deliberate edits in one reviewed diff. Never add a row to make a test
+// pass; a new public route needs the owner's review (AGENTS.md).
+var frozenAllowed = []string{
+	"GET /", "HEAD /",
+	"GET /assets/index-AbCd1234.js", "HEAD /assets/index-AbCd1234.js",
+	"GET /assets/index-AbCd1234.css", "HEAD /assets/index-AbCd1234.css",
+	"GET /assets/logo-AbCd1234.svg", "HEAD /assets/logo-AbCd1234.svg",
+	"GET /api/realtime", "HEAD /api/realtime", "POST /api/realtime",
+	"GET /api/bundle/auth-mode", "HEAD /api/bundle/auth-mode",
+	"GET /api/bundle/version", "HEAD /api/bundle/version",
+	"POST /api/collections/users/auth-refresh",
+	// The node agent (node tokens only; Drop's per-address limiter).
+	"POST /api/collections/nodes/auth-with-password", "POST /api/collections/nodes/auth-refresh",
+	"GET /api/drop/me", "HEAD /api/drop/me",
+	"POST /api/drop/op",
+	"GET /api/drop/agent/desired", "HEAD /api/drop/agent/desired",
+	"POST /api/drop/agent/report",
+	// The one anonymous write: a 32-character one-time upload token.
+	"PUT /api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+	// Record reads the collection rules decide.
+	"GET /api/collections/apps/records", "HEAD /api/collections/apps/records",
+	"GET /api/collections/apps/records/aaaaaaaaaaaaaaa", "HEAD /api/collections/apps/records/aaaaaaaaaaaaaaa",
+	"GET /api/collections/invites/records", "HEAD /api/collections/invites/records",
+	"GET /api/collections/invites/records/aaaaaaaaaaaaaaa", "HEAD /api/collections/invites/records/aaaaaaaaaaaaaaa",
+	"GET /api/collections/events/records", "HEAD /api/collections/events/records",
+	"GET /api/collections/events/records/aaaaaaaaaaaaaaa", "HEAD /api/collections/events/records/aaaaaaaaaaaaaaa",
+}
+
+// TestPublicRouteTableFrozen: the allowed rows of the golden table and of
+// PublicRoute are exactly frozenAllowed.
+func TestPublicRouteTableFrozen(t *testing.T) {
+	data, err := os.ReadFile(publicRouteTable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var table []routeCase
+	if err := json.Unmarshal(data, &table); err != nil {
+		t.Fatal(err)
+	}
+	var golden, generated []string
+	for _, c := range table {
+		if c.Allow {
+			golden = append(golden, c.Method+" "+c.Path)
+		}
+	}
+	for _, c := range generatedRouteTable() {
+		if c.Allow {
+			generated = append(generated, c.Method+" "+c.Path)
+		}
+	}
+	for name, got := range map[string][]string{publicRouteTable: golden, "PublicRoute": generated} {
+		if strings.Join(got, "\n") != strings.Join(frozenAllowed, "\n") {
+			t.Errorf("%s allows a different set of routes than the frozen list:\n got  %q\n want %q\nthe public route table is frozen: a change needs the owner's review and a hand edit of frozenAllowed", name, got, frozenAllowed)
 		}
 	}
 }

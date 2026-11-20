@@ -23,6 +23,7 @@ import urllib.error
 import urllib.request
 
 import fake_agent
+import leak_scan
 
 PASSWORD = 'synthetic test password'
 # The sign-in identity of the project's one account (bundle.AccountEmail).
@@ -908,7 +909,7 @@ def hosted_scenario(pc, r):
         check(not deployed['deployment_bumped'] and deployed['deployment_id'] == app['nib_app_id'] + '-dep-4',
               'deploying the current release again starts no deployment')
 
-        nodes_scenario(pc, r, owner, port, hosted, app)
+        agent_secrets, agent_texts = nodes_scenario(pc, r, owner, port, hosted, app)
     finally:
         server.send_signal(signal.SIGTERM)
         try:
@@ -931,6 +932,14 @@ def hosted_scenario(pc, r):
     check(SECRET_SENTINEL not in output_text, 'the server output never holds the secret value')
     token = link['path'].rsplit('/', 1)[1]
     check(token not in dump and token not in output_text, 'the upload token is in neither the database nor the server output')
+    # The leak scan (tests/leak_scan.py): the database row by row and as raw
+    # bytes, the server output, the server's private cache (its working copy
+    # and request log database) and the fake AWS directory except the secret
+    # store, plus what the agent received (desired documents, reports).
+    leak_scan.require_clean({'secret value': SECRET_SENTINEL, 'upload token': token, **agent_secrets},
+                            paths=[db, hosted / 'serve.log', user_cache(r.home), hosted / 'fake-aws'],
+                            texts=agent_texts, exclude=[hosted / 'fake-aws' / 'secrets'])
+    check(True, 'no secret value, upload token or node password in the database, logs, cache, release store or agent answers')
 
 
 def nodes_scenario(pc, r, owner, port, hosted, app):
@@ -999,6 +1008,9 @@ def nodes_scenario(pc, r, owner, port, hosted, app):
     owner('node', 'set-state', 'node-one', 'disabled')
     disabled = fake_agent.FakeAgent(port, HOSTED_DOMAIN, 'node-one', rotated, host_id)
     check(disabled.login() == 403, f'a disabled node cannot sign in (403): {disabled.last_error}')
+    # For the leak scan: the node passwords, and what the agent received.
+    return ({'node password': password, 'rotated node password': rotated},
+            {'desired document': json.dumps(desired), 'stopped document': json.dumps(stopped), 'standalone agent output': run.stdout + run.stderr})
 
 
 def codes_scenario(pc, r):

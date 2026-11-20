@@ -14,7 +14,7 @@ build:
 test:
 	CGO_ENABLED=1 go test -tags $(TAGS) ./...
 	node --test tests/dev_launcher.test.mjs
-	python3 -B -m unittest discover -s tests -p test_release.py
+	python3 -B -m unittest discover -s tests -p 'test_*.py'
 # The repository and the binary must not contain the retired product name.
 names: build
 	python3 tests/name_check.py --binary bin/drop
