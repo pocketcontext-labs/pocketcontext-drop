@@ -103,8 +103,8 @@ func (s *agentState) forget(node string) {
 // last_heartbeat.
 func (s *agentState) lastSeen(node *core.Record) time.Time {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	b := s.beats[node.Id]
-	s.mu.Unlock()
 	if b != nil && !b.seen.IsZero() {
 		return b.seen
 	}

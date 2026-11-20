@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/leakscan"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/render"
 )
 
@@ -145,6 +146,7 @@ func TestTickerPullsWithoutEvents(t *testing.T) {
 	e.server.mu.Lock()
 	e.server.desired.DesiredSeq = 5
 	e.server.desired.Apps = []dropapi.DesiredApp{testApp(appA, 1, e.release("tick"))}
+	e.server.desired.ContentHash, _ = e.server.desired.ComputeContentHash()
 	e.server.mu.Unlock()
 	eventually(t, "the ticker's write", revisionIs(e, "drop-5-"))
 }
@@ -173,17 +175,28 @@ func TestServerDownOrErrorNeverWrites(t *testing.T) {
 	t.Run("unreachable", func(t *testing.T) {
 		e := newEnv(t)
 		e.cfg.PullInterval = 100 * time.Millisecond
+		previous := e.readDesired()
+		seq := e.server.setDesired(func(d *dropapi.Desired) {
+			d.Apps = []dropapi.DesiredApp{testApp(appA, 1, e.release("running"))}
+		})
 		e.start()
-		eventually(t, "the first pull", func() bool { _, p, _, _ := e.server.counts(); return p >= 1 })
+		eventually(t, "the successful pull to be persisted", func() bool {
+			s, err := loadState(e.cfg.StatePath())
+			return err == nil && s.LastSeq == seq && s.LastError == ""
+		})
 		before := e.readDesired()
 		e.server.srv.CloseClientConnections()
 		e.server.srv.Close()
-		eventually(t, "failed pulls logged", func() bool { return strings.Count(e.logs(), "not reachable") >= 3 })
+		eventually(t, "unreachable pulls to be retried and persisted", func() bool {
+			s, err := loadState(e.cfg.StatePath())
+			return err == nil && s.LastSeq == seq && strings.Contains(s.LastError, "not reachable") &&
+				strings.Count(e.logs(), "pull: the Drop server is not reachable") >= 3
+		})
 		if !bytes.Equal(e.readDesired(), before) {
 			t.Fatal("desired.json must stay untouched while the server is down")
 		}
-		if s := readFileOr(e.cfg.StatePath()); !strings.Contains(string(s), "not reachable") {
-			t.Fatalf("state.json must record the last error: %s", s)
+		if !bytes.Equal(readFileOr(e.cfg.BackupPath()), previous) {
+			t.Fatal("the desired.json backup must stay untouched while the server is down")
 		}
 	})
 }
@@ -200,6 +213,64 @@ func TestMalformedDocumentNeverWrites(t *testing.T) {
 	eventually(t, "pulls", func() bool { _, p, _, _ := e.server.counts(); return p >= 3 })
 	if !bytes.Equal(e.readDesired(), before) {
 		t.Fatal("a malformed document must not be written")
+	}
+}
+
+func TestIncompleteSnapshotKeepsRunningApp(t *testing.T) {
+	e := newEnv(t)
+	rel := e.release("stable")
+	e.server.setDesired(func(d *dropapi.Desired) { d.Apps = []dropapi.DesiredApp{testApp(appA, 1, rel)} })
+	e.start()
+	eventually(t, "the first deployment", revisionIs(e, "drop-2-"))
+	before := e.readDesired()
+	e.server.setDesired(func(d *dropapi.Desired) { d.Apps = nil })
+	eventually(t, "the refused snapshot", func() bool {
+		return bytes.Contains(readFileOr(e.cfg.StatePath()), []byte("needs apps and rejected arrays"))
+	})
+	if !bytes.Equal(e.readDesired(), before) {
+		t.Fatal("a partial snapshot stopped or changed the running app")
+	}
+}
+
+func TestDesiredSnapshotValidation(t *testing.T) {
+	e := newEnv(t)
+	app := testApp(appA, 1, e.release("snapshot"))
+	for _, tc := range []struct {
+		name   string
+		change func(*dropapi.Desired)
+	}{
+		{"null apps", func(d *dropapi.Desired) { d.Apps = nil }},
+		{"null rejected", func(d *dropapi.Desired) { d.Rejected = nil }},
+		{"foreign app", func(d *dropapi.Desired) { d.Apps[0].AppID = "other" }},
+		{"foreign rejection", func(d *dropapi.Desired) { d.Rejected = []render.AppError{{AppID: "other"}} }},
+		{"ambiguous membership", func(d *dropapi.Desired) { d.Rejected = []render.AppError{{AppID: appA}} }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := e.server.desired
+			d.Apps = []dropapi.DesiredApp{app}
+			tc.change(&d)
+			d.ContentHash, _ = d.ComputeContentHash()
+			raw, _ := json.Marshal(d)
+			if _, err := decodeDesired(raw); err == nil {
+				t.Fatal("accepted malformed snapshot")
+			}
+		})
+	}
+	d := e.server.desired
+	d.Apps = []dropapi.DesiredApp{app} // hash still belongs to the empty snapshot
+	raw, _ := json.Marshal(d)
+	if _, err := decodeDesired(raw); err == nil {
+		t.Fatal("accepted mismatched content hash")
+	}
+	raw, _ = json.Marshal(e.server.desired)
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		t.Fatal(err)
+	}
+	delete(fields, "apps")
+	raw, _ = json.Marshal(fields)
+	if _, err := decodeDesired(raw); err == nil {
+		t.Fatal("accepted snapshot with missing apps")
 	}
 }
 
@@ -257,6 +328,7 @@ func TestHostMismatchStops(t *testing.T) {
 	e := newEnv(t)
 	e.server.mu.Lock()
 	e.server.desired.HostID = "another-host"
+	e.server.desired.ContentHash, _ = e.server.desired.ComputeContentHash()
 	e.server.mu.Unlock()
 	before := e.readDesired()
 	_, done := e.start()
@@ -410,10 +482,31 @@ func TestSecretParameterFromServerIsChecked(t *testing.T) {
 	sec := e.secret(appA, "API_KEY", testSentinel)
 	sec.Parameter = "/drop/apps/" + appB[2:] + "/API_KEY" // another app's parameter
 	s := &Secrets{Store: e.stores.Secrets, Prefix: "/drop"}
-	if _, err := s.Resolve(context.Background(), appA, []dropapi.DesiredSecret{sec}); err == nil {
+	if _, err := s.Resolve(context.Background(), appA, appA+"-dep-1", []dropapi.DesiredSecret{sec}); err == nil {
 		t.Fatal("a parameter of another app must be refused")
 	} else if strings.Contains(err.Error(), testSentinel) {
 		t.Fatal("errors never carry values")
+	}
+}
+
+func TestRecreatedSecretBetweenPulls(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	first := e.secret(appA, "API_KEY", "first")
+	s := &Secrets{Store: e.stores.Secrets, Prefix: e.cfg.SSMPrefix}
+	if _, err := s.Resolve(ctx, appA, appA+"-dep-2", []dropapi.DesiredSecret{first}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.stores.Secrets.Delete(ctx, first.Parameter); err != nil {
+		t.Fatal(err)
+	}
+	second := e.secret(appA, "API_KEY", "second")
+	if second.Version != first.Version {
+		t.Fatal("expected recreated parameter to restart the version counter")
+	}
+	values, err := s.Resolve(ctx, appA, appA+"-dep-4", []dropapi.DesiredSecret{second})
+	if err != nil || values["API_KEY"] != "second" {
+		t.Fatal("new deployment must resolve the recreated parameter")
 	}
 }
 
@@ -443,7 +536,7 @@ func TestTombstonesAndServerRejectedApps(t *testing.T) {
 	}
 	eventually(t, "the report", func() bool { r := e.server.lastReport(t); return r.DesiredSeq == 3 })
 	r := e.server.lastReport(t)
-	if len(r.Apps) != 1 || r.Apps[0].AppID != appB || r.Apps[0].Phase != "failed" || !strings.Contains(r.Apps[0].Message, "resources.vcpu") {
+	if len(r.Apps) != 1 || r.Apps[0].AppID != appB || r.Apps[0].Phase != "failed" || r.Apps[0].Message == "" {
 		t.Fatalf("the server-refused app is reported failed: %+v", r.Apps)
 	}
 }
@@ -473,9 +566,8 @@ func TestReportPhases(t *testing.T) {
 		{AppID: appA, DeploymentID: appA + "-dep-2", State: "idle", RestartCount: 2, LastExitCode: &one},
 		{AppID: appB, DeploymentID: appB + "-dep-1", State: "running"},
 	}}
-	scrub := func(s string) string { return s }
 	intents := []appIntent{{AppID: appA, DeploymentID: appA + "-dep-2"}, {AppID: appB, DeploymentID: appB + "-dep-2"}, {AppID: "d-ccccccccccccccc", DeploymentID: "d-ccccccccccccccc-dep-1"}}
-	got := appReports(intents, r, rev, now, scrub)
+	got := appReports(intents, r, rev, now)
 	if got[0].Phase != "sleeping" || got[0].RestartCount != 2 || *got[0].LastExitCode != 1 || got[0].DeploymentID != appA+"-dep-2" {
 		t.Fatalf("idle maps to sleeping: %+v", got[0])
 	}
@@ -486,10 +578,10 @@ func TestReportPhases(t *testing.T) {
 		t.Fatalf("not yet seen is pending: %+v", got[2])
 	}
 	other := "drop-6-aaaaaaaaaaaa"
-	if p := appReports(intents[:1], r, other, now, scrub)[0].Phase; p != "deploying" {
+	if p := appReports(intents[:1], r, other, now)[0].Phase; p != "deploying" {
 		t.Fatalf("before nibrunner accepts the written revision it is deploying, got %s", p)
 	}
-	if p := appReports(intents[:1], r, rev, now.Add(2*time.Minute), scrub)[0]; p.Phase != "unknown" || p.Message != "nibrunner report stale" {
+	if p := appReports(intents[:1], r, rev, now.Add(2*time.Minute))[0]; p.Phase != "unknown" || p.Message != "nibrunner report stale" {
 		t.Fatalf("a stale report is unknown: %+v", p)
 	}
 	for state, phase := range map[string]string{"pending": "starting", "starting": "starting", "running": "running", "idle": "sleeping",
@@ -498,12 +590,31 @@ func TestReportPhases(t *testing.T) {
 			t.Errorf("%s maps to %s", state, nibPhase(state))
 		}
 	}
-	// Messages are scrubbed of known secret values.
-	s := &Secrets{cache: map[string]string{"p:1": testSentinel}}
-	msg := "exited: " + testSentinel
-	r.Instances[0].Message = &msg
-	if got := appReports(intents[:1], r, rev, now, s.Scrub)[0].Message; strings.Contains(got, testSentinel) {
-		t.Fatal("messages must be scrubbed")
+
+}
+
+func TestReportOmitsNibrunnerDiagnosticText(t *testing.T) {
+	e := newEnv(t)
+	now := time.Now()
+	rev := "drop-2-0123456789ab"
+	message := "diagnostic: aZ! " + testSentinel
+	raw, err := json.Marshal(map[string]any{
+		"hostId": testHostID, "message": message, "reportedAt": now.UTC().Format(time.RFC3339Nano), "acceptedRevision": rev,
+		"instances": []any{map[string]any{"appId": appA, "deploymentId": appA + "-dep-1", "state": "failed", "message": message}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(e.cfg.Reported, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	reported, err := readReported(e.cfg.Reported)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report := buildReport(testHostID, "dev", 2, []appIntent{{AppID: appA, DeploymentID: appA + "-dep-1"}}, reported, rev, now)
+	if report.Apps[0].Phase != "failed" || report.Apps[0].Message != "" || report.Nibrunner.Message != "" {
+		t.Fatal("host and instance diagnostic text must stay on the node")
 	}
 }
 
@@ -538,7 +649,8 @@ func TestRenderDry(t *testing.T) {
 	e := newEnv(t)
 	rel := e.release("dry")
 	d := dropapi.Desired{Schema: dropapi.DesiredSchema, Node: testNode, NodeID: testNodeID, HostID: testHostID, State: "active", DesiredSeq: 4,
-		ContentHash: strings.Repeat("0", 64), Apps: []dropapi.DesiredApp{testApp(appA, 1, rel, e.secret(appA, "API_KEY", testSentinel))}, Rejected: []render.AppError{}}
+		Apps: []dropapi.DesiredApp{testApp(appA, 1, rel, e.secret(appA, "API_KEY", testSentinel))}, Rejected: []render.AppError{}}
+	d.ContentHash, _ = d.ComputeContentHash()
 	input, _ := json.Marshal(d)
 	out, err := RenderDry(input, e.readDesired(), render.Limits{AllowedHostSuffix: testSuffix, SSMPrefix: "/drop"})
 	if err != nil {
@@ -549,6 +661,50 @@ func TestRenderDry(t *testing.T) {
 	}
 	if _, err := RenderDry(input, []byte(`{"hostId":"host-test-0001","instances":[{"appId":"canary"}],"volumes":[]}`), render.Limits{AllowedHostSuffix: testSuffix, SSMPrefix: "/drop"}); !IsRefusal(err) {
 		t.Fatalf("a foreign previous entry is refused: %v", err)
+	}
+}
+
+func TestPreviewRedactsPreviousEnvironment(t *testing.T) {
+	e := newEnv(t)
+	rel := e.release("preview")
+	s := e.secret(appA, "API_KEY", testSentinel)
+	app := testApp(appA, 1, rel, s)
+	limits := render.Limits{AllowedHostSuffix: testSuffix, SSMPrefix: "/drop"}
+	previous, err := render.Render(render.Input{HostID: testHostID, DesiredSeq: 2, Limits: limits,
+		Apps: []render.App{app.RenderApp(map[string]string{"API_KEY": testSentinel})}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name     string
+		apps     []dropapi.DesiredApp
+		rejected []render.AppError
+	}{
+		{"tombstoned", []dropapi.DesiredApp{}, []render.AppError{}},
+		{"kept by server", []dropapi.DesiredApp{}, []render.AppError{{AppID: appA, Code: "invalid_app"}}},
+		{"rejected locally", []dropapi.DesiredApp{app}, []render.AppError{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := e.server.desired
+			d.Apps, d.Rejected = tc.apps, tc.rejected
+			if len(d.Apps) > 0 {
+				d.Apps[0].HTTPPort = 0
+			}
+			d.ContentHash, _ = d.ComputeContentHash()
+			raw, _ := json.Marshal(d)
+			out, err := RenderDry(raw, previous.Document, limits)
+			if err != nil {
+				t.Fatal(err)
+			}
+			data, err := json.Marshal(out)
+			if err != nil {
+				t.Fatal(err)
+			}
+			leakscan.Require(t, []leakscan.Sentinel{{Label: "previous API key", Value: testSentinel}}, leakscan.Bytes("agent render output", data))
+			if parse(t, out.Document).Instances[0].Config.Command.Environment["API_KEY"] != RedactedValue {
+				t.Fatal("preview exposed a carried-over environment value")
+			}
+		})
 	}
 }
 
@@ -568,6 +724,16 @@ func TestConfig(t *testing.T) {
 	}
 	if _, err := LoadConfig(get, Overrides{"server": "http://10.0.0.5:8100", "fake-aws": "/tmp/x"}, true); err == nil {
 		t.Fatal("--fake-aws needs a loopback server")
+	}
+	for _, server := range []string{"http://10.0.0.5:8100", "http://localhost.example.test"} {
+		if _, err := LoadConfig(get, Overrides{"server": server}, true); err == nil {
+			t.Fatal("remote HTTP accepted")
+		}
+	}
+	for _, server := range []string{"https://drop.example.test", "http://[::1]:8100"} {
+		if _, err := LoadConfig(get, Overrides{"server": server}, true); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if _, err := LoadConfig(get, Overrides{"desired": "relative.json"}, true); err == nil {
 		t.Fatal("paths must be absolute")

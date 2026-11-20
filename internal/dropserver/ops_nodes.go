@@ -1,6 +1,7 @@
 package dropserver
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"regexp"
@@ -241,6 +242,25 @@ func dropReportsElsewhere(app core.App, appID, keep string) error {
 	return err
 }
 
+// checkPlacedAppRoom checks an owner's resize or restore. Only admins see
+// node names and the resource usage of other tenants.
+func checkPlacedAppRoom(app core.App, placed *core.Record) error {
+	p, err := placementOf(app, placed.Id)
+	if err != nil || p == nil {
+		return err
+	}
+	node, err := app.FindRecordById(dropapi.NodeCollection, p.GetString("node"))
+	if err != nil {
+		return err
+	}
+	err = checkNodeRoom(app, node, placed)
+	var refused *dropapi.Error
+	if errors.As(err, &refused) && refused.Code == dropapi.CodeNodeTooSmall {
+		return Conflict(dropapi.CodeNodeTooSmall, "The node has insufficient capacity for this app.")
+	}
+	return err
+}
+
 // checkNodeRoom refuses a placement when the app, together with the other
 // (not archived) apps already placed on node, needs more vCPUs or memory than
 // the node's last reported allocatable (an unknown allocatable skips the
@@ -248,12 +268,12 @@ func dropReportsElsewhere(app core.App, appID, keep string) error {
 // without another placement.
 func checkNodeRoom(app core.App, node, placed *core.Record) error {
 	vcpu, memory := allocatable(node)
-	if vcpu <= 0 && memory <= 0 {
+	if vcpu < 0 && memory < 0 {
 		return nil
 	}
 	need := placed.GetInt("vcpu")
 	needMemory := placed.GetInt("memory_mib")
-	if (vcpu > 0 && need > vcpu) || (memory > 0 && needMemory > memory) {
+	if (vcpu >= 0 && need > vcpu) || (memory >= 0 && needMemory > memory) {
 		return Conflict(dropapi.CodeNodeTooSmall, "The app needs more vCPUs or memory than node "+node.GetString("name")+" can allocate.")
 	}
 	var used struct {
@@ -267,7 +287,7 @@ func checkNodeRoom(app core.App, node, placed *core.Record) error {
 	if err != nil {
 		return err
 	}
-	if (vcpu > 0 && used.VCPU+need > vcpu) || (memory > 0 && used.Memory+needMemory > memory) {
+	if (vcpu >= 0 && used.VCPU+need > vcpu) || (memory >= 0 && used.Memory+needMemory > memory) {
 		return Conflict(dropapi.CodeNodeTooSmall, fmt.Sprintf("Node %s has room for %d vCPUs and %d MiB; its other apps already take %d vCPUs and %d MiB, and this app needs %d and %d.",
 			node.GetString("name"), vcpu, memory, used.VCPU, used.Memory, need, needMemory))
 	}

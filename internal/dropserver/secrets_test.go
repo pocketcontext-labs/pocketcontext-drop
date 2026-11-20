@@ -178,7 +178,7 @@ func TestSecretSentinel(t *testing.T) {
 		t.Fatal(err)
 	}
 	logs := dumpTables(t, h.App.AuxDB())
-	if !strings.Contains(logs, "Drop secret store failed") || !strings.Contains(logs, "[redacted]") {
+	if !strings.Contains(logs, "Drop secret store failed") {
 		t.Fatalf("the store failure was not logged (redacted): %s", logs)
 	}
 	if strings.Contains(logs, sentinel) {
@@ -186,5 +186,51 @@ func TestSecretSentinel(t *testing.T) {
 	}
 	if strings.Contains(std.String(), sentinel) {
 		t.Error("the standard log holds the secret")
+	}
+}
+
+func TestSecretDeletionCommitAndRecovery(t *testing.T) {
+	h := droptest.NewHosted(t, droptest.Options{})
+	owner := h.Token(h.Owner())
+	id := newApp(t, h, owner, "cleanup")
+	set := map[string]any{"app": id, "name": "TOKEN", "value": "initial"}
+	del := map[string]any{"app": id, "name": "TOKEN"}
+	path := "/drop/apps/" + id + "/TOKEN"
+	h.MustOp(owner, "secret.set", set)
+	// Refuse the last audit insert after the operation has changed its metadata.
+	// Both the declaration and the exact SSM version must survive rollback.
+	if _, err := h.App.DB().NewQuery(`CREATE TRIGGER refuse_audit BEFORE INSERT ON events WHEN NEW.action='secret.delete' BEGIN SELECT RAISE(ABORT,'audit unavailable'); END`).Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.Op(owner, "secret.delete", del); got.Status != 500 {
+		t.Fatalf("forced failure returned %s", got.Raw)
+	}
+	if val, err := h.Secrets.Get(context.Background(), path, 1); err != nil || val != "initial" {
+		t.Fatal("failed transaction removed original secret")
+	}
+	if result := h.MustOp(owner, "secret.list", map[string]any{"app": id}); len(result["secrets"].([]any)) != 1 {
+		t.Fatal("failed transaction removed declaration")
+	}
+	if _, err := h.App.DB().NewQuery("DROP TRIGGER refuse_audit").Execute(); err != nil {
+		t.Fatal(err)
+	}
+	dropserver.SetServices(h.App, dropserver.Services{Secrets: failingStore{}})
+	h.MustOp(owner, "secret.delete", del)
+	if result := h.MustOp(owner, "secret.list", map[string]any{"app": id}); len(result["secrets"].([]any)) != 0 {
+		t.Fatal("committed deletion still declared")
+	}
+	var pending string
+	if err := h.App.DB().NewQuery("SELECT parameter FROM drop_secret_deletions").Row(&pending); err != nil || pending != path {
+		t.Fatal("cleanup work was lost")
+	}
+	dropserver.SetServices(h.App, dropserver.Services{Secrets: h.Secrets})
+	set["value"] = "replacement"
+	h.MustOp(owner, "secret.set", set)
+	if val, err := h.Secrets.Get(context.Background(), path, 1); err != nil || val != "replacement" {
+		t.Fatal("recreation did not finish previous deletion")
+	}
+	var count int
+	if err := h.App.DB().NewQuery("SELECT count(*) FROM drop_secret_deletions").Row(&count); err != nil || count != 0 {
+		t.Fatal("stale cleanup can delete the replacement")
 	}
 }

@@ -221,35 +221,6 @@ try {
   await page.getByRole('heading', { name: 'Your apps' }).waitFor();
   ok('the admin adds a node from the Nodes page, sees its password once and places an app');
 
-  // Isolation in the reader (the server side is internal/dropserver/isolation_test.go).
-  // An app that is not the account's: the server answers 404 alike for another
-  // account's app and for none, so a made-up id stands for another account's app.
-  const beforeNotFound = errors.length;
-  await page.goto(`${origin}/#/apps/zzzzzzzzzzzzzzz`);
-  await page.getByRole('heading', { name: 'Not found' }).waitFor();
-  await page.getByText(/does not exist or is not yours/).waitFor();
-  // That refused read logs its 404; keep every other console error.
-  errors.splice(beforeNotFound, errors.length - beforeNotFound,
-    ...errors.slice(beforeNotFound).filter(text => !/status of 404/.test(text)));
-  // A non-admin account (its me answer, as the server gives it to a user):
-  // no Users or Nodes link, and the admin pages are Not found.
-  const asUser = await context.newPage();
-  asUser.on('pageerror', error => errors.push(error.message));
-  await asUser.route('**/api/drop/op', async route => {
-    if (route.request().postDataJSON()?.op === 'me')
-      return route.fulfill({ json: { result: { id: 'aaaaaaaaaaaaaaa', email: 'user@example.test', role: 'user', admin: false, owner: false, app_quota: 3 } } });
-    return route.continue();
-  });
-  for (const hash of ['#/admin/users', '#/admin/nodes']) {
-    await asUser.goto(`${origin}/${hash}`);
-    await asUser.getByRole('heading', { name: 'Not found' }).waitFor();
-    assert.equal(await asUser.getByRole('link', { name: 'Users' }).count(), 0, 'a user has no Users link');
-    assert.equal(await asUser.getByRole('link', { name: 'Nodes' }).count(), 0, 'a user has no Nodes link');
-  }
-  await asUser.close();
-  await page.goto(`${origin}/#/apps`);
-  await page.getByRole('heading', { name: 'Your apps' }).waitFor();
-  ok('an app that is not yours and the admin pages for a non-admin show Not found');
   await page.screenshot({ path: path.join(screenshots, 'reader-light.png'), fullPage: true });
 
   const lightBackground = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);

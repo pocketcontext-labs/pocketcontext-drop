@@ -164,7 +164,7 @@ func dropWriteDescription(role dropapi.Role) string {
 	return "Change Drop through one of its operations, with your own account: a thin pass-through to POST /api/drop/op, where the server checks your role and ownership on every call (another account's app is not_found; an admin operation from a user is forbidden). input is the operation's object, as in the table (? marks optional fields). " +
 		"idempotency_key (1-128 letters, digits, '.', '_', ':' or '-') makes a retry safe: reuse the same key when you did not see a write's result (secret.set ignores keys; setting the same value again is safe). " +
 		"The result is {op, result, replayed?}; an error is {error: {status, code, message, field?}}. " +
-		"Destructive: app.stop stops a running app, secret.delete removes every version of a secret, and app.set, secret.set and secret.delete start a new deployment, which restarts the app. Act only on the person's request, and say so before restarting a running app.\n" +
+		"Destructive: app.stop stops a running app, secret.delete removes the secret from the app and schedules deletion of all stored versions, and app.set, secret.set and secret.delete start a new deployment, which restarts the app. Act only on the person's request, and say so before restarting a running app.\n" +
 		secretWarning + "\nOperations:\n" + dropWriteTable(role)
 }
 

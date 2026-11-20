@@ -58,7 +58,7 @@ func agentNode(re *core.RequestEvent, state *agentState) (*core.Record, error) {
 		return nil, Forbidden("Only nodes use the agent routes.")
 	}
 	node, err := re.App.FindRecordById(dropapi.NodeCollection, re.Auth.Id)
-	if err != nil {
+	if err != nil || node.TokenKey() != re.Auth.TokenKey() {
 		return nil, &dropapi.Error{Status: http.StatusUnauthorized, Code: dropapi.CodeUnauthenticated, Message: "Sign in as the node first."}
 	}
 	if node.GetString("state") == dropapi.NodeDisabled {

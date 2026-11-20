@@ -2,11 +2,12 @@
 
 People use Drop on its hosted origin: one Drop server holds several accounts, signs people in by email and offers remote MCP with OAuth. It serves plain HTTP on a listen address behind a TLS-terminating proxy (a Cloudflare Tunnel during development, an AWS load balancer at launch). Plain `serve` without `--hosted` is the local single-account server on loopback, for developing the reader; Drop has no native public HTTPS mode.
 
-Hosted mode comes from pocketcontext-core 0.3.0 ("Multiple hosted accounts" in its README). Drop sets `Policy.Accounts` to `AccountsMulti`, its request budget, a 30-day session and the sign-in email in `internal/droppolicy`.
+Drop 0.1.0 uses hosted mode from pocketcontext-core 0.3.1 ("Multiple hosted accounts" in its README). Drop sets `Policy.Accounts` to `AccountsMulti`, its request budget, a 30-day session and the sign-in email in `internal/droppolicy`.
 
 ## Accounts
 
 - **The owner** is `DROP_OWNER_EMAIL`. `--hosted-init` creates a new database with the owner as its only account; an ordinary start refuses a missing database, a database whose accounts lack the owner (an owner change needs explicit maintenance) and a local database (one holding the local account). The owner is always an admin (made so again at every start).
+- **Upgrading a development database to 0.1.0.** Back up the project before starting the new binary. If the database holds multiple accounts, sign in as the original owner before upgrading and record the `id` from `GET /api/drop/me`. Supply that ID as `DROP_OWNER_ID` alongside `DROP_OWNER_EMAIL` on the first upgraded start. Core records the binding in the database. You can then remove `DROP_OWNER_ID` from the environment. A database containing only its owner binds automatically.
 - **Invite-only.** Other accounts exist only when `Hooks.AllowSignIn` admits an address (`internal/dropserver/accounts.go`): it needs an open (unused, unrevoked) and unexpired invite. Any other address gets the same answer as an invited one, no email and no account.
 - **Invites.** An admin invites an address in the reader's Users page (`#/admin/users`), with `drop invite create EMAIL` on the server host (the CLI reaches the hosted server through its private socket and acts as the owner) or through MCP (`drop_write` with `invite.create`). An invite has a role (`user` or `admin`), an app quota (default 3) and lasts 7 days (1-30). Drop sends no invite email: the invite returns a sign-in URL (`https://HOST/#/invite?email=…`, no credential in it) that the admin shares. The invitee signs in there with the ordinary sign-in code email; that first request creates the account with the invite's role and quota and uses the invite up. If they never complete the sign-in, core prunes the account after 15 minutes and the invite opens again.
 - **Roles.** Every account is an `admin` or a `user` (one OAuth scope, `drop`). Admins invite, revoke invites and change accounts (`user.set`: role, quota, suspension); nobody changes their own role or suspension, or the owner's. Every call is checked on the server ([Operations](ops.md)).
@@ -30,6 +31,7 @@ The service reads these variables from its environment (never from the project):
 | Variable | Value |
 | --- | --- |
 | `DROP_OWNER_EMAIL` | the owner's plain address |
+| `DROP_OWNER_ID` | original owner’s account ID on the first 0.1.0 start of an existing multi-account database |
 | `DROP_SMTP_FROM` | the sender address of sign-in emails |
 | `DROP_SMTP_HOST`, `DROP_SMTP_PORT` | the SMTP server (Resend: `smtp.resend.com`, 465) |
 | `DROP_SMTP_USERNAME`, `DROP_SMTP_PASSWORD` | SMTP credentials (Resend: `resend` and a send-only API key) |
@@ -49,7 +51,7 @@ drop serve --hosted --headless --mcp --domain drop.example.com --db /var/lib/dro
 ```
 
 - `--hosted` requires `--headless`, `--domain HOST` and `--mcp`, and excludes `--ui-dev`, `--tcp-only` and `--port`. Every other hosted option requires `--hosted`.
-- `--hosted-init` creates the database on the first start; leave it out afterwards. `--hosted-restore` (excluding `--hosted-init`) invalidates copied browser, email and MCP credentials before serving a deliberately restored backup; Drop also rotates every node's token key (`Hooks.OnHostedRestore`, `internal/dropserver/restore.go`), so each agent gets a 401 and signs in again with its password. Rotate the node passwords too (`drop node rotate-secret`) if the backup may have been copied.
+- `--hosted-init` creates the database on the first start; leave it out afterwards. `--hosted-restore` (excluding `--hosted-init`) invalidates copied browser, email and MCP credentials before serving a deliberately restored backup; Drop discards unused upload links and rotates every node's token key (`Hooks.OnHostedRestore`, `internal/dropserver/restore.go`), so each agent gets a 401 and signs in again with its password. Restore also clears the backup’s pending SSM deletions. A parameter may have been recreated since the backup. Inspect `SELECT parameter FROM drop_secret_deletions` in a read-only copy of the backup and reconcile its entries with the restored app declarations and the current parameter store before removing any orphaned parameter. Rotate the node passwords too (`drop node rotate-secret`) if the backup may have been copied.
 - `--hosted-http-address IP:PORT` is the plain HTTP listener, a literal IP and a port (default `:80`). Bind it to loopback when the proxy runs on the same host.
 - `--hosted-proxy-header` and `--hosted-proxy-networks` go together. The header is `CF-Connecting-IP` (Cloudflare Tunnel) or `X-Forwarded-For` (a load balancer; the rightmost entry is used), and the networks are the comma-separated CIDR prefixes the proxy connects from. Only then does Drop key its per-client limits on the real client; without them every request counts as the proxy's address. A prefix that would trust every peer is refused.
 - Hosted mode keeps only a private local socket (for `stop`, `status`, the local key and the owner's account commands `invite`, `user` and `op`), never a loopback TCP port, so the CLI's app commands (`add`, `list`, `sql` and the others) do not run against a hosted server.

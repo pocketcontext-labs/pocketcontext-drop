@@ -1,6 +1,9 @@
 package dropapi
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"regexp"
 
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/render"
@@ -49,7 +52,7 @@ const (
 // them.
 //
 // ContentHash is the hex sha256 of this document's canonical JSON with
-// desiredSeq and contentHash empty; desiredSeq goes up exactly when it
+// desiredSeq, state and contentHash empty; desiredSeq goes up exactly when it
 // changes. Limits are not sent: the agent applies its own (DROP_AGENT_*).
 type Desired struct {
 	Schema      string            `json:"schema"`
@@ -61,6 +64,18 @@ type Desired struct {
 	ContentHash string            `json:"contentHash"`
 	Apps        []DesiredApp      `json:"apps"`
 	Rejected    []render.AppError `json:"rejected"`
+}
+
+// ComputeContentHash identifies the versioned content of this node's desired document.
+// Keep these exclusions compatible with drop.desired/v1.
+func (d Desired) ComputeContentHash() (string, error) {
+	d.DesiredSeq, d.State, d.ContentHash = 0, "", ""
+	raw, err := json.Marshal(d)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // DesiredApp is one app of a desired document: render.App whose secrets

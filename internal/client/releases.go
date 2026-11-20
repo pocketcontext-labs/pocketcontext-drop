@@ -47,7 +47,7 @@ func runRelease(c *Client, sub string, a *args) (any, error) {
 }
 
 // checkReleaseFile opens a release file after checking that it is a regular
-// file of 1..max bytes with a linux/amd64 ELF header (the server checks again).
+// file of 1..max bytes containing a standalone linux/amd64 ELF executable.
 func checkReleaseFile(path string, max int64) (*os.File, int64, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -62,15 +62,9 @@ func checkReleaseFile(path string, max int64) (*os.File, int64, error) {
 		f.Close()
 		return nil, 0, fail(2, "%s is %d bytes; a release is 1 byte to %d MiB", path, info.Size(), max>>20)
 	}
-	header := make([]byte, dropapi.ELFHeaderBytes)
-	n, _ := io.ReadFull(f, header)
-	if problem := dropapi.ReleaseHeaderProblem(header[:n]); problem != "" {
+	if problem := dropapi.ReleaseImageProblem(f, info.Size()); problem != "" {
 		f.Close()
 		return nil, 0, fail(2, "%s: %s", path, problem)
-	}
-	if _, err := f.Seek(0, io.SeekStart); err != nil {
-		f.Close()
-		return nil, 0, err
 	}
 	return f, info.Size(), nil
 }
@@ -89,7 +83,11 @@ func (c *Client) UploadRelease(app, path, note string, activate bool) (any, erro
 	}
 	var link dropapi.UploadLink
 	encoded, _ := json.Marshal(raw)
-	if json.Unmarshal(encoded, &link) != nil || !strings.HasPrefix(link.Path, dropapi.UploadRoutePrefix) {
+	if err := json.Unmarshal(encoded, &link); err != nil {
+		return nil, fail(1, "invalid upload link answer")
+	}
+	token, ok := strings.CutPrefix(link.Path, dropapi.UploadRoutePrefix)
+	if !ok || !dropapi.UploadTokenPattern.MatchString(token) {
 		return nil, fail(1, "invalid upload link answer")
 	}
 	if size > link.MaxBytes {
@@ -97,7 +95,7 @@ func (c *Client) UploadRelease(app, path, note string, activate bool) (any, erro
 	}
 	req, err := http.NewRequest(http.MethodPut, c.Base+link.Path, f)
 	if err != nil {
-		return nil, err
+		return nil, fail(1, "invalid upload request URL")
 	}
 	req.ContentLength = size
 	req.Header.Set("Content-Type", "application/octet-stream")
@@ -106,18 +104,18 @@ func (c *Client) UploadRelease(app, path, note string, activate bool) (any, erro
 	client.Timeout = uploadTimeout
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fail(1, "uploading to the Drop server at %s: %v", c.Base, err)
+		return nil, fail(1, "upload connection failed; check the release list before retrying")
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return nil, fail(1, "reading the upload answer: %v", err)
+		return nil, fail(1, "incomplete upload response; check the release list before retrying")
 	}
 	var parsed any
 	d := json.NewDecoder(bytes.NewReader(body))
 	d.UseNumber()
 	if err := d.Decode(&parsed); err != nil {
-		return nil, fail(1, "upload: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return nil, fail(1, "invalid upload response (HTTP %d)", resp.StatusCode)
 	}
 	if resp.StatusCode != http.StatusOK {
 		code, _ := dig(parsed, "code").(string)
@@ -125,7 +123,8 @@ func (c *Client) UploadRelease(app, path, note string, activate bool) (any, erro
 		if resp.StatusCode == http.StatusConflict {
 			exit = 4
 		}
-		return nil, fail(exit, "upload: HTTP %d %s: %s", resp.StatusCode, code, message(parsed))
+		detail := strings.ReplaceAll(code+": "+message(parsed), token, "[redacted]")
+		return nil, fail(exit, "upload: HTTP %d %s", resp.StatusCode, detail)
 	}
 	return parsed, nil
 }

@@ -225,7 +225,7 @@ func (u *uploader) serve(re *core.RequestEvent) error {
 	}
 	ctx, cancel := context.WithTimeout(re.Request.Context(), uploadStoreTimeout)
 	defer cancel()
-	stored, err := services.Releases.PutIfAbsent(ctx, key, file, size, sha)
+	_, err = services.Releases.PutIfAbsent(ctx, key, file, size, sha)
 	if err != nil {
 		re.App.Logger().Error("Drop release store failed", "key", key, "error", err.Error())
 		return writeError(re, &dropapi.Error{Status: http.StatusBadGateway, Code: dropapi.CodeReleaseStoreFailed,
@@ -245,6 +245,10 @@ func (u *uploader) serve(re *core.RequestEvent) error {
 		app, err := tx.FindRecordById("apps", app.Id)
 		if err != nil {
 			return err
+		}
+		freshCreator, err := tx.FindRecordById("users", link.GetString("created_by"))
+		if err != nil || freshCreator.GetBool("suspended") || freshCreator.Id != app.GetString("owner") || freshCreator.TokenKey() != creator.TokenKey() {
+			return uploadLinkInvalid()
 		}
 		if app.GetBool("archived") {
 			return Conflict(dropapi.CodeAppArchived, "This app is archived. Restore it first.")
@@ -280,7 +284,7 @@ func (u *uploader) serve(re *core.RequestEvent) error {
 		}
 		if err := WriteEvent(tx, EventRecord{Actor: creator.Id, App: app.Id, Action: "release.upload", Detail: map[string]any{
 			"release": release.Id, "sha256": sha, "size_bytes": size, "link": link.Id,
-			"created": created, "stored": stored, "activate": link.GetBool("activate"), "deployed": deployed,
+			"created": created, "activate": link.GetBool("activate"), "deployed": deployed,
 			"deployment_seq": app.GetInt("deployment_seq"),
 		}}); err != nil {
 			return err
@@ -354,6 +358,9 @@ func spool(body io.Reader, max int64) (*os.File, int64, string, error) {
 	}
 	if size > max {
 		return file, 0, "", releaseTooLarge(max)
+	}
+	if problem := dropapi.ReleaseImageProblem(file, size); problem != "" {
+		return file, 0, "", invalidRelease(problem)
 	}
 	if err := file.Sync(); err != nil {
 		return file, 0, "", err

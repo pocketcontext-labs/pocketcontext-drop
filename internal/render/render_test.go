@@ -434,6 +434,19 @@ func TestVolumeResizeRefused(t *testing.T) {
 	}
 }
 
+func TestPreviousDocumentTrailingData(t *testing.T) {
+	const prior = `{"hostId":"host","revision":"r","volumes":[],"instances":[],"exports":[],"checkpoints":[]}`
+	for _, tail := range []string{"{}", "]", "broken"} {
+		raw := []byte(prior + tail)
+		if _, err := PreviewPrevious(raw, nil, "REDACTED"); err == nil {
+			t.Errorf("preview accepted trailing %q", tail)
+		}
+		if _, err := parsePrevious(raw, "host"); err == nil {
+			t.Errorf("live renderer accepted trailing %q", tail)
+		}
+	}
+}
+
 func TestWholeInputRefusals(t *testing.T) {
 	golden := loadInput(t, "crew-dev.input.json")
 	first := mustRender(t, golden)

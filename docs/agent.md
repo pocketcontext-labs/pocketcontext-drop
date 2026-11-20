@@ -14,11 +14,11 @@ drop agent render --input FILE|- [--previous FILE]
 ## Safety rules
 
 - **Drop owns the whole `desired.json`** (decision 12). If the file holds any entry (instance, volume or export) whose `appId` does not start with `d-`, `run` refuses to start and `check` fails, both with exit 3, naming the entries; nothing is written. The agent never deletes what it did not create: the operator removes those entries (and their volumes), lets nibrunner converge, then starts the agent. A foreign entry that appears while the agent runs stops it the same way. A file Drop cannot read as its own (checkpoints, exports, an `absent` volume, unknown fields) is refused the same way.
-- **No write without a good answer.** When the server is unreachable, times out (10 s), answers an error (401 after a new sign-in, 403 `node_disabled`, 429, 5xx) or sends a malformed document, the agent writes nothing and retries: what runs keeps running. A disabled node or a wrong (rotated) secret keeps the file and retries once a minute.
+- **No write without a good answer.** When the server is unreachable, times out (10 s), answers an error (401 after a new sign-in, 403 `node_disabled`, 429, 5xx) or sends a malformed document, the agent leaves `desired.json` unchanged, records the failed pull in `state.json` and retries. A disabled node or a wrong (rotated) secret keeps the file and retries once a minute.
 - **Wrong host.** If the server's node is for another `hostId` than the one in `desired.json` (or `reported.json`), or a report is answered 409 `host_mismatch`, the agent stops with exit 3.
 - **The server never chooses paths, commands or parameters.** Every app is validated on the node (plan 7.3, `internal/render`); a release is fetched only from `releases/<sha256>` and refused unless its size and sha256 match; a secret is read only from `<DROP_SSM_PREFIX>/apps/<appId without d->/<NAME>`. A bad app fails alone.
 - **Never an unstaged artifact.** When staging or a secret fails for an app, its previous entry is kept unchanged (`render.Input.Keep`), or a new app is left out; the report says `staging_failed` or `secret_failed`. Apps the server refused (`rejected`) keep their previous entries and are reported `failed`. An app that is gone becomes a stopped tombstone with its volume kept; nothing is ever `absent` in v0, and artifacts are never deleted.
-- **Secrets** live in memory (cached by parameter and version) and in `desired.json` only. They never reach `state.json`, a report, a log line or an error (errors name parameters, never values); messages copied from nibrunner are scrubbed of known values. The node secret is read from a file, never from an argument or an environment variable.
+- **Secrets** live in memory (cached by deployment, parameter and version) and in `desired.json` only. They never reach `state.json`, a report, a log line or an error (errors name parameters, never values); the agent leaves free-text host and instance diagnostics on the node. The node secret is read from a file, never from an argument or an environment variable.
 
 ## The loop
 
@@ -26,7 +26,7 @@ drop agent render --input FILE|- [--previous FILE]
 2. **Sign in** as the node (`auth-with-password`), refresh every 30 minutes, sign in again on a 401 (at most every 5 seconds).
 3. **Realtime:** `GET /api/realtime`, subscribe to `nodes/<id>`; reconnect with jittered backoff of 1–30 s (the hosted server closes streams after 5 minutes).
 4. **Reconcile** on start, on every (re)connect, on every event whose `desired_seq` is above the one applied, when a report answers a higher `desiredSeq`, and every `DROP_AGENT_PULL_INTERVAL` (60 s):
-   1. `GET /api/drop/agent/desired` (strict decoding; the envelope must name this node and host);
+   1. `GET /api/drop/agent/desired` (strict decoding; the envelope must name this node and host, include both the apps and rejected arrays, and match its content hash);
    2. stage each app's release into `DROP_AGENT_ARTIFACTS/<sha256>` (download to a private `.dl-*` file while hashing, refuse a size or sha256 mismatch, fsync, rename, fsync the directory; an unchanged file is trusted by size and mtime, any other one is hashed again);
    3. read each secret version from SSM;
    4. render with the node's limits (`DROP_AGENT_ALLOWED_HOST_SUFFIX`, `DROP_SSM_PREFIX`, nibrunner's reported allocatable) and the current file as the previous document;
@@ -36,13 +36,13 @@ drop agent render --input FILE|- [--previous FILE]
 
 ## Report mapping
 
-The agent decodes only these fields of nibrunner's `reported.json`: `hostId`, `state`, `message`, `reportedAt`, `acceptedRevision`, `capacity` and `allocatable` (`vcpuCount`, `memoryMib`, `cacheBytes` only), `versions` (`agent`, `firecracker`, `guestImage`, `zerofs`, cut to 128 bytes) and per instance `appId`, `deploymentId`, `state`, `message`, `restartCount`, `lastExitCode`, `convergedAt`. `cron` (tenant environment values), checkpoints, exports, compute, addresses and restart details are never read, so they can never be sent. A `reported.json` for another host counts as missing.
+The agent decodes only these fields of nibrunner's `reported.json`: `hostId`, `state`, `reportedAt`, `acceptedRevision`, `capacity` and `allocatable` (`vcpuCount`, `memoryMib`, `cacheBytes` only), `versions` (`agent`, `firecracker`, `guestImage`, `zerofs`, cut to 128 bytes) and per instance `appId`, `deploymentId`, `state`, `restartCount`, `lastExitCode`, `convergedAt`. `cron` (tenant environment values), checkpoints, exports, compute, addresses and restart details are never read, so they can never be sent. A `reported.json` for another host counts as missing.
 
 Phase of each app the agent was given (`deploymentId` is the one nibrunner runs, empty until it runs one):
 
 | Condition | Phase |
 | --- | --- |
-| the server refused it, or the node's render refused it | `failed` (with the reason) |
+| the server refused it, or the node's render refused it | `failed` (with an agent-generated message) |
 | its release could not be staged | `staging_failed` |
 | a secret version could not be read | `secret_failed` |
 | no readable `reported.json` | `unknown` ("nibrunner report unavailable") |
@@ -104,7 +104,7 @@ Environment (`/etc/drop/agent.env`, example `deploy/walter-aws/agent.env.example
 
 | Variable | Meaning |
 | --- | --- |
-| `DROP_AGENT_SERVER` | The Drop server, default `http://127.0.0.1:8100` |
+| `DROP_AGENT_SERVER` | The Drop server, default `http://127.0.0.1:8100`. Remote servers require HTTPS. |
 | `DROP_AGENT_HOST` | The Drop domain, sent as the `Host` header (required) |
 | `DROP_AGENT_NODE` | The node's name (required) |
 | `DROP_AGENT_SECRET_FILE` | The node secret file; default `$CREDENTIALS_DIRECTORY/node-secret` (systemd `LoadCredential=node-secret:/etc/drop/agent.secret`). One line, 32–256 characters, not readable by group or others |
@@ -128,7 +128,7 @@ sudo systemd-run --pipe --wait --collect -p EnvironmentFile=/etc/drop/agent.env 
   -p LoadCredential=node-secret:/etc/drop/agent.secret /usr/local/bin/drop agent check --pretty
 ```
 
-`drop agent render --input FILE|-` reads a `drop.desired/v1` document (as `GET /api/drop/agent/desired` returns it) and renders it against `--previous FILE` (default `DROP_AGENT_DESIRED`) with every secret value `REDACTED` and nothing staged or fetched; it prints `{"revision", "contentHash", "changed", "rejected", "kept", "tombstoned", "document"}` and writes nothing.
+`drop agent render --input FILE|-` reads a `drop.desired/v1` document (as `GET /api/drop/agent/desired` returns it) and renders it against `--previous FILE` (default `DROP_AGENT_DESIRED`) with every secret value `REDACTED`. The preview also redacts previous environment values whose public value cannot be confirmed from the input. It runs offline and prints `{"revision", "contentHash", "changed", "rejected", "kept", "tombstoned", "document"}` and writes nothing.
 
 ## systemd
 

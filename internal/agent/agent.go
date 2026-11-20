@@ -302,29 +302,35 @@ func (a *Agent) saveState() {
 	}
 }
 
-// checkEnvelope refuses a desired document that is not for this node.
-func (a *Agent) checkEnvelope(d *dropapi.Desired) error {
-	if d.HostID != a.hostID {
-		return &Refusal{Message: fmt.Sprintf("the server's node %s is for host %q but this host is %q; fix the node's host_id or run the agent on the right host", d.Node, d.HostID, a.hostID)}
-	}
+// checkEnvelope checks the whole snapshot before an omitted app can be treated as removed.
+func checkEnvelope(d *dropapi.Desired) error {
 	switch {
 	case d.Schema != dropapi.DesiredSchema:
-		return fmt.Errorf("desired document schema %q is not %s", d.Schema, dropapi.DesiredSchema)
-	case d.Node != a.cfg.Node || d.NodeID != a.client.NodeID():
-		return errors.New("desired document is for another node")
+		return errors.New("unsupported desired document schema")
+	case !dropapi.HostIDPattern.MatchString(d.HostID) || !dropapi.NodeNamePattern.MatchString(d.Node) || d.NodeID == "":
+		return errors.New("invalid desired document identity")
 	case d.State != "active" && d.State != "draining":
-		return fmt.Errorf("desired document state %q", d.State)
-	case d.DesiredSeq < 1:
-		return errors.New("desired document has no desiredSeq")
-	case !appspec.SHA256Pattern.MatchString(d.ContentHash):
-		return errors.New("desired document has no contentHash")
+		return errors.New("invalid desired document state")
+	case d.DesiredSeq < 1 || d.DesiredSeq > appspec.MaxDeploymentSeq:
+		return errors.New("invalid desired sequence")
+	case d.Apps == nil || d.Rejected == nil:
+		return errors.New("desired document needs apps and rejected arrays")
+	}
+	hash, err := d.ComputeContentHash()
+	if err != nil || hash != d.ContentHash {
+		return errors.New("desired document content hash mismatch")
 	}
 	seen := map[string]bool{}
 	for i, app := range d.Apps {
-		if seen[app.AppID] || (i > 0 && d.Apps[i-1].AppID >= app.AppID) {
-			return errors.New("desired document apps are not sorted by appId once each")
+		if !appspec.AppIDPattern.MatchString(app.AppID) || (i > 0 && d.Apps[i-1].AppID >= app.AppID) {
+			return errors.New("desired apps must have unique, sorted Drop app IDs")
 		}
 		seen[app.AppID] = true
+	}
+	for i, app := range d.Rejected {
+		if !appspec.AppIDPattern.MatchString(app.AppID) || seen[app.AppID] || (i > 0 && d.Rejected[i-1].AppID >= app.AppID) {
+			return errors.New("rejected apps must have unique, sorted Drop app IDs separate from apps")
+		}
 	}
 	return nil
 }
@@ -340,8 +346,8 @@ func (a *Agent) reconcile(ctx context.Context) (wrote bool, err error) {
 		}
 		return false, err
 	}
-	if err := a.checkEnvelope(d); err != nil {
-		return false, err
+	if d.HostID != a.hostID {
+		return false, &Refusal{Message: fmt.Sprintf("the server's node %s is for host %q but this host is %q; check the node host_id", d.Node, d.HostID, a.hostID)}
 	}
 	a.state.LastPullAt = a.now().UTC().Format(time.RFC3339)
 
@@ -367,7 +373,7 @@ func (a *Agent) reconcile(ctx context.Context) (wrote bool, err error) {
 		apps    []render.App
 		keep    []string
 		intents []appIntent
-		used    = map[string]bool{}
+		used    = map[secretKey]bool{}
 		phases  = map[string]StateApp{}
 	)
 	fail := func(id, deployment, phase, message string) {
@@ -379,32 +385,21 @@ func (a *Agent) reconcile(ctx context.Context) (wrote bool, err error) {
 		phases[id] = st
 	}
 	for _, r := range d.Rejected {
-		if !appspec.AppIDPattern.MatchString(r.AppID) {
-			continue
-		}
-		msg := "refused by the server: " + r.Code
-		if r.Field != "" {
-			msg += " " + r.Field
-		}
-		fail(r.AppID, "", "failed", cut(msg+": "+r.Message, dropapi.MaxReportMessage))
+		fail(r.AppID, "", "failed", "The server rejected this app's configuration.")
 	}
 	for _, app := range d.Apps {
 		id := app.AppID
-		if !appspec.AppIDPattern.MatchString(id) {
-			a.logf("skipping an app whose appId is not a Drop app id")
-			continue
-		}
 		if err := a.stager.Stage(ctx, app.Release); err != nil {
 			fail(id, app.DeploymentID, "staging_failed", cut(err.Error(), dropapi.MaxReportMessage))
 			continue
 		}
-		values, err := a.secrets.Resolve(ctx, id, app.Secrets)
+		values, err := a.secrets.Resolve(ctx, id, app.DeploymentID, app.Secrets)
 		if err != nil {
 			fail(id, app.DeploymentID, "secret_failed", cut(err.Error(), dropapi.MaxReportMessage))
 			continue
 		}
 		for _, s := range app.Secrets {
-			used[secretKey(s.Parameter, s.Version)] = true
+			used[secretKey{app.DeploymentID, s.Parameter, s.Version}] = true
 		}
 		apps = append(apps, app.RenderApp(values))
 		intents = append(intents, appIntent{AppID: id, DeploymentID: app.DeploymentID})
@@ -485,7 +480,7 @@ func (a *Agent) report(ctx context.Context) error {
 	if err != nil {
 		a.logf("%v", err)
 	}
-	body := buildReport(a.hostID, a.version, a.appliedSeq, a.intents, rep, a.writtenRevision, a.now(), a.secrets.Scrub)
+	body := buildReport(a.hostID, a.version, a.appliedSeq, a.intents, rep, a.writtenRevision, a.now())
 	res, err := a.client.Report(ctx, body)
 	if err != nil {
 		if statusOf(err) == http.StatusConflict && codeOf(err) == "host_mismatch" {

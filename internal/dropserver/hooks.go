@@ -9,6 +9,7 @@ package dropserver
 import (
 	"context"
 	"path/filepath"
+	"sync"
 
 	"ganigeorgiev.com/pocketbase/pocketbase/core"
 
@@ -42,8 +43,11 @@ func Hooks() appserver.Hooks {
 			return ensureOwnerAdmin(e.App)
 		},
 		Background: func(ctx context.Context, app core.App) {
-			go runUploadLinkPruning(ctx, app)
+			var workers sync.WaitGroup
+			workers.Go(func() { runSecretCleanup(ctx, app) })
+			workers.Go(func() { runUploadLinkPruning(ctx, app) })
 			runOpKeyPruning(ctx, app)
+			workers.Wait()
 		},
 		// --hosted-restore: core rotates the accounts' token keys; Drop adds
 		// the nodes' (restore.go).

@@ -170,8 +170,11 @@ func LoadConfig(getenv func(string) string, o Overrides, needServer bool) (Confi
 		}
 	}
 	u, err := url.Parse(c.Server)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.Path != "" || u.RawQuery != "" || u.User != nil {
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.Path != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.User != nil {
 		return c, fmt.Errorf("%s must be an http(s) URL such as %s", EnvServer, DefaultServer)
+	}
+	if u.Scheme == "http" && !awsx.IsLoopbackHost(u.Hostname()) {
+		return c, fmt.Errorf("%s requires HTTPS for a remote server", EnvServer)
 	}
 	if !hostPattern.MatchString(c.Host) {
 		return c, fmt.Errorf("%s must be the Drop domain (sent as the Host header), for example drop.example.com", EnvHost)

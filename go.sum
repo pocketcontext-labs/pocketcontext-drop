@@ -113,8 +113,8 @@ github.com/ncruces/go-strftime v1.1.0/go.mod h1:yVaq7iwCN09vHRrKBrrflXT0M9tTMG2K
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/pocketcontext-labs/pocketcontext-core v0.3.0 h1:xUFsuHPAf6yG8pV/2+fGB0L6D8djrnZQ+zTue9qaYU4=
-github.com/pocketcontext-labs/pocketcontext-core v0.3.0/go.mod h1:hkkV4gpYIHqUC4HgzAKfOvqpwQrj5OCj3yMmvsx4Ssg=
+github.com/pocketcontext-labs/pocketcontext-core v0.3.1 h1:KFG/ZtUjKeox8V86djCHCLAy3U4oSwY5xOnoO3pKUWU=
+github.com/pocketcontext-labs/pocketcontext-core v0.3.1/go.mod h1:hkkV4gpYIHqUC4HgzAKfOvqpwQrj5OCj3yMmvsx4Ssg=
 github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec h1:W09IVJc94icq4NjY3clb7Lk8O1qJ8BdBEF8z0ibU0rE=
 github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec/go.mod h1:qqbHyh8v60DhA7CoWK5oRCqLrMHRGoxYCSS9EjAz6Eo=
 github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0tI/otEQ=

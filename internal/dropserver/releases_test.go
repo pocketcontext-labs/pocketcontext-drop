@@ -126,6 +126,11 @@ func TestReleaseUploadAndDeploy(t *testing.T) {
 		t.Fatalf("shared upload %s", shared.Raw)
 	}
 
+	for _, e := range events(t, h, "release.upload") {
+		if strings.Contains(e.GetString("detail"), `"stored"`) {
+			t.Fatal("upload audit contains global object status")
+		}
+	}
 	// activate deploys the new release.
 	second := droptest.ELF(8192, 2)
 	activated := upload(t, h, uploadLink(t, h, token, "hello", map[string]any{"activate": true}), second)
@@ -204,14 +209,16 @@ func TestUploadRefusals(t *testing.T) {
 	bigEndian := droptest.ELF(4096, 5)
 	bigEndian[5] = 2
 	for name, body := range map[string][]byte{
-		"text":        []byte("#!/bin/sh\necho hello\n"),
-		"arm64":       arm,
-		"object":      object,
-		"big-endian":  bigEndian,
-		"short":       droptest.ELF(64, 6)[:40],
-		"32-bit":      append([]byte("\x7fELF\x01"), make([]byte, 100)...),
-		"not-at-all":  bytes.Repeat([]byte{0}, 200),
-		"elf-in-body": append([]byte("prefix"), droptest.ELF(200, 7)...),
+		"text":              []byte("#!/bin/sh\necho hello\n"),
+		"arm64":             arm,
+		"object":            object,
+		"big-endian":        bigEndian,
+		"short":             droptest.ELF(64, 6)[:40],
+		"header only":       droptest.ELF(4096, 6)[:64],
+		"truncated segment": droptest.ELF(4096, 6)[:3000],
+		"32-bit":            append([]byte("\x7fELF\x01"), make([]byte, 100)...),
+		"not-at-all":        bytes.Repeat([]byte{0}, 200),
+		"elf-in-body":       append([]byte("prefix"), droptest.ELF(200, 7)...),
 	} {
 		a := upload(t, h, path, body)
 		wantUploadError(t, a, 400, dropapi.CodeInvalidRelease)

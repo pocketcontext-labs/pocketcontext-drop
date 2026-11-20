@@ -71,15 +71,18 @@ func serveReport(re *core.RequestEvent, state *agentState) error {
 	}
 	if writeNode || outcome.changes > 0 {
 		err = re.App.RunInTransaction(func(tx core.App) error {
-			if _, err := ingest(tx, true); err != nil {
+			fresh, err := tx.FindRecordById(dropapi.NodeCollection, node.Id)
+			if err != nil {
+				return err
+			}
+			if fresh.GetString("state") == dropapi.NodeDisabled || fresh.TokenKey() != node.TokenKey() {
+				return Forbidden("This node no longer has access.")
+			}
+			if outcome, err = ingest(tx, true); err != nil {
 				return err
 			}
 			if !writeNode {
 				return nil
-			}
-			fresh, err := tx.FindRecordById(dropapi.NodeCollection, node.Id)
-			if err != nil {
-				return err
 			}
 			allocatableBefore := normalizedValue(fresh.Get("allocatable"))
 			nodeFields.apply(fresh, now)

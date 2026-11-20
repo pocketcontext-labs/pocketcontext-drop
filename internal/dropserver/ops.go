@@ -2,6 +2,7 @@ package dropserver
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,7 +17,7 @@ import (
 )
 
 // The operation framework: POST /api/drop/op dispatches one registered
-// operation by name. Every write in Drop goes through it, from the reader, the
+// operation by name. Account operations go through it, from the reader, the
 // CLI and (M6) the MCP tool drop_write, so roles and ownership are checked in
 // one place:
 //
@@ -44,9 +45,10 @@ type Ctx struct {
 	// instance owner (Runtime.IsOwner).
 	Admin, Owner bool
 	// Request is the HTTP request, for reading only.
-	Request *http.Request
-	Spec    dropapi.Spec
-	event   *Event
+	Request         *http.Request
+	Spec            dropapi.Spec
+	event           *Event
+	deleteParameter string // parameter queued for cleanup after commit
 }
 
 // Event is the events row an operation writes. Action defaults to the
@@ -108,14 +110,39 @@ func caller(re *core.RequestEvent) (*Ctx, error) {
 	if re.Auth.Collection().Name != "users" {
 		return nil, Forbidden("Only Drop accounts can use operations.")
 	}
-	if re.Auth.GetBool("suspended") {
+	return accountContext(re.App, re.Auth, re.Request)
+}
+
+func accountContext(app core.App, account *core.Record, request *http.Request) (*Ctx, error) {
+	if account.GetBool("suspended") {
 		return nil, &dropapi.Error{Status: http.StatusForbidden, Code: dropapi.CodeSuspended, Message: "This account is suspended."}
 	}
-	owner := isOwner(re.App, re.Auth)
+	owner := isOwner(app, account)
 	return &Ctx{
-		App: re.App, Auth: re.Auth, Request: re.Request, Owner: owner,
-		Admin: owner || re.Auth.GetString("role") == string(dropapi.RoleAdmin),
+		App: app, Auth: account, Request: request, Owner: owner,
+		Admin: owner || account.GetString("role") == string(dropapi.RoleAdmin),
 	}, nil
+}
+
+// authorizeOp reloads the account after the request body has arrived. For writes
+// the lookup and all protected effects share the same database transaction.
+func authorizeOp(app core.App, re *core.RequestEvent, spec dropapi.Spec) (*Ctx, error) {
+	account, err := app.FindRecordById("users", re.Auth.Id)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	if account == nil || account.TokenKey() != re.Auth.TokenKey() {
+		return nil, &dropapi.Error{Status: http.StatusUnauthorized, Code: dropapi.CodeUnauthenticated, Message: "Sign in first."}
+	}
+	c, err := accountContext(app, account, re.Request)
+	if err != nil {
+		return nil, err
+	}
+	if spec.Role == dropapi.RoleAdmin && !c.Admin {
+		return nil, Forbidden("This operation needs an admin.")
+	}
+	c.Spec = spec
+	return c, nil
 }
 
 func serveOp(re *core.RequestEvent, keys *sync.Mutex) error {
@@ -139,7 +166,6 @@ func serveOp(re *core.RequestEvent, keys *sync.Mutex) error {
 	if spec.Role == dropapi.RoleAdmin && !c.Admin {
 		return writeError(re, Forbidden("This operation needs an admin."))
 	}
-	c.Spec = spec
 	input := reflect.New(reflect.TypeOf(spec.Input).Elem()).Interface()
 	raw := bytes.TrimSpace(req.Input)
 	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
@@ -149,6 +175,10 @@ func serveOp(re *core.RequestEvent, keys *sync.Mutex) error {
 		return writeError(re, &dropapi.Error{Status: http.StatusBadRequest, Code: dropapi.CodeInvalidInput, Message: "The input does not match the operation.", Data: map[string]any{"op": req.Op}})
 	}
 	if spec.Read {
+		c, err := authorizeOp(re.App, re, spec)
+		if err != nil {
+			return writeError(re, err)
+		}
 		result, err := run(c, input)
 		if err != nil {
 			return writeError(re, err)
@@ -173,7 +203,11 @@ func serveOp(re *core.RequestEvent, keys *sync.Mutex) error {
 	var encoded json.RawMessage
 	replayed := false
 	err = re.App.RunInTransaction(func(tx core.App) error {
-		c.App, c.event = tx, nil
+		var err error
+		c, err = authorizeOp(tx, re, spec)
+		if err != nil {
+			return err
+		}
 		if key != nil {
 			stored, found, err := key.lookup(tx)
 			if err != nil || found {
@@ -208,9 +242,11 @@ func serveOp(re *core.RequestEvent, keys *sync.Mutex) error {
 		}
 		return nil
 	})
-	c.App = re.App
 	if err != nil {
 		return writeError(re, err)
+	}
+	if c.deleteParameter != "" {
+		_ = finishSecretDeletion(re.Request.Context(), re.App, c.deleteParameter) // queued for retry on failure
 	}
 	return writeResult(re, encoded, replayed)
 }

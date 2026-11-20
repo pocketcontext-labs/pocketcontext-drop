@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -49,6 +50,7 @@ type Mail struct {
 
 // Options select optional parts of the hosted server.
 type Options struct {
+	ReaderDir string // optional built UI for browser tests
 	// MCPHandler builds the MCP adapter around the unfiltered router; nil
 	// leaves /mcp and OAuth off.
 	MCPHandler func(api http.Handler) http.Handler
@@ -149,7 +151,7 @@ func NewHosted(t *testing.T, opts Options) *Hosted {
 		h.mail <- m
 		return nil
 	}})
-	options := appserver.TestServerOptions{Domain: Domain, Hosted: true, Cache: t.TempDir(), HostedConfig: HostedConfig()}
+	options := appserver.TestServerOptions{Domain: Domain, Hosted: true, ReaderDir: opts.ReaderDir, Cache: t.TempDir(), HostedConfig: HostedConfig()}
 	// The MCP adapter calls the unfiltered router, which exists only once the
 	// test server is built.
 	var router http.Handler
@@ -449,19 +451,33 @@ func (h *Hosted) MustOp(authorization, op string, input any) map[string]any {
 	return r.Result
 }
 
-// ELF returns a synthetic release of size bytes (at least 64): a valid
-// linux/amd64 ELF executable header followed by bytes derived from seed, so
+// ELF returns a synthetic release of size bytes (at least 128): a valid
+// linux/amd64 ELF executable header and load segment with bytes derived from seed, so
 // different seeds give different content. It never runs; it only passes
 // Drop's upload check.
 func ELF(size int, seed byte) []byte {
-	if size < 64 {
-		size = 64
+	if size < 128 {
+		size = 128
 	}
 	b := make([]byte, size)
 	copy(b, "\x7fELF")
 	b[4], b[5], b[6] = 2, 1, 1 // 64-bit, little-endian, version 1
 	b[16], b[18] = 2, 0x3E     // ET_EXEC, x86-64
-	for i := 64; i < size; i++ {
+	order := binary.LittleEndian
+	order.PutUint32(b[20:], 1)
+	order.PutUint64(b[24:], 0x400078)
+	order.PutUint64(b[32:], 64)
+	order.PutUint16(b[52:], 64)
+	order.PutUint16(b[54:], 56)
+	order.PutUint16(b[56:], 1)
+	// One executable PT_LOAD segment contains the entry point.
+	order.PutUint32(b[64:], 1)
+	order.PutUint32(b[68:], 5)
+	order.PutUint64(b[80:], 0x400000)
+	order.PutUint64(b[96:], uint64(size))
+	order.PutUint64(b[104:], uint64(size))
+	order.PutUint64(b[112:], 4096)
+	for i := 120; i < size; i++ {
 		b[i] = byte(i) ^ seed
 	}
 	return b

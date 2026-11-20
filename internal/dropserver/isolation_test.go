@@ -50,7 +50,7 @@ import (
 //	             tools/list per role                                          TestMCPToolsByRole, TestMCPAdminOpAsUserForbidden
 //	Secrets      a value reaches only the store: never records, answers,      TestSecretSentinel, TestMCPSecretSentinel,
 //	             logs, events, reports or desired documents                   TestDesiredDocument, internal/leakscan
-//	Browser      #/apps/<not yours> and #/admin/users as a non-admin show      tests/reader_ui_browser.mjs (CI)
+//	Browser      #/apps/<not yours> and #/admin/users as a non-admin show      TestTenantReader (tests, CI)
 //	             Not found
 
 func listCount(t *testing.T, h *droptest.Hosted, path, token string) int {

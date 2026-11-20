@@ -9,7 +9,6 @@ import (
 	"os"
 	"sort"
 
-	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/render"
 )
 
@@ -104,13 +103,15 @@ func Check(ctx context.Context, cfg Config, stores Stores, version string) *Chec
 	var heads, probes []error
 	nSecrets := 0
 	for _, app := range d.Apps {
-		if info, err := stores.Blobs.Head(ctx, app.Release.S3Key); err != nil {
+		if err := checkRelease(app.Release); err != nil {
+			heads = append(heads, fmt.Errorf("%s: %w", app.AppID, err))
+		} else if info, err := stores.Blobs.Head(ctx, app.Release.S3Key); err != nil {
 			heads = append(heads, fmt.Errorf("%s: %s: %v", app.AppID, app.Release.S3Key, err))
 		} else if info.Size != app.Release.SizeBytes {
 			heads = append(heads, fmt.Errorf("%s: %s has %d bytes, expected %d", app.AppID, app.Release.S3Key, info.Size, app.Release.SizeBytes))
 		}
 		probe := &Secrets{Store: stores.Secrets, Prefix: cfg.SSMPrefix}
-		if _, err := probe.Resolve(ctx, app.AppID, app.Secrets); err != nil {
+		if _, err := probe.Resolve(ctx, app.AppID, app.DeploymentID, app.Secrets); err != nil {
 			probes = append(probes, fmt.Errorf("%s: %v", app.AppID, err))
 		}
 		nSecrets += len(app.Secrets)
@@ -139,14 +140,9 @@ const RedactedValue = "REDACTED"
 // no server, no S3, no SSM. Secret values are RedactedValue and releases are
 // not staged. Server-refused apps keep their previous entries as in run.
 func RenderDry(input, previous []byte, limits render.Limits) (*DryRun, error) {
-	dec := json.NewDecoder(bytes.NewReader(input))
-	dec.DisallowUnknownFields()
-	var d dropapi.Desired
-	if err := dec.Decode(&d); err != nil {
-		return nil, fmt.Errorf("the input is not a %s document: %w", dropapi.DesiredSchema, err)
-	}
-	if d.Schema != dropapi.DesiredSchema {
-		return nil, fmt.Errorf("the input schema %q is not %s", d.Schema, dropapi.DesiredSchema)
+	d, err := decodeDesired(input)
+	if err != nil {
+		return nil, err
 	}
 	prevIDs := map[string]bool{}
 	if len(bytes.TrimSpace(previous)) > 0 {
@@ -176,6 +172,12 @@ func RenderDry(input, previous []byte, limits render.Limits) (*DryRun, error) {
 		}
 	}
 	sort.Strings(keep)
+	if len(bytes.TrimSpace(previous)) > 0 {
+		previous, err = render.PreviewPrevious(previous, apps, RedactedValue)
+		if err != nil {
+			return nil, err
+		}
+	}
 	out, err := render.Render(render.Input{HostID: d.HostID, DesiredSeq: d.DesiredSeq, Apps: apps, Keep: keep, Previous: previous, Limits: limits})
 	if err != nil {
 		var rerr *render.Error

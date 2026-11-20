@@ -6,7 +6,7 @@ import (
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
 )
 
-// InvalidateNodeTokens rotates every node's token key, so no node token
+// InvalidateNodeTokens discards pending upload links and rotates every node's token key, so no node token
 // issued before a restore works on the restored instance. Core calls it
 // first when serving with --hosted-restore (Hooks.OnHostedRestore); core
 // itself rotates only the users accounts' keys and removes their sign-in
@@ -26,6 +26,13 @@ func InvalidateNodeTokens(app core.App) error {
 				return err
 			}
 		}
-		return nil
+		if _, err := tx.DB().NewQuery("DELETE FROM upload_links WHERE used_at = ''").Execute(); err != nil {
+			return err
+		}
+		// The restored queue describes SSM at backup time. A name may since
+		// have been recreated. An operator reconciles these entries using the
+		// backup and current store, without replaying an old destructive intent.
+		_, err = tx.DB().NewQuery("DELETE FROM drop_secret_deletions").Execute()
+		return err
 	})
 }

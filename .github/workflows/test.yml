@@ -62,6 +62,7 @@ jobs:
           pnpm --dir ui exec playwright install --with-deps chromium
           node tests/ui_dev_browser.mjs --binary "$EXE"
           node tests/reader_ui_browser.mjs --binary "$EXE"
+          DROP_TEST_BROWSER=1 go test -tags "$(cat build-tags.txt)" -run TestTenantReader -count=1 ./tests
       - name: Name check of the repository and binary
         run: python3 tests/name_check.py --binary "$EXE"
       # Fails on any template identity left in the repository or the binary.

@@ -18,7 +18,6 @@ import (
 type nibReported struct {
 	HostID           string          `json:"hostId"`
 	State            string          `json:"state"`
-	Message          *string         `json:"message"`
 	ReportedAt       string          `json:"reportedAt"`
 	AcceptedRevision *string         `json:"acceptedRevision"`
 	AcceptedDigest   *string         `json:"acceptedDigest"`
@@ -32,7 +31,6 @@ type nibInstance struct {
 	AppID        string  `json:"appId"`
 	DeploymentID string  `json:"deploymentId"`
 	State        string  `json:"state"`
-	Message      *string `json:"message"`
 	RestartCount int     `json:"restartCount"`
 	LastExitCode *int    `json:"lastExitCode"`
 	ConvergedAt  *string `json:"convergedAt"`
@@ -126,15 +124,14 @@ func deref(p *string) string {
 	return *p
 }
 
-// hostReport maps nibrunner's host part: state, message, reportedAt,
+// hostReport maps nibrunner's host part: state, reportedAt,
 // capacity, allocatable and versions only.
-func hostReport(r *nibReported, scrub func(string) string) *dropapi.HostReport {
+func hostReport(r *nibReported) *dropapi.HostReport {
 	if r == nil {
 		return nil
 	}
 	return &dropapi.HostReport{
 		State:       cut(r.State, 64),
-		Message:     cut(scrub(deref(r.Message)), dropapi.MaxReportMessage),
 		ReportedAt:  r.ReportedAt,
 		Capacity:    sanitizeCapacity(r.Capacity),
 		Allocatable: sanitizeCapacity(r.Allocatable),
@@ -174,7 +171,7 @@ func nibPhase(state string) string {
 // appReports builds the per-app part of a report from the agent's intents
 // and nibrunner's report. writtenRevision is the revision of the
 // desired.json the agent last wrote or confirmed.
-func appReports(intents []appIntent, r *nibReported, writtenRevision string, now time.Time, scrub func(string) string) []dropapi.AppReport {
+func appReports(intents []appIntent, r *nibReported, writtenRevision string, now time.Time) []dropapi.AppReport {
 	byApp := map[string]nibInstance{}
 	stale := true
 	accepted := ""
@@ -205,7 +202,6 @@ func appReports(intents []appIntent, r *nibReported, writtenRevision string, now
 			rep.Phase = "deploying"
 		default:
 			rep.Phase = nibPhase(inst.State)
-			rep.Message = deref(inst.Message)
 		}
 		if seen {
 			rep.RestartCount = max(inst.RestartCount, 0)
@@ -219,7 +215,6 @@ func appReports(intents []appIntent, r *nibReported, writtenRevision string, now
 				rep.DeploymentID = inst.DeploymentID
 			}
 		}
-		rep.Message = cut(scrub(rep.Message), dropapi.MaxReportMessage)
 		out = append(out, rep)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].AppID < out[j].AppID })
@@ -232,7 +227,7 @@ func appReports(intents []appIntent, r *nibReported, writtenRevision string, now
 func appDeploymentOK(appID, id string) bool { return appspec.DeploymentIDOK(appID, id) }
 
 // buildReport assembles one drop.report/v1.
-func buildReport(hostID, version string, seq int64, intents []appIntent, r *nibReported, writtenRevision string, now time.Time, scrub func(string) string) dropapi.Report {
+func buildReport(hostID, version string, seq int64, intents []appIntent, r *nibReported, writtenRevision string, now time.Time) dropapi.Report {
 	rep := dropapi.Report{
 		Schema:       dropapi.ReportSchema,
 		HostID:       hostID,
@@ -242,10 +237,10 @@ func buildReport(hostID, version string, seq int64, intents []appIntent, r *nibR
 	if r != nil && r.HostID != hostID {
 		r = nil // another host's report says nothing about this one
 	}
-	rep.Apps = appReports(intents, r, writtenRevision, now, scrub)
+	rep.Apps = appReports(intents, r, writtenRevision, now)
 	if r != nil {
 		rep.AcceptedRevision = cut(deref(r.AcceptedRevision), 128)
-		rep.Nibrunner = hostReport(r, scrub)
+		rep.Nibrunner = hostReport(r)
 	}
 	return rep
 }

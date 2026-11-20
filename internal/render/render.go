@@ -311,7 +311,7 @@ func inputNames(in Input, id string) bool {
 	return false
 }
 
-func renderInstance(app App) instance {
+func renderEnvironment(app App) map[string]string {
 	env := make(map[string]string, len(app.Env)+len(app.Secrets)+3)
 	for k, v := range app.Env {
 		env[k] = v
@@ -322,7 +322,10 @@ func renderInstance(app App) instance {
 	env[envHost] = envHostRef
 	env["NIBRUN_DATA_DIR"] = dataDir
 	env["HOME"] = dataDir
+	return env
+}
 
+func renderInstance(app App) instance {
 	args := append([]string{}, app.Args...)
 	program := appDir + "/" + app.ExecutableName
 
@@ -352,7 +355,7 @@ func renderInstance(app App) instance {
 				Program:          program,
 				Args:             args,
 				WorkingDirectory: appDir,
-				Environment:      env,
+				Environment:      renderEnvironment(app),
 			},
 			Resources:     resources{VCPUCount: app.Resources.VCPU, MemoryMib: app.Resources.MemoryMib},
 			HealthCheck:   hc,

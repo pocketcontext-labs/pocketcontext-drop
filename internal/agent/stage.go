@@ -35,10 +35,7 @@ type Stager struct {
 	Cache map[string]ArtifactInfo
 }
 
-// Stage makes <Dir>/<sha256> hold exactly the release's bytes. It downloads
-// to a private temporary file while hashing, refuses a size or digest
-// mismatch, fsyncs, renames and fsyncs the directory.
-func (s *Stager) Stage(ctx context.Context, rel render.Release) error {
+func checkRelease(rel render.Release) error {
 	if !awsx.ValidSHA256(rel.SHA256) {
 		return errors.New("release sha256 is not 64 lower-case hex characters")
 	}
@@ -47,6 +44,16 @@ func (s *Stager) Stage(ctx context.Context, rel render.Release) error {
 	}
 	if rel.SizeBytes <= 0 || rel.SizeBytes > maxReleaseBytes {
 		return fmt.Errorf("release size %d is out of range", rel.SizeBytes)
+	}
+	return nil
+}
+
+// Stage makes <Dir>/<sha256> hold exactly the release's bytes. It downloads
+// to a private temporary file while hashing, refuses a size or digest
+// mismatch, fsyncs, renames and fsyncs the directory.
+func (s *Stager) Stage(ctx context.Context, rel render.Release) error {
+	if err := checkRelease(rel); err != nil {
+		return err
 	}
 	if err := os.MkdirAll(s.Dir, 0o700); err != nil {
 		return err

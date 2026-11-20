@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"ganigeorgiev.com/pocketbase/dbx"
@@ -25,9 +24,9 @@ import (
 // line ever carries a value. secret.set ignores idempotency keys
 // (Spec.SecretInput), so not even a hash of a value is stored.
 //
-// The store call runs inside the operation's transaction: a failed call
-// changes nothing in the database; a stored version whose transaction then
-// fails is simply never referenced.
+// SSM puts run inside the writer transaction and a rolled-back version goes
+// unreferenced. SSM deletes run after the database commits the removal and
+// its cleanup entry; outstanding deletions survive process restarts.
 
 func init() {
 	register("secret.list", secretList)
@@ -87,16 +86,11 @@ func findSecret(app core.App, appRecord *core.Record, name string) (*core.Record
 	return records[0], nil
 }
 
-// secretStoreFailed logs a store failure without the value (an SDK error
-// could echo its input) and answers 502 with a fixed message.
-func (c *Ctx) secretStoreFailed(action string, err error, value string) error {
-	text := err.Error()
-	if value != "" {
-		text = strings.ReplaceAll(text, value, "[redacted]")
-	}
-	c.App.Logger().Error("Drop secret store failed", "action", action, "error", text)
+// Store errors may include submitted values in arbitrary encodings.
+func (c *Ctx) secretStoreFailed(action string) error {
+	c.App.Logger().Error("Drop secret store failed", "action", action)
 	return &dropapi.Error{Status: http.StatusBadGateway, Code: dropapi.CodeSecretStoreFailed,
-		Message: "The secret store did not answer. Nothing changed; please retry."}
+		Message: "The secret store did not answer. Please retry."}
 }
 
 func (c *Ctx) storeContext() (context.Context, context.CancelFunc) {
@@ -159,9 +153,14 @@ func secretSet(c *Ctx, in *dropapi.SecretSetInput) (any, error) {
 	}
 	ctx, cancel := c.storeContext()
 	defer cancel()
+	// Serialize recreation with a previous deletion. Only the transaction that
+	// removes the durable cleanup entry may write a new version at this path.
+	if err := clearSecretDeletion(ctx, c.App, parameter); err != nil {
+		return nil, c.secretStoreFailed("cleanup")
+	}
 	version, err := services.Secrets.Put(ctx, parameter, in.Value)
 	if err != nil {
-		return nil, c.secretStoreFailed("put", err, in.Value)
+		return nil, c.secretStoreFailed("put")
 	}
 	record := existing
 	if record == nil {
@@ -219,12 +218,13 @@ func secretDelete(c *Ctx, in *dropapi.SecretDeleteInput) (any, error) {
 	if err := c.App.Save(app); err != nil {
 		return nil, err
 	}
-	// Last, so a refused store call rolls the database back with nothing removed.
-	ctx, cancel := c.storeContext()
-	defer cancel()
-	if err := services.Secrets.Delete(ctx, parameter); err != nil {
-		return nil, c.secretStoreFailed("delete", err, "")
+	// The event, desired state, removed name and deletion intent commit together.
+	// A failed commit leaves the old parameter and its reference intact.
+	_, err = c.App.DB().Insert("drop_secret_deletions", dbx.Params{"parameter": parameter}).Execute()
+	if err != nil {
+		return nil, err
 	}
+	c.deleteParameter = parameter
 	c.Event(Event{App: app.Id, Detail: map[string]any{"name": in.Name, "deployment_seq": app.GetInt("deployment_seq")}})
 	return dropapi.SecretDeleteResult{Deleted: in.Name, DeploymentBumped: true, DeploymentID: deploymentID(app)}, nil
 }

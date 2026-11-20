@@ -41,7 +41,7 @@ func CheckFakeAllowed(listenAddr string) error {
 	if err != nil {
 		return fmt.Errorf("--fake-aws: listen address %q: %w", listenAddr, err)
 	}
-	if !loopbackHost(host) {
+	if !IsLoopbackHost(host) {
 		return fmt.Errorf("--fake-aws is for local testing and needs a loopback listen address, not %q", listenAddr)
 	}
 	return nil
@@ -54,13 +54,14 @@ func CheckFakeAllowedURL(rawURL string) error {
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return fmt.Errorf("--fake-aws: server URL %q is not an http(s) URL", rawURL)
 	}
-	if !loopbackHost(u.Hostname()) {
+	if !IsLoopbackHost(u.Hostname()) {
 		return fmt.Errorf("--fake-aws is for local testing and needs a loopback server URL, not %q", rawURL)
 	}
 	return nil
 }
 
-func loopbackHost(host string) bool {
+// IsLoopbackHost accepts localhost and literal loopback addresses.
+func IsLoopbackHost(host string) bool {
 	if strings.EqualFold(host, "localhost") {
 		return true
 	}

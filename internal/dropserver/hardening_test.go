@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"ganigeorgiev.com/pocketbase/dbx"
 	"ganigeorgiev.com/pocketbase/pocketbase/tools/logger"
 
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
@@ -61,14 +63,14 @@ func TestNodeSignInRateLimit(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	_, password, _ := h.Node("node-one", hostA)
 	advance := frozenAgentClock(h)
-	wrong, _ := json.Marshal(map[string]string{"identity": "node-one", "password": strings.Repeat("x", 40)})
 	right, _ := json.Marshal(map[string]string{"identity": "node-one", "password": password})
 	const address = "203.0.113.50:1000"
 
-	// PocketBase's rule: the third password attempt within 3 seconds.
+	// Both middleware limits run before form validation. Send an empty form
+	// so password hashing cannot consume the three-second test window.
 	codes := []int{}
 	for i := 0; i < 3; i++ {
-		codes = append(codes, fromAddress(h, address, "POST", dropapi.NodeAuthRoute, "", string(wrong)).Code)
+		codes = append(codes, fromAddress(h, address, "POST", dropapi.NodeAuthRoute, "", "{}").Code)
 	}
 	if codes[0] != 400 || codes[1] != 400 || codes[2] != http.StatusTooManyRequests {
 		t.Fatalf("password attempts %v, want 400 400 429", codes)
@@ -147,6 +149,9 @@ func TestHostedRestoreInvalidatesNodeTokens(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	_, p1, t1 := h.Node("node-one", hostA)
 	_, _, t2 := h.Node("node-two", hostB)
+	owner := h.Token(h.Owner())
+	app := newApp(t, h, owner, "restore-app")
+	link := uploadLink(t, h, owner, app, nil)
 	hook := dropserver.Hooks().OnHostedRestore
 	if hook == nil {
 		t.Fatal("Drop registers no restore hook")
@@ -154,6 +159,7 @@ func TestHostedRestoreInvalidatesNodeTokens(t *testing.T) {
 	if err := hook(h.App); err != nil {
 		t.Fatal(err)
 	}
+	wantUploadError(t, upload(t, h, link, droptest.ELF(4096, 1)), 404, dropapi.CodeUploadLinkInvalid)
 	for _, token := range []string{t1, t2} {
 		if w := h.Request("GET", dropapi.AgentDesiredRoute, token, ""); w.Code != http.StatusUnauthorized {
 			t.Fatalf("a node token from before the restore: %d", w.Code)
@@ -202,10 +208,17 @@ func TestPlacementChecksNodeTotal(t *testing.T) {
 	}
 	// Placing an app again on its node does not count it twice.
 	h.MustOp(owner, "placement.set", map[string]any{"app": one, "node": n1})
+	// Resource edits on an existing placement have the same aggregate budget.
+	resize := h.Op(a, "app.set", map[string]any{"app": two, "vcpu": 2})
+	wantError(t, resize, 409, dropapi.CodeNodeTooSmall)
+	if strings.Contains(resize.Raw, "node-one") {
+		t.Fatal("resize exposed the node name")
+	}
 	// Archived apps free their share.
 	h.MustOp(a, "app.archive", map[string]any{"app": two})
 	h.MustOp(owner, "placement.set", map[string]any{"app": three, "node": n1}) // 3 vCPUs, 1024 MiB
-	h.MustOp(owner, "placement.clear", map[string]any{"app": one})             // 1 vCPU, 512 MiB
+	wantError(t, h.Op(a, "app.restore", map[string]any{"app": two}), 409, dropapi.CodeNodeTooSmall)
+	h.MustOp(owner, "placement.clear", map[string]any{"app": one}) // 1 vCPU, 512 MiB
 	h.MustOp(owner, "placement.set", map[string]any{"app": mk("app-big", 1, 1536), "node": n1})
 	// Memory counts too: 2 vCPUs and 2048 MiB are taken.
 	wantError(t, h.Op(owner, "placement.set", map[string]any{"app": mk("app-four", 1, 512), "node": n1}), 409, dropapi.CodeNodeTooSmall)
@@ -307,5 +320,122 @@ func TestSecretLeakScan(t *testing.T) {
 	}
 	if f, _ := leakscan.Scan([]leakscan.Sentinel{{Label: "secret name", Value: "API_TOKEN"}}, leakscan.DB("database", h.App.DB())); len(f) == 0 {
 		t.Fatal("the database scan misses the secret name it holds")
+	}
+}
+
+// firstRead runs a concurrent state change after request authentication and
+// before the protected operation has received the complete request.
+type firstRead struct {
+	io.Reader
+	before func()
+}
+
+func (r *firstRead) Read(p []byte) (int, error) {
+	if r.before != nil {
+		r.before()
+		r.before = nil
+	}
+	return r.Reader.Read(p)
+}
+
+func TestAuthorizationAtCommit(t *testing.T) {
+	h := droptest.NewHosted(t, droptest.Options{})
+	owner := h.Token(h.Owner())
+	user, auth := h.User("admin@example.test", "admin")
+	app := newApp(t, h, auth, "commit-test")
+	path := uploadLink(t, h, auth, app, map[string]any{"activate": true})
+	for _, tc := range []struct {
+		method, path, content string
+		body                  io.Reader
+		change                map[string]any
+		status                int
+	}{
+		{http.MethodPost, dropapi.Route, "application/json", strings.NewReader(`{"op":"invite.create","input":{"email":"new@example.test"}}`), map[string]any{"role": "user"}, 403},
+		{http.MethodPut, path, "application/octet-stream", bytes.NewReader(droptest.ELF(4096, 1)), map[string]any{"suspended": true}, 404},
+	} {
+		tc.change["user"] = user.Id
+		body := &firstRead{Reader: tc.body, before: func() { h.MustOp(owner, "user.set", tc.change) }}
+		req := httptest.NewRequest(tc.method, "https://"+droptest.Domain+tc.path, body)
+		req.TLS, req.Host = nil, droptest.Domain
+		req.Header.Set("Content-Type", tc.content)
+		if tc.method == http.MethodPost {
+			req.Header.Set("Authorization", auth)
+		}
+		w := httptest.NewRecorder()
+		h.Server.Public().ServeHTTP(w, req)
+		if w.Code != tc.status {
+			t.Fatalf("%s returned %d: %s", tc.method, w.Code, w.Body)
+		}
+	}
+	if len(events(t, h, "release.upload")) != 0 || appRecord(t, h, app).GetString("current_release") != "" {
+		t.Fatal("suspended upload became a release")
+	}
+}
+
+func TestDesiredFailsOnMissingCurrentRelease(t *testing.T) {
+	h := droptest.NewHosted(t, droptest.Options{})
+	owner := h.Token(h.Owner())
+	_, _, node := h.Node("node-one", hostA)
+	app := deployedApp(t, h, owner, "placed-app", 1)
+	h.MustOp(owner, "placement.set", map[string]any{"app": app, "node": "node-one"})
+	if _, err := h.App.DB().NewQuery("UPDATE apps SET current_release='missingrelease0' WHERE id={:app}").Bind(dbx.Params{"app": app}).Execute(); err != nil {
+		t.Fatal(err)
+	}
+	w := h.Request(http.MethodGet, dropapi.AgentDesiredRoute, node, "")
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("missing release returned a desired document: %d %s", w.Code, w.Body)
+	}
+}
+
+// TestCleanupMigrationAndRestore exercises a database from before the cleanup
+// migration. A routine upgrade keeps outstanding upload links; a deliberate
+// restore invalidates them and drops stale external deletion requests.
+func TestCleanupMigrationAndRestore(t *testing.T) {
+	h := droptest.NewHosted(t, droptest.Options{})
+	owner := h.Token(h.Owner())
+	app := newApp(t, h, owner, "upgrade-app")
+	bytes := droptest.ELF(4096, 2)
+	if u := upload(t, h, uploadLink(t, h, owner, app, nil), bytes); u.Status != 200 {
+		t.Fatal(u.Raw)
+	}
+	keep := uploadLink(t, h, owner, app, nil)
+	preRestore := uploadLink(t, h, owner, app, nil)
+	db := h.App.DB()
+	for _, stmt := range []string{
+		"DROP TABLE drop_secret_deletions",
+		"DELETE FROM _migrations WHERE file='1820001300_secret_cleanup.js'",
+		"UPDATE events SET detail=json_set(detail,'$.stored',json('false')) WHERE action='release.upload'",
+	} {
+		if _, err := db.NewQuery(stmt).Execute(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := h.App.RunAppMigrations(); err != nil {
+		t.Fatal(err)
+	}
+	records := events(t, h, "release.upload")
+	if len(records) != 1 || strings.Contains(records[0].GetString("detail"), `"stored"`) || !strings.Contains(records[0].GetString("detail"), `"sha256"`) {
+		t.Fatal("upgrade did not remove only the shared-store flag")
+	}
+	if u := upload(t, h, keep, bytes); u.Status != 200 {
+		t.Fatal("upgrade invalidated pending link", u.Raw)
+	}
+	parameter := "/drop/apps/" + app + "/TOKEN"
+	if _, err := db.Insert("drop_secret_deletions", dbx.Params{"parameter": parameter}).Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.Secrets.Put(context.Background(), parameter, "recreated"); err != nil {
+		t.Fatal(err)
+	}
+	if err := dropserver.Hooks().OnHostedRestore(h.App); err != nil {
+		t.Fatal(err)
+	}
+	wantUploadError(t, upload(t, h, preRestore, bytes), 404, dropapi.CodeUploadLinkInvalid)
+	var queued int
+	if err := db.NewQuery("SELECT count(*) FROM drop_secret_deletions").Row(&queued); err != nil || queued != 0 {
+		t.Fatalf("stale deletion queued: %d %v", queued, err)
+	}
+	if value, err := h.Secrets.Get(context.Background(), parameter, 1); err != nil || value != "recreated" {
+		t.Fatal("restore deleted a newer parameter")
 	}
 }

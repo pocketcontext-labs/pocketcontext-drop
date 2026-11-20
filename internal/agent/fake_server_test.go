@@ -58,7 +58,8 @@ type fakeServer struct {
 func newFakeServer(t *testing.T) *fakeServer {
 	f := &fakeServer{t: t, tokens: map[string]bool{}, streams: map[int]chan string{}}
 	f.desired = dropapi.Desired{Schema: dropapi.DesiredSchema, Node: testNode, NodeID: testNodeID, HostID: testHostID, State: "active",
-		DesiredSeq: 1, Apps: []dropapi.DesiredApp{}, Rejected: []render.AppError{}, ContentHash: strings.Repeat("0", 64)}
+		DesiredSeq: 1, Apps: []dropapi.DesiredApp{}, Rejected: []render.AppError{}}
+	f.desired.ContentHash, _ = f.desired.ComputeContentHash()
 	f.srv = httptest.NewServer(http.HandlerFunc(f.handle))
 	t.Cleanup(f.close)
 	return f
@@ -228,9 +229,7 @@ func (f *fakeServer) setDesired(mutate func(d *dropapi.Desired)) int64 {
 	mutate(&f.desired)
 	f.desired.DesiredSeq++
 	seq := f.desired.DesiredSeq
-	data, _ := json.Marshal(f.desired.Apps)
-	sum := sha256.Sum256(data)
-	f.desired.ContentHash = hex.EncodeToString(sum[:])
+	f.desired.ContentHash, _ = f.desired.ComputeContentHash()
 	msg := fmt.Sprintf("event:nodes/%s\ndata:{\"action\":\"update\",\"record\":{\"id\":%q,\"desired_seq\":%d}}\n\n", testNodeID, testNodeID, seq)
 	for _, ch := range f.streams {
 		ch <- msg

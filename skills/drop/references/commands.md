@@ -43,7 +43,7 @@ drop secret delete APP NAME
 
 - `secret set` reads the value (1-4096 bytes; one trailing newline removed) from standard input only, stores it in the secret store as a new version and starts a new deployment. Prints `{"secret", "deployment_bumped", "deployment_id"}`. A name that is a plain variable of the app is refused; delete it with `app env APP -NAME` first.
 - A secret: `name`, `version`, `length`, `set_via` (`ui` or `mcp`), `updated_by`, `updated`. No command, operation or log ever returns a value.
-- `secret delete` removes every version and starts a new deployment.
+- `secret delete` removes the secret from the app and starts a new deployment. Drop then deletes every stored version and retries pending cleanup after a store failure.
 - An app's history: `drop op event.list '{"app": "hello-app"}'` prints `{"events", "has_more"}` newest first (`action`, `actor_email`, `detail`, `created`; details never hold secret values). Without input it lists the events of your apps; `{"all": true}` (admins) every event.
 - A server without a secret store (the local development server) answers `secrets_unavailable` (exit 1); a store that fails answers `secret_store_failed` (exit 1) and nothing changes.
 

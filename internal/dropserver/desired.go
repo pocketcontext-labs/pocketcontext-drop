@@ -1,9 +1,7 @@
 package dropserver
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
+	"errors"
 	"slices"
 	"strings"
 
@@ -46,7 +44,10 @@ func buildDesired(app core.App, node *core.Record) (*dropapi.Desired, error) {
 	apps := []dropapi.DesiredApp{}
 	for _, p := range placements {
 		record, err := app.FindRecordById("apps", p.GetString("app"))
-		if err != nil || record.GetBool("archived") {
+		if err != nil {
+			return nil, err
+		}
+		if record.GetBool("archived") {
 			continue
 		}
 		desired, ok, err := desiredApp(app, record, services)
@@ -63,7 +64,8 @@ func buildDesired(app core.App, node *core.Record) (*dropapi.Desired, error) {
 	if ValidAppDomain(services.AppDomain) {
 		limits.AllowedHostSuffix = "." + services.AppDomain
 	}
-	limits.AllocatableVCPU, limits.AllocatableMemoryMib = allocatable(node)
+	vcpu, memory := allocatable(node)
+	limits.AllocatableVCPU, limits.AllocatableMemoryMib = max(0, vcpu), max(0, memory)
 	check := render.Input{HostID: node.GetString("host_id"), Limits: limits}
 	for _, a := range apps {
 		check.Apps = append(check.Apps, a.RenderApp(nil))
@@ -87,7 +89,7 @@ func buildDesired(app core.App, node *core.Record) (*dropapi.Desired, error) {
 	}
 	d.Rejected = append(d.Rejected, out.Rejected...)
 	slices.SortFunc(d.Rejected, func(a, b render.AppError) int { return strings.Compare(a.AppID, b.AppID) })
-	if d.ContentHash, err = desiredHash(d); err != nil {
+	if d.ContentHash, err = d.ComputeContentHash(); err != nil {
 		return nil, err
 	}
 	d.State = node.GetString("state")
@@ -102,8 +104,11 @@ func desiredApp(app core.App, record *core.Record, services Services) (dropapi.D
 		return dropapi.DesiredApp{}, false, nil
 	}
 	release, err := app.FindRecordById("releases", releaseID)
-	if err != nil || release.GetString("app") != record.Id {
-		return dropapi.DesiredApp{}, false, nil
+	if err != nil {
+		return dropapi.DesiredApp{}, false, err
+	}
+	if release.GetString("app") != record.Id {
+		return dropapi.DesiredApp{}, false, errors.New("current release belongs to a different app")
 	}
 	nibAppID := record.GetString("nib_app_id")
 	a := dropapi.DesiredApp{App: render.App{
@@ -141,33 +146,20 @@ func desiredApp(app core.App, record *core.Record, services Services) (dropapi.D
 	return a, true, nil
 }
 
-// allocatable reads nibrunner's allocatable vCPUs and memory from a node's
-// last report (0 when unknown, which skips the check).
+// A missing measurement permits initial placement before the first report.
+// A reported zero is known and leaves no room for an additional placement.
 func allocatable(node *core.Record) (vcpu, memoryMib int) {
 	var a struct {
-		VCPUCount float64 `json:"vcpuCount"`
-		MemoryMib float64 `json:"memoryMib"`
+		VCPUCount *int `json:"vcpuCount"`
+		MemoryMib *int `json:"memoryMib"`
 	}
 	_ = node.UnmarshalJSONField("allocatable", &a)
-	if a.VCPUCount > 0 && a.VCPUCount < 1<<20 {
-		vcpu = int(a.VCPUCount)
+	vcpu, memoryMib = -1, -1
+	if a.VCPUCount != nil && *a.VCPUCount >= 0 && *a.VCPUCount < 1<<20 {
+		vcpu = *a.VCPUCount
 	}
-	if a.MemoryMib > 0 && a.MemoryMib < 1<<40 {
-		memoryMib = int(a.MemoryMib)
+	if a.MemoryMib != nil && *a.MemoryMib >= 0 && *a.MemoryMib < 1<<40 {
+		memoryMib = *a.MemoryMib
 	}
-	return vcpu, memoryMib
-}
-
-// desiredHash is the content hash of a desired document: the sha256 of its
-// JSON with desiredSeq, state and contentHash empty (Go encodes struct fields
-// in order and map keys sorted, so equal documents hash equal).
-func desiredHash(d *dropapi.Desired) (string, error) {
-	c := *d
-	c.DesiredSeq, c.State, c.ContentHash = 0, "", ""
-	raw, err := json.Marshal(c)
-	if err != nil {
-		return "", err
-	}
-	sum := sha256.Sum256(raw)
-	return hex.EncodeToString(sum[:]), nil
+	return
 }

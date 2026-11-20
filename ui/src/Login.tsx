@@ -23,8 +23,6 @@ export function isStandaloneApp(): boolean {
 const codeLength = 6;
 const codeDigits = (value: string) =>
   value.replace(/\D/g, "").slice(0, codeLength);
-/** These server answers end the login request; only a new email helps. */
-const spentCode = /Too many wrong codes|expired or was already used/;
 
 /**
  * Hosted sign-in by email (ported from Crew): the address, then the six-digit
@@ -47,7 +45,6 @@ export default function Login({
   const [address, setAddress] = useState(initialEmail);
   const [otpId, setOtpId] = useState("");
   const [code, setCode] = useState("");
-  const [codeSpent, setCodeSpent] = useState(false);
   const redeeming = useRef(false);
   const [link, setLink] = useState(emailLink);
   const [linkFailed, setLinkFailed] = useState(false);
@@ -76,7 +73,6 @@ export default function Login({
       else if (!hash.startsWith("#/login")) clearLoginReturn();
       setOtpId(id);
       setCode("");
-      setCodeSpent(false);
       setSentTo(value);
     });
   };
@@ -92,7 +88,6 @@ export default function Login({
         await api.loginEmailCode(otpId, value);
       } catch (e) {
         setCode("");
-        if (e instanceof Error && spentCode.test(e.message)) setCodeSpent(true);
         throw e;
       } finally {
         redeeming.current = false;
@@ -116,7 +111,6 @@ export default function Login({
     setSentTo("");
     setOtpId("");
     setCode("");
-    setCodeSpent(false);
     setError("");
   };
   const confirm = () =>
@@ -174,43 +168,42 @@ export default function Login({
             ? "Enter the code from the email here. The link in the email opens your browser, not this app."
             : "Enter the code from the email here, or open the link in it. Either one signs you in."}
         </p>
-        {codeSpent ? (
-          <button className="primary" autoFocus onClick={newCode}>
-            Send a new code
+        <form
+          className="stack"
+          onSubmit={(event) => {
+            event.preventDefault();
+            redeem(code);
+          }}
+        >
+          <label>
+            Code from the email
+            <input
+              className="login-code"
+              required
+              autoFocus
+              name="code"
+              type="text"
+              autoComplete="one-time-code"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={codeLength}
+              readOnly={busy}
+              value={code}
+              onChange={(event) => enterCode(event.target.value)}
+              onPaste={pasteCode}
+            />
+          </label>
+          <button className="primary" disabled={busy}>
+            Sign in
           </button>
-        ) : (
-          <form
-            className="stack"
-            onSubmit={(event) => {
-              event.preventDefault();
-              redeem(code);
-            }}
-          >
-            <label>
-              Code from the email
-              <input
-                className="login-code"
-                required
-                autoFocus
-                name="code"
-                type="text"
-                autoComplete="one-time-code"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={codeLength}
-                readOnly={busy}
-                value={code}
-                onChange={(event) => enterCode(event.target.value)}
-                onPaste={pasteCode}
-              />
-            </label>
-            <button className="primary" disabled={busy}>
-              Sign in
-            </button>
-          </form>
-        )}
-        <button type="button" className="link" onClick={newCode}>
-          Use a different email
+        </form>
+        <button
+          type="button"
+          className="link"
+          disabled={busy}
+          onClick={newCode}
+        >
+          {error ? "Request a new sign-in code" : "Use a different email"}
         </button>
       </>
     );

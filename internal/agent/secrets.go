@@ -4,32 +4,35 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/awsx"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
 )
 
 // Secrets resolves secret versions from SSM (name and exact version, with
-// decryption). Values are cached in memory by parameter and version (a
-// version never changes) and never written anywhere but desired.json.
+// decryption). The in-memory cache is scoped to a deployment, parameter and
+// version. The resolved values go into desired.json.
 type Secrets struct {
 	Store  awsx.SecretReader
 	Prefix string
-	cache  map[string]string
+	cache  map[secretKey]string
 }
 
-func secretKey(parameter string, version int64) string {
-	return fmt.Sprintf("%s:%d", parameter, version)
+// SSM version numbers restart when a parameter is deleted and recreated.
+// Drop increments the deployment on every secret change.
+type secretKey struct {
+	deployment string
+	parameter  string
+	version    int64
 }
 
 // Resolve returns the values of an app's secrets by name. It refuses a
 // parameter that is not exactly <prefix>/apps/<appId without d->/<NAME>:
 // the server never chooses which parameter the node reads. Errors name
 // parameters, never values.
-func (s *Secrets) Resolve(ctx context.Context, appID string, secrets []dropapi.DesiredSecret) (map[string]string, error) {
+func (s *Secrets) Resolve(ctx context.Context, appID, deploymentID string, secrets []dropapi.DesiredSecret) (map[string]string, error) {
 	if s.cache == nil {
-		s.cache = map[string]string{}
+		s.cache = map[secretKey]string{}
 	}
 	values := make(map[string]string, len(secrets))
 	for _, sec := range secrets {
@@ -43,7 +46,7 @@ func (s *Secrets) Resolve(ctx context.Context, appID string, secrets []dropapi.D
 		if _, dup := values[sec.Name]; dup {
 			return nil, fmt.Errorf("secret %s named twice", sec.Name)
 		}
-		key := secretKey(sec.Parameter, sec.Version)
+		key := secretKey{deploymentID, sec.Parameter, sec.Version}
 		if v, ok := s.cache[key]; ok {
 			values[sec.Name] = v
 			continue
@@ -63,21 +66,10 @@ func (s *Secrets) Resolve(ctx context.Context, appID string, secrets []dropapi.D
 
 // Forget drops cached values of an app's parameters that the current
 // document no longer names.
-func (s *Secrets) Forget(keep map[string]bool) {
+func (s *Secrets) Forget(keep map[secretKey]bool) {
 	for k := range s.cache {
 		if !keep[k] {
 			delete(s.cache, k)
 		}
 	}
-}
-
-// Scrub replaces any cached secret value found in text (messages copied from
-// nibrunner) with [redacted].
-func (s *Secrets) Scrub(text string) string {
-	for _, v := range s.cache {
-		if len(v) >= 4 && strings.Contains(text, v) {
-			text = strings.ReplaceAll(text, v, "[redacted]")
-		}
-	}
-	return text
 }

@@ -3,7 +3,9 @@ package render
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 )
@@ -186,6 +188,42 @@ func checkForeign(in Input) error {
 	return &Error{Code: CodeForeignEntries, Message: "Drop owns the whole desired.json; entries not starting with d- must be removed by the operator", IDs: ids}
 }
 
+// decodePrevious accepts one complete document in the shape Drop writes.
+func decodePrevious(raw []byte) (document, error) {
+	var doc document
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&doc); err != nil {
+		return doc, err
+	}
+	if err := dec.Decode(new(json.RawMessage)); err != io.EOF {
+		return doc, errors.New("trailing data after the document")
+	}
+	return doc, nil
+}
+
+// PreviewPrevious redacts environment values before comparing or carrying entries
+// into a preview. A previous file has no secret-name metadata. Only values
+// independently known from the preview input can safely be shown.
+func PreviewPrevious(raw []byte, apps []App, replacement string) ([]byte, error) {
+	doc, err := decodePrevious(raw)
+	if err != nil {
+		return nil, err
+	}
+	known := make(map[string]map[string]string, len(apps))
+	for _, app := range apps {
+		known[app.AppID] = renderEnvironment(app)
+	}
+	for _, inst := range doc.Instances {
+		for key, value := range inst.Config.Command.Environment {
+			if expected, ok := known[inst.AppID][key]; !ok || value != expected {
+				inst.Config.Command.Environment[key] = replacement
+			}
+		}
+	}
+	return json.Marshal(doc)
+}
+
 // parsePrevious reads the current document strictly. Only shapes Drop writes
 // are accepted: no checkpoints or exports, no absent entries, no unknown fields.
 func parsePrevious(raw json.RawMessage, hostID string) (previous, error) {
@@ -196,14 +234,9 @@ func parsePrevious(raw json.RawMessage, hostID string) (previous, error) {
 	bad := func(format string, args ...any) error {
 		return &Error{Code: CodeInvalidPrevious, Message: fmt.Sprintf(format, args...)}
 	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	var doc document
-	if err := dec.Decode(&doc); err != nil {
+	doc, err := decodePrevious(raw)
+	if err != nil {
 		return p, bad("not a document Drop wrote: %v", err)
-	}
-	if dec.More() {
-		return p, bad("trailing data after the document")
 	}
 	if doc.HostID != hostID {
 		return p, &Error{Code: CodeHostMismatch, Message: fmt.Sprintf("previous document is for host %q, input for %q", doc.HostID, hostID)}

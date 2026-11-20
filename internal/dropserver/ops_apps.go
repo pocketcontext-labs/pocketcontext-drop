@@ -474,7 +474,13 @@ func appSet(c *Ctx, in *dropapi.AppSetInput) (any, error) {
 	if err := s.check(names); err != nil {
 		return nil, err
 	}
+	grows := s.vcpu > app.GetInt("vcpu") || s.memoryMiB > app.GetInt("memory_mib")
 	s.apply(app)
+	if grows {
+		if err := checkPlacedAppRoom(c.App, app); err != nil {
+			return nil, err
+		}
+	}
 	bumped := instanceConfigChanged(app)
 	if bumped {
 		if err := bumpDeployment(app); err != nil {
@@ -536,6 +542,9 @@ func appRestore(c *Ctx, in *dropapi.AppRestoreInput) (any, error) {
 		return nil, Conflict(dropapi.CodeAppNotArchived, "This app is not archived.")
 	}
 	if err := c.checkQuota(); err != nil {
+		return nil, err
+	}
+	if err := checkPlacedAppRoom(c.App, app); err != nil {
 		return nil, err
 	}
 	app.Set("archived", false)

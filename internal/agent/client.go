@@ -136,9 +136,12 @@ func (c *Client) call(ctx context.Context, method, path string, body any, token 
 		return &Unreachable{Err: err}
 	}
 	defer resp.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	data, err := io.ReadAll(io.LimitReader(resp.Body, (8<<20)+1))
 	if err != nil {
 		return &Unreachable{Err: err}
+	}
+	if len(data) > 8<<20 {
+		return errors.New("Drop response exceeds 8 MiB")
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		apiErr := &APIError{Status: resp.StatusCode}
@@ -160,8 +163,7 @@ func (c *Client) call(ctx context.Context, method, path string, body any, token 
 	if out == nil || resp.StatusCode == http.StatusNoContent {
 		return nil
 	}
-	dec := json.NewDecoder(bytes.NewReader(data))
-	if err := dec.Decode(out); err != nil {
+	if err := json.Unmarshal(data, out); err != nil {
 		return fmt.Errorf("malformed answer from %s: %w", path, err)
 	}
 	return nil
@@ -250,11 +252,25 @@ func (c *Client) Desired(ctx context.Context) (*dropapi.Desired, error) {
 	if err := c.authed(ctx, http.MethodGet, dropapi.AgentDesiredRoute, nil, &raw); err != nil {
 		return nil, err
 	}
+	d, err := decodeDesired(raw)
+	if err == nil && (d.Node != c.node || d.NodeID != c.NodeID()) {
+		return nil, errors.New("desired document is for another node")
+	}
+	return d, err
+}
+
+func decodeDesired(raw []byte) (*dropapi.Desired, error) {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	var d dropapi.Desired
 	if err := dec.Decode(&d); err != nil {
 		return nil, fmt.Errorf("malformed desired document: %w", err)
+	}
+	if err := dec.Decode(new(json.RawMessage)); err != io.EOF {
+		return nil, errors.New("unexpected data after desired document")
+	}
+	if err := checkEnvelope(&d); err != nil {
+		return nil, err
 	}
 	return &d, nil
 }
