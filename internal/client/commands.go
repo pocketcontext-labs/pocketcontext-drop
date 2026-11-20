@@ -218,6 +218,7 @@ parsed:
 		"op":             {{"idempotency-key"}, nil},
 		"node":           {{"host-id", "ec2-instance-id", "private-ip", "limit"}, nil},
 		"place":          {nil, {"clear"}},
+		"agent":          {agentValueFlags, nil},
 	}
 	s, known := spec[command]
 	if !known {
@@ -226,6 +227,10 @@ parsed:
 	a, err := parseArgs(rest, s[0], s[1])
 	if err != nil {
 		return err
+	}
+	if command == "agent" {
+		// The node agent never resolves a project or uses remote mode.
+		return runAgent(a)
 	}
 	pretty := a.bools["pretty"]
 	// --url, or DROP_URL without an explicit --db, selects remote mode.

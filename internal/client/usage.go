@@ -84,6 +84,13 @@ Accounts and nodes (admins; Drop is invite-only, and no invite email is sent):
   On a hosted server of this machine these act as the owner through the
   private socket.
 
+Node agent (root on a nibrunner host, drop-agent.service; docs/agent.md):
+  agent run            follow this node's desired document and write
+                       nibrunner's desired.json; report every 30 seconds
+  agent check          run the start checks; writes nothing
+  agent render --input FILE|- [--previous FILE]
+                       render a drop.desired/v1 document offline (secrets REDACTED)
+
 Remote client (the server runs on another computer, reached through an SSH
 forward of the same port; --url URL or DROP_URL):
   login --url URL --code-stdin
@@ -108,5 +115,6 @@ forward of the same port; --url URL or DROP_URL):
 Run ` + "`drop help COMMAND`" + ` or ` + "`drop COMMAND --help`" + ` for usage, details and an example.
 Options for every command: --db PATH or --url URL, --pretty.
 --url and --db exclude each other; --db overrides DROP_URL.
-Exit codes: 0 ok, 1 HTTP or transport error, 2 usage, 4 HTTP 409.
+Exit codes: 0 ok, 1 HTTP or transport error, 2 usage, 3 agent refused
+(operator action needed), 4 HTTP 409.
 `

@@ -1,0 +1,60 @@
+# Drop node agent (docs/agent.md). Runs as root beside nibrunnerd and the Drop
+# server; it is the only writer of nibrunner's desired.json once installed.
+#
+#   install -m 0644 drop-agent.service /etc/systemd/system/
+#   install -d -m 0700 /etc/drop
+#   install -m 0600 agent.env.example /etc/drop/agent.env      # then edit it
+#   install -m 0600 /dev/null /etc/drop/agent.secret           # then write the node password into it
+#   # run `drop agent check` with the same environment first (docs/agent.md)
+#   systemctl daemon-reload && systemctl enable --now drop-agent
+#
+# Exit status 3 means desired.json needs the operator (an entry Drop did not
+# create, or another host): the unit does not restart into the same refusal.
+[Unit]
+Description=Drop node agent (writes nibrunner's desired.json)
+Documentation=https://github.com/pocketcontext-labs/pocketcontext-drop/blob/main/docs/agent.md
+Wants=network-online.target
+After=network-online.target nibrunnerd.service drop.service
+
+[Service]
+Type=exec
+ExecStart=/usr/local/bin/drop agent run
+EnvironmentFile=/etc/drop/agent.env
+# The node password, never in the environment or on the command line.
+LoadCredential=node-secret:/etc/drop/agent.secret
+StateDirectory=drop-agent
+StateDirectoryMode=0700
+UMask=0077
+Restart=always
+RestartSec=5
+RestartPreventExitStatus=3
+
+# Hardening: the agent reads its credential, talks HTTP to the local server
+# and to AWS (S3, SSM, IMDS for the instance profile), and writes only
+# /var/lib/nibrunner (desired.json, its .drop-prev backup and the artifact
+# store) and its own /var/lib/drop-agent.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/nibrunner
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target

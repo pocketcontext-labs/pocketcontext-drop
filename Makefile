@@ -24,3 +24,4 @@ identity: build
 e2e: names identity
 	python3 tests/public_routes.py --binary bin/drop
 	python3 tests/e2e.py --binary bin/drop
+	python3 tests/drop_e2e.py --binary bin/drop

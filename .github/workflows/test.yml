@@ -71,3 +71,5 @@ jobs:
         run: python3 tests/public_routes.py --binary "$EXE"
       - name: End-to-end test with synthetic apps
         run: python3 tests/e2e.py --binary "$EXE"
+      - name: Node agent end-to-end test (real binary on both sides, fake AWS)
+        run: python3 tests/drop_e2e.py --binary "$EXE"

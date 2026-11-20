@@ -84,6 +84,7 @@ jobs:
           python3 tests/identity_check.py --binary "$exe"
           python3 tests/public_routes.py --binary "$exe"
           python3 tests/e2e.py --binary "$exe"
+          python3 tests/drop_e2e.py --binary "$exe"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: native-${{ matrix.platform }}
@@ -183,4 +184,6 @@ jobs:
           go-version-file: go.mod
           cache: false
       - name: End-to-end test of the published binary
-        run: python3 tests/e2e.py --binary "$EXE"
+        run: |
+          python3 tests/e2e.py --binary "$EXE"
+          python3 tests/drop_e2e.py --binary "$EXE"

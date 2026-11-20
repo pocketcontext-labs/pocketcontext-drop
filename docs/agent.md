@@ -1,0 +1,139 @@
+# Node agent
+
+`drop agent` runs as root on each nibrunner host, beside the Drop server. It is the only writer of nibrunner's `desired.json`: it signs in as its node, follows the node's desired document (`docs/agent-api.md`), stages releases, reads secret versions, renders the whole file with `internal/render` (`docs/render.md`) and reports what nibrunner runs. The code is `internal/agent`; the CLI wiring is `internal/client/agent.go`; the unit is `deploy/walter-aws/drop-agent.service`.
+
+```
+drop agent run      follow the desired document and write desired.json (the service)
+drop agent check    run the start checks; writes nothing
+drop agent render --input FILE|- [--previous FILE]
+                    render a drop.desired/v1 document offline (secret values REDACTED)
+```
+
+`drop agent` never resolves a project, opens a database, starts a server, reads the local key or uses remote mode (`--db`, `--url` and `DROP_URL` do not apply).
+
+## Safety rules
+
+- **Drop owns the whole `desired.json`** (decision 12). If the file holds any entry (instance, volume or export) whose `appId` does not start with `d-`, `run` refuses to start and `check` fails, both with exit 3, naming the entries; nothing is written. The agent never deletes what it did not create: the operator removes those entries (and their volumes), lets nibrunner converge, then starts the agent. A foreign entry that appears while the agent runs stops it the same way. A file Drop cannot read as its own (checkpoints, exports, an `absent` volume, unknown fields) is refused the same way.
+- **No write without a good answer.** When the server is unreachable, times out (10 s), answers an error (401 after a new sign-in, 403 `node_disabled`, 429, 5xx) or sends a malformed document, the agent writes nothing and retries: what runs keeps running. A disabled node or a wrong (rotated) secret keeps the file and retries once a minute.
+- **Wrong host.** If the server's node is for another `hostId` than the one in `desired.json` (or `reported.json`), or a report is answered 409 `host_mismatch`, the agent stops with exit 3.
+- **The server never chooses paths, commands or parameters.** Every app is validated on the node (plan 7.3, `internal/render`); a release is fetched only from `releases/<sha256>` and refused unless its size and sha256 match; a secret is read only from `<DROP_SSM_PREFIX>/apps/<appId without d->/<NAME>`. A bad app fails alone.
+- **Never an unstaged artifact.** When staging or a secret fails for an app, its previous entry is kept unchanged (`render.Input.Keep`), or a new app is left out; the report says `staging_failed` or `secret_failed`. Apps the server refused (`rejected`) keep their previous entries and are reported `failed`. An app that is gone becomes a stopped tombstone with its volume kept; nothing is ever `absent` in v0, and artifacts are never deleted.
+- **Secrets** live in memory (cached by parameter and version) and in `desired.json` only. They never reach `state.json`, a report, a log line or an error (errors name parameters, never values); messages copied from nibrunner are scrubbed of known values. The node secret is read from a file, never from an argument or an environment variable.
+
+## The loop
+
+1. **Start:** read `desired.json` (refuse foreign entries, learn `hostId`; a missing file is fine when `reported.json` names the host) and `state.json` (rebuilt when missing or unreadable).
+2. **Sign in** as the node (`auth-with-password`), refresh every 30 minutes, sign in again on a 401 (at most every 5 seconds).
+3. **Realtime:** `GET /api/realtime`, subscribe to `nodes/<id>`; reconnect with jittered backoff of 1–30 s (the hosted server closes streams after 5 minutes).
+4. **Reconcile** on start, on every (re)connect, on every event whose `desired_seq` is above the one applied, when a report answers a higher `desiredSeq`, and every `DROP_AGENT_PULL_INTERVAL` (60 s):
+   1. `GET /api/drop/agent/desired` (strict decoding; the envelope must name this node and host);
+   2. stage each app's release into `DROP_AGENT_ARTIFACTS/<sha256>` (download to a private `.dl-*` file while hashing, refuse a size or sha256 mismatch, fsync, rename, fsync the directory; an unchanged file is trusted by size and mtime, any other one is hashed again);
+   3. read each secret version from SSM;
+   4. render with the node's limits (`DROP_AGENT_ALLOWED_HOST_SUFFIX`, `DROP_SSM_PREFIX`, nibrunner's reported allocatable) and the current file as the previous document;
+   5. if the content hash differs from the current file's, copy the current file to `desired.json.drop-prev` and write the new one atomically (temporary file, fsync, rename, fsync the directory, mode 0600). A file that changed while rendering is not overwritten. An unchanged content (only `desiredSeq` moved) is not rewritten;
+   6. update `state.json` and send a report.
+5. **Report** (`POST /api/drop/agent/report`) after each reconcile and every `DROP_AGENT_REPORT_INTERVAL` (30 s).
+
+## Report mapping
+
+The agent decodes only these fields of nibrunner's `reported.json`: `hostId`, `state`, `message`, `reportedAt`, `acceptedRevision`, `capacity` and `allocatable` (`vcpuCount`, `memoryMib`, `cacheBytes` only), `versions` (`agent`, `firecracker`, `guestImage`, `zerofs`, cut to 128 bytes) and per instance `appId`, `deploymentId`, `state`, `message`, `restartCount`, `lastExitCode`, `convergedAt`. `cron` (tenant environment values), checkpoints, exports, compute, addresses and restart details are never read, so they can never be sent. A `reported.json` for another host counts as missing.
+
+Phase of each app the agent was given (`deploymentId` is the one nibrunner runs, empty until it runs one):
+
+| Condition | Phase |
+| --- | --- |
+| the server refused it, or the node's render refused it | `failed` (with the reason) |
+| its release could not be staged | `staging_failed` |
+| a secret version could not be read | `secret_failed` |
+| no readable `reported.json` | `unknown` ("nibrunner report unavailable") |
+| `reportedAt` older than 60 s | `unknown` ("nibrunner report stale") |
+| not in nibrunner's instances yet | `pending` |
+| another deployment, or nibrunner has not accepted the revision written | `deploying` |
+| `pending`, `starting` | `starting` |
+| `running` | `running` |
+| `idle` | `sleeping` |
+| `unhealthy` | `unhealthy` |
+| `stopping`, `stopped` | `stopped` |
+| `failed` | `failed` |
+
+Report shape (`drop.report/v1`, `internal/dropapi/agent.go`):
+
+```json
+{
+  "schema": "drop.report/v1",
+  "hostId": "walter-dev",
+  "agentVersion": "0.1.0",
+  "desiredSeq": 7,
+  "acceptedRevision": "drop-7-0123456789ab",
+  "nibrunner": {"state": "ready", "message": "", "reportedAt": "2026-11-20T10:00:00Z",
+                "capacity": {"vcpuCount": 2, "memoryMib": 7136, "cacheBytes": 1073741824},
+                "allocatable": {"vcpuCount": 1, "memoryMib": 6624, "cacheBytes": 1073741824},
+                "versions": {"agent": "...", "firecracker": "...", "guestImage": "...", "zerofs": "..."}},
+  "apps": [{"appId": "d-<15>", "deploymentId": "d-<15>-dep-5", "phase": "running", "message": "",
+            "restartCount": 0, "lastExitCode": null, "convergedAt": "2026-11-20T09:59:00Z"}]
+}
+```
+
+## State file
+
+`<state dir>/state.json`: `DROP_AGENT_STATE_DIR`, else systemd's `$STATE_DIRECTORY`, else `/var/lib/drop-agent`, so on a host it is **`/var/lib/drop-agent/state.json`**. Mode 0600 in a 0700 directory, written atomically, pretty-printed JSON, schema `drop.agent-state/v1`. It holds metadata only — never a secret value, the node secret or a token (unit and end-to-end tests scan it) — and the agent can lose it: `desired.json` stays the truth about what runs.
+
+```json
+{
+  "schema": "drop.agent-state/v1",
+  "node": "walter-aws",
+  "nodeId": "<node record id>",
+  "hostId": "walter-dev",
+  "lastSeq": 7,
+  "lastRevision": "drop-7-0123456789ab",
+  "lastContentHash": "<64 hex>",
+  "lastPullAt": "2026-11-20T10:00:00Z",
+  "lastWriteAt": "2026-11-20T09:58:00Z",
+  "lastReportAt": "2026-11-20T10:00:00Z",
+  "lastError": "",
+  "apps": [{"appId": "d-<15>", "deploymentId": "d-<15>-dep-5", "phase": "rendered"}],
+  "artifacts": {"<sha256>": {"size": 5836924, "mtimeUnixNano": 1795135487087317435}}
+}
+```
+
+`apps[].phase` is the agent's own verdict at the last pull: `rendered`, `kept` (a previous entry kept; `message` says why), `staging_failed`, `secret_failed`, `failed` or `tombstoned`. `lastError` is the last pull failure (codes, appIds and parameter names only), empty after a good pull.
+
+## Configuration
+
+Environment (`/etc/drop/agent.env`, example `deploy/walter-aws/agent.env.example`); each variable has a `drop agent` option of the same name in lower case without the prefix (for example `--allowed-host-suffix`):
+
+| Variable | Meaning |
+| --- | --- |
+| `DROP_AGENT_SERVER` | The Drop server, default `http://127.0.0.1:8100` |
+| `DROP_AGENT_HOST` | The Drop domain, sent as the `Host` header (required) |
+| `DROP_AGENT_NODE` | The node's name (required) |
+| `DROP_AGENT_SECRET_FILE` | The node secret file; default `$CREDENTIALS_DIRECTORY/node-secret` (systemd `LoadCredential=node-secret:/etc/drop/agent.secret`). One line, 32–256 characters, not readable by group or others |
+| `DROP_AGENT_DESIRED`, `DROP_AGENT_REPORTED`, `DROP_AGENT_ARTIFACTS` | nibrunner's `desired.json`, `reported.json` and artifact store (absolute paths; on walter-aws under `/var/lib/nibrunner`) |
+| `DROP_AGENT_STATE_DIR` | Where `state.json` lives (above) |
+| `DROP_AGENT_ALLOWED_HOST_SUFFIX` | Every app hostname must end with it, for example `.bigconfig.space` |
+| `DROP_SSM_PREFIX` | Secret parameter prefix, default `/drop` |
+| `DROP_AWS_REGION`, `DROP_S3_BUCKET` | S3 and SSM through the default credential chain (`docs/aws.md`) |
+| `DROP_AGENT_PULL_INTERVAL`, `DROP_AGENT_REPORT_INTERVAL` | Seconds, default 60 (5–3600) and 30 (5–300) |
+
+`--fake-aws DIR` reads releases and secrets from the directory a `serve --fake-aws DIR` writes (`docs/aws.md`), only with a loopback server URL, for tests.
+
+Exit codes: 0 stopped (SIGTERM or interrupt) or check passed, 1 failure, 2 usage or configuration, 3 refused (operator action needed). The unit's `RestartPreventExitStatus=3` keeps systemd from restarting into the same refusal.
+
+## `check` and `render`
+
+`drop agent check` prints `{"ok", "refused", "node", "hostId", "checks": [{"name", "ok", "message"}]}`: `desired.json` (foreign entries, a document Drop can take over, the host), `reported.json`, the artifacts and state directories, the node secret, sign-in, the server's desired document for this host, each placed app's release in S3 (HeadObject) and each secret version in SSM (read and discarded). On a host, run it with the service's environment and credential:
+
+```sh
+sudo systemd-run --pipe --wait --collect -p EnvironmentFile=/etc/drop/agent.env \
+  -p LoadCredential=node-secret:/etc/drop/agent.secret /usr/local/bin/drop agent check --pretty
+```
+
+`drop agent render --input FILE|-` reads a `drop.desired/v1` document (as `GET /api/drop/agent/desired` returns it) and renders it against `--previous FILE` (default `DROP_AGENT_DESIRED`) with every secret value `REDACTED` and nothing staged or fetched; it prints `{"revision", "contentHash", "changed", "rejected", "kept", "tombstoned", "document"}` and writes nothing.
+
+## systemd
+
+`deploy/walter-aws/drop-agent.service`: `Type=exec`, `ExecStart=/usr/local/bin/drop agent run`, `EnvironmentFile=/etc/drop/agent.env`, `LoadCredential=node-secret:/etc/drop/agent.secret`, `StateDirectory=drop-agent` (0700), `UMask=0077`, `Restart=always` with `RestartSec=5` and `RestartPreventExitStatus=3`, after `network-online.target`, `nibrunnerd.service` and `drop.service`. Hardening: `NoNewPrivileges`, `ProtectSystem=strict` with `ReadWritePaths=/var/lib/nibrunner`, `ProtectHome`, `PrivateTmp`, `PrivateDevices`, kernel and cgroup protection, `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`, a small capability bounding set and `SystemCallFilter=@system-service`. Install steps are at the top of the unit. Once it runs, nothing else writes `desired.json` (runbook rule).
+
+## Tests
+
+`internal/agent` unit tests drive the agent against a fake server (`fake_server_test.go`) and in-memory AWS: write, backup and staging; realtime events, reconnects and the ticker; server down, 401, 403, 429, 5xx and malformed documents leaving the file untouched; foreign entries refusing start and `check` without writing; host mismatch; staging, secret and server refusals keeping previous entries; tombstones; unchanged content skipping the write; the report mapping with `cron` stripped; no secret in `state.json`, reports or logs. `tests/drop_e2e.py` (`make e2e`, CI) runs the real binary on both sides with `--fake-aws` in a temporary folder.
