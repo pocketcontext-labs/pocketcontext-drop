@@ -31,6 +31,8 @@ import sys
 import tempfile
 import time
 
+import leak_scan
+
 from e2e import (APP_DOMAIN, HOSTED_DOMAIN, build_hello, check, free_port, hosted_request, isolated_env,
                  listening)
 
@@ -303,6 +305,13 @@ def scenario(binary, root):
         check(SENTINEL not in logs and password not in logs, 'the agent output holds no secret value or password')
         check(SENTINEL not in (server_root / 'serve.log').read_text(encoding='utf-8', errors='replace'),
               'the server output holds no secret value (not even from the report)')
+        # The shared leak scan (tests/leak_scan.py) over everything but nibrunner's
+        # input files, which must hold the value, and the fake secret store.
+        leak_scan.require_clean({'secret value': SENTINEL, 'node password': password},
+                                paths=[node.state_dir, server_root, node.artifacts],
+                                texts={'agent output': logs},
+                                exclude=[server.fake_aws / 'secrets'])
+        check(True, 'the leak scan finds no secret value or node password in state.json, artifacts, the server database, log or release store, or the agent output')
         check(list(node.work.iterdir()) == [], 'the agent never created a project in its working directory')
     finally:
         if node is not None:
