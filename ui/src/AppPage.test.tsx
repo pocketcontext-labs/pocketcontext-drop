@@ -6,12 +6,12 @@ import { dropApi, OpError, releaseFileProblem, type App as DropApp, type Me, typ
 
 const token = `synthetic.${btoa(JSON.stringify({ exp: 4102444800 }))}.signature`;
 const user = { id: "user00000000001", collectionId: "_pb_users_auth_", collectionName: "users", email: "owner@example.test" };
-const member: Me = { id: user.id, email: user.email, role: "user", admin: false, owner: false, app_quota: 3 };
+const member: Me = { id: user.id, email: user.email, role: "user", hosted: true, admin: false, owner: false, app_quota: 3 };
 const id = "app000000000001";
 const app: DropApp = {
   id, kind: "ordinary", sign_in_email_enabled: false, name: "Hello app", slug: "hello-app", owner: user.id, owner_email: user.email, nib_app_id: `d-${id}`,
   volume_id: `d-${id}-vol`, hostname: "hello-app.apps.example.test", desired_state: "on-request", idle_timeout_ms: 300000,
-  vcpu: 1, memory_mib: 512, disk_mib: 1024, http_port: 8080, executable_name: "server", args: [], env: { WELCOME_TEXT: "hi" },
+  vcpu: 1, memory_mib: 512, disk_mib: 1024, http_port: 8080, hook_port: 0, executable_name: "server", args: [], env: { WELCOME_TEXT: "hi" },
   health_kind: "tcp", health_path: "", deployment_seq: 1, deployment_id: `d-${id}-dep-1`, current_release: "", disk_locked: false, archived: false, archived_at: "",
   created: "2026-11-19 10:00:00.000Z", updated: "2026-11-19 10:00:00.000Z",
 };
@@ -56,7 +56,8 @@ it("creates an app from #/apps/new and opens its page", async () => {
   render(<App />);
   fireEvent.change(await screen.findByLabelText("App name"), { target: { value: " Hello app " } });
   fireEvent.change(screen.getByLabelText("Slug"), { target: { value: "hello-app" } });
-  fireEvent.change(screen.getByLabelText("App type"), { target: { value: "crew" } });
+  fireEvent.change(await screen.findByLabelText("App type"), { target: { value: "crew" } });
+  expect(screen.getByRole("spinbutton", {name: /Hooks port/})).toHaveValue(8081);
   const port = screen.getByLabelText("HTTP port");
   expect(port).toHaveValue(8080);
   for (const value of ["0", "65536"]) {
@@ -68,7 +69,28 @@ it("creates an app from #/apps/new and opens its page", async () => {
   fireEvent.change(port, { target: { value: "1" } });
   fireEvent.click(screen.getByRole("button", { name: "Create app" }));
   await vi.waitFor(() => expect(location.hash).toBe(`#/apps/${id}`));
-  expect(create).toHaveBeenCalledWith(expect.objectContaining({ name: "Hello app", slug: "hello-app", kind: "crew", http_port: 1, desired_state: "on-request", health_kind: "tcp" }));
+  expect(create).toHaveBeenCalledWith(expect.objectContaining({ name: "Hello app", slug: "hello-app", kind: "crew", http_port: 1, hook_port: 8081, executable_name: "crew", desired_state: "on-request", health_kind: "tcp" }));
+});
+
+it("only offers ordinary apps on a local server", async () => {
+  vi.spyOn(dropApi, "me").mockResolvedValue({ ...member, hosted: false });
+  history.replaceState(null, "", "/#/apps/new");
+  render(<App />);
+  expect(await screen.findByLabelText("App name")).toBeInTheDocument();
+  expect(screen.queryByLabelText("App type")).not.toBeInTheDocument();
+});
+
+it("saves the Crew delivery toggle", async () => {
+  history.replaceState(null, "", `/#/apps/${id}/settings`);
+  const crew = { ...app, kind: "crew" as const, crew_owner_email: "owner@example.test", sign_in_email_enabled: true };
+  vi.spyOn(dropApi, "getApp").mockResolvedValue({ app: crew, secrets: [] });
+  const set = vi.spyOn(dropApi, "setApp").mockResolvedValue({ app: { ...crew, sign_in_email_enabled: false }, deployment_bumped: true });
+  const label = "Deliver sign-in codes to owner@example.test";
+  render(<App />);
+  expect(await screen.findByLabelText(label)).toBeChecked();
+  fireEvent.click(screen.getByLabelText(label));
+  fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+  await vi.waitFor(() => expect(set).toHaveBeenCalledWith(id, { sign_in_email_enabled: false }));
 });
 
 it("shows the runtime phase on the Overview", async () => {
@@ -92,9 +114,10 @@ it("saves only the changed settings and reports a new deployment", async () => {
   render(<App />);
   fireEvent.change(await screen.findByLabelText("Memory (MiB)"), { target: { value: "1024" } });
   fireEvent.change(screen.getByLabelText("HTTP port"), { target: { value: "80" } });
+  fireEvent.change(screen.getByRole("spinbutton", {name:/Hooks port/}),{target:{value:"8000"}});
   fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
   expect(await screen.findByText(`Saved. New deployment d-${id}-dep-2.`)).toBeInTheDocument();
-  expect(set).toHaveBeenCalledWith(id, { memory_mib: 1024, http_port: 80 });
+  expect(set).toHaveBeenCalledWith(id, { memory_mib: 1024, http_port: 80, hook_port: 8000 });
 });
 
 it("sets a secret write-only and never keeps its value", async () => {

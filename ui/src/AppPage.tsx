@@ -119,6 +119,10 @@ function Phase({ app }: { app: App }) {
         )}
         {status.node && <span className="quiet"> · node {status.node}</span>}
       </dd>
+      {status.last_hook && <>
+        <dt>Last lifecycle hook</dt>
+        <dd>{status.last_hook.event} · {status.last_hook.outcome} · <time dateTime={status.last_hook.time}>{formatDate(status.last_hook.time)}</time></dd>
+      </>}
     </>
   );
 }
@@ -158,6 +162,11 @@ function Overview({
         <dt>State</dt>
         <dd>{app.archived ? "Archived" : stateLabels[app.desired_state]}</dd>
         <Phase app={app} />
+        {app.kind === "crew" && <>
+          <dt>App type</dt><dd>PocketContext Crew</dd>
+          <dt>Sign-in recipient</dt><dd>{app.crew_owner_email}</dd>
+          <dt>Email delivery</dt><dd>{app.sign_in_email_enabled ? "Enabled" : "Disabled"}. Delivery pauses while the app is stopped.</dd>
+        </>}
         <dt>Hostname</dt>
         <dd>
           {app.hostname ? (
@@ -253,6 +262,7 @@ function Settings({
   const [healthPath, setHealthPath] = useState(app.health_path || "/");
   const [numbers, setNumbers] = useState<Record<NumberField, number>>({
     http_port: app.http_port,
+    hook_port: app.hook_port,
     vcpu: app.vcpu,
     memory_mib: app.memory_mib,
     disk_mib: app.disk_mib,
@@ -338,6 +348,7 @@ function Settings({
             </select>
           </label>
           {number("http_port")}
+          {number("hook_port")}
           <label>
             Executable
             <input

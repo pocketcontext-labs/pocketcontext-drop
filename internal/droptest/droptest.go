@@ -120,7 +120,7 @@ func NewHosted(t *testing.T, opts Options) *Hosted {
 		t.Fatal(err)
 	}
 	h := &Hosted{T: t, App: app, mail: make(chan Mail, 64)}
-	services := dropserver.Services{AppDomain: AppDomain}
+	services := dropserver.Services{AppDomain: AppDomain, CrewReplicaBucket: "crew-replica-fixture", AWSRegion: "eu-north-1"}
 	switch {
 	case opts.NoSecrets:
 	case opts.Secrets != nil:

@@ -88,6 +88,22 @@ func ValidSignInMailbox(address string) bool {
 	return true
 }
 
+// ValidHookPort accepts zero to disable hooks. Hooks need a separate guest listener.
+func ValidHookPort(port, httpPort int) bool {
+	return port == 0 || (port >= MinPort && port <= MaxPort && port != httpPort)
+}
+
+// CheckAppEnvName reserves identity and recovery inputs on managed Crew apps.
+func CheckAppEnvName(name string, crew bool) string {
+	if crew {
+		switch name {
+		case "CREW_DROP_APP_ID", "CREW_DROP_BUCKET", "CREW_DROP_BOOTSTRAP", "AWS_REGION", "AWS_ROLE_ARN", "AWS_WEB_IDENTITY_TOKEN_FILE", "AWS_ROLE_SESSION_NAME", "AWS_WORKLOAD_IDENTITY", "POCKETCONTEXT_DOMAIN":
+			return name + " is reserved for Crew"
+		}
+	}
+	return CheckEnvName(name)
+}
+
 // ValidDesiredState reports whether s is running, on-request or stopped.
 func ValidDesiredState(s string) bool {
 	return s == StateRunning || s == StateOnRequest || s == StateStopped

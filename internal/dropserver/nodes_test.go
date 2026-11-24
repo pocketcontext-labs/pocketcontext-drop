@@ -468,11 +468,12 @@ func TestStatusPhases(t *testing.T) {
 	record := appRecord(t, h, app)
 	nib, dep := record.GetString("nib_app_id"), record.GetString("nib_app_id")+"-dep-"+record.GetString("deployment_seq")
 	r := appReport(nib, dep, "running")
+	r["lastHook"] = map[string]any{"event": "suspend", "outcome": "timeout", "durationMs": 5000, "time": "2026-11-24T09:00:00Z"}
 	r["restartCount"], r["lastExitCode"] = 2, 1
 	if status, out := report(t, h, t1, reportOf(hostA, r)); status != 200 {
 		t.Fatal(out)
 	}
-	if s := phase(tokenA); s["phase"] != "running" || num(s["restart_count"]) != 2 || num(s["last_exit_code"]) != 1 || s["reported_deployment_id"] != dep {
+	if s := phase(tokenA); s["phase"] != "running" || num(s["restart_count"]) != 2 || num(s["last_exit_code"]) != 1 || s["reported_deployment_id"] != dep || s["last_hook"].(map[string]any)["outcome"] != "timeout" {
 		t.Fatalf("%v", s)
 	}
 	h.MustOp(tokenA, "app.set", map[string]any{"app": app, "memory_mib": 1024})

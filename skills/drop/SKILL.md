@@ -45,7 +45,7 @@ The project has one account, and the CLI signs in to it automatically; no passwo
 
 ## Apps
 
-Each app runs one Linux executable, its current release, on a Drop node where an admin places it; `app status APP` (MCP `what: "status"`) shows its runtime phase (`unplaced`, `pending`, `running`, `sleeping`, `failed`...). An app has a name (1-80 characters), a unique slug (3-32 lowercase letters, digits and hyphens; its hostname is `SLUG.<app domain>`, and it never changes) and settings: state (`running`, `on-request`, which sleeps when idle, or `stopped`), idle timeout, vCPU, memory, disk, HTTP port, executable name, arguments, plain environment variables and a health check. APP below is an app's id or slug.
+Each app runs one Linux executable, its current release, on a Drop node where an admin places it; `app status APP` (MCP `what: "status"`) shows its runtime phase (`unplaced`, `pending`, `running`, `sleeping`, `failed`...). An app has a name (1-80 characters), a unique slug (3-32 lowercase letters, digits and hyphens; its hostname is `SLUG.<app domain>`, and it never changes) and settings: state (`running`, `on-request`, which sleeps when idle, or `stopped`), idle timeout, vCPU, memory, disk, HTTP port, optional private lifecycle hook port (`--hook-port`), executable name, arguments, plain environment variables and a health check. APP below is an app's id or slug.
 
 ```sh
 "{{BINARY}}" app create "Hello app" --slug hello-app --port 8080 --db "{{DB}}"

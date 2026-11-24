@@ -33,9 +33,10 @@ const (
 // the instance configuration changes (see docs/ops.md). Env holds plain values
 // only: secrets are listed by name with secret.list and never returned.
 type App struct {
-	Kind               string `json:"kind"`
-	CrewOwnerEmail     string `json:"crew_owner_email,omitempty"`
-	SignInEmailEnabled bool   `json:"sign_in_email_enabled"`
+	Kind                string `json:"kind"`
+	CrewOwnerEmail      string `json:"crew_owner_email,omitempty"`
+	SignInEmailEnabled  bool   `json:"sign_in_email_enabled"`
+	CrewFreshEnrollment bool   `json:"crew_fresh_enrollment,omitempty"`
 
 	ID             string            `json:"id"`
 	Name           string            `json:"name"`
@@ -51,6 +52,7 @@ type App struct {
 	MemoryMiB      int               `json:"memory_mib"`
 	DiskMiB        int               `json:"disk_mib"`
 	HTTPPort       int               `json:"http_port"`
+	HookPort       int               `json:"hook_port"`
 	ExecutableName string            `json:"executable_name"`
 	Args           []string          `json:"args"`
 	Env            map[string]string `json:"env"`
@@ -122,6 +124,7 @@ type AppCreateInput struct {
 	MemoryMiB      *int              `json:"memory_mib,omitempty"`
 	DiskMiB        *int              `json:"disk_mib,omitempty"`
 	HTTPPort       *int              `json:"http_port,omitempty"`
+	HookPort       *int              `json:"hook_port,omitempty"`
 	ExecutableName string            `json:"executable_name,omitempty"`
 	Args           []string          `json:"args,omitempty"`
 	Env            map[string]string `json:"env,omitempty"`
@@ -147,12 +150,14 @@ type AppSetInput struct {
 	MemoryMiB      *int       `json:"memory_mib,omitempty"`
 	DiskMiB        *int       `json:"disk_mib,omitempty"`
 	HTTPPort       *int       `json:"http_port,omitempty"`
+	HookPort       *int       `json:"hook_port,omitempty"`
 	ExecutableName *string    `json:"executable_name,omitempty"`
 	Args           *[]string  `json:"args,omitempty"`
 	Env            *EnvChange `json:"env,omitempty"`
 	HealthKind     *string    `json:"health_kind,omitempty"`
 	HealthPath     *string    `json:"health_path,omitempty"`
 
+	FinishEnrollment   bool  `json:"finish_enrollment,omitempty"`
 	SignInEmailEnabled *bool `json:"sign_in_email_enabled,omitempty"`
 }
 

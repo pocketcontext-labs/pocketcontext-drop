@@ -439,6 +439,7 @@ func appStatus(c *Ctx, in *dropapi.StatusInput) (any, error) {
 		code := row.GetInt("last_exit_code")
 		out.LastExitCode = &code
 	}
+	out.LastHook = storedHook(row)
 	out.ConvergedAt = row.GetString("converged_at")
 	out.ObservedAt = dateString(row, "observed_at")
 	switch {

@@ -123,12 +123,18 @@ func desiredApp(app core.App, record *core.Record, services Services) (dropapi.D
 		Release:        render.Release{SHA256: release.GetString("sha256"), S3Key: release.GetString("s3_key"), SizeBytes: int64(release.GetInt("size_bytes"))},
 		ExecutableName: record.GetString("executable_name"),
 		HTTPPort:       record.GetInt("http_port"),
+		HookPort:       record.GetInt("hook_port"),
 		Args:           appArgs(record),
 		Resources:      render.Resources{VCPU: record.GetInt("vcpu"), MemoryMib: record.GetInt("memory_mib")},
 		HealthCheck:    render.HealthCheck{Kind: record.GetString("health_kind"), Path: record.GetString("health_path")},
 		Hostnames:      []render.Hostname{},
 		Env:            appEnv(record),
 	}, Secrets: []dropapi.DesiredSecret{}}
+	if state := record.GetString("crew_enrollment"); state != "" {
+		a.ManagedCrew = true
+		a.CrewReplicaBucket, a.AWSRegion = services.CrewReplicaBucket, services.AWSRegion
+		a.CrewFreshEnrollment = state == "fresh"
+	}
 	if a.HealthCheck.Kind != appspec.HealthHTTP {
 		a.HealthCheck.Path = ""
 	}

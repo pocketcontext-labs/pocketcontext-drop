@@ -203,7 +203,7 @@ func runOps(c *Client, command string, a *args) (any, error) {
 }
 
 // appSettingsUsage lists the app create/set options.
-const appSettingsUsage = "[--mode running|on-request|stopped] [--idle-timeout MS] [--vcpu N] [--memory MIB] [--disk MIB] [--port N] [--executable NAME] [--args-json JSON] [--health tcp|http] [--health-path PATH]"
+const appSettingsUsage = "[--mode running|on-request|stopped] [--idle-timeout MS] [--vcpu N] [--memory MIB] [--disk MIB] [--port N] [--hook-port N] [--executable NAME] [--args-json JSON] [--health tcp|http] [--health-path PATH]"
 
 // appSettings reads the setting options into the fields of an app.create or
 // app.set input (both have the same optional fields).
@@ -215,7 +215,7 @@ func appSettings(a *args) (map[string]any, error) {
 			out[field] = a.flags[flag]
 		}
 	}
-	ints := map[string]string{"idle-timeout": "idle_timeout_ms", "vcpu": "vcpu", "memory": "memory_mib", "disk": "disk_mib", "port": "http_port"}
+	ints := map[string]string{"idle-timeout": "idle_timeout_ms", "vcpu": "vcpu", "memory": "memory_mib", "disk": "disk_mib", "port": "http_port", "hook-port": "hook_port"}
 	for flag, field := range ints {
 		if a.has(flag) {
 			n, err := a.intFlag(flag, 0)
@@ -255,6 +255,9 @@ func typedOp[In any](c *Client, op string, fields map[string]any) (any, error) {
 }
 
 func runApp(c *Client, sub string, a *args) (any, error) {
+	if a.bools["finish-enrollment"] && sub != "set" {
+		return nil, fail(2, "--finish-enrollment is only for app set")
+	}
 	if a.has("kind") && sub != "create" {
 		return nil, fail(2, "--kind is only for app create")
 	}
@@ -309,7 +312,7 @@ func runApp(c *Client, sub string, a *args) (any, error) {
 		fields["name"], fields["slug"] = strings.TrimSpace(string(name)), a.flags["slug"]
 		return typedOp[dropapi.AppCreateInput](c, "app.create", fields)
 	case "set":
-		usage := "app set APP [--name NAME] [--sign-in-email enabled|disabled] " + appSettingsUsage
+		usage := "app set APP [--name NAME] [--sign-in-email enabled|disabled] [--finish-enrollment] " + appSettingsUsage
 		if err := a.need(2, usage); err != nil {
 			return nil, err
 		}
@@ -325,6 +328,9 @@ func runApp(c *Client, sub string, a *args) (any, error) {
 		}
 		if a.has("name") {
 			fields["name"] = a.flags["name"]
+		}
+		if a.bools["finish-enrollment"] {
+			fields["finish_enrollment"] = true
 		}
 		if a.has("sign-in-email") {
 			switch a.flags["sign-in-email"] {

@@ -40,7 +40,7 @@ NibRunner uses the last desired state it applied, including across restarts whil
 
 ## Report mapping
 
-The agent decodes only these fields of nibrunner's `reported.json`: `hostId`, `state`, `reportedAt`, `acceptedRevision`, `capacity` and `allocatable` (`vcpuCount`, `memoryMib`, `cacheBytes` only), `versions` (`agent`, `firecracker`, `guestImage`, `zerofs`, cut to 128 bytes) and per instance `appId`, `deploymentId`, `state`, `restartCount`, `lastExitCode`, `convergedAt`. `cron` (tenant environment values), checkpoints, exports, compute, addresses and restart details are never read, so they can never be sent. A `reported.json` for another host counts as missing.
+The agent decodes only these fields of nibrunner's `reported.json`: `hostId`, `state`, `reportedAt`, `acceptedRevision`, `capacity` and `allocatable` (`vcpuCount`, `memoryMib`, `cacheBytes` only), `versions` (`agent`, `firecracker`, `guestImage`, `zerofs`, cut to 128 bytes) and per instance `appId`, `deploymentId`, `state`, `restartCount`, `lastExitCode`, `convergedAt` and `lastHook`. The last hook allows only its event, outcome, RFC 3339 time and duration in milliseconds. Guest response text is excluded. `cron` (tenant environment values), checkpoints, exports, compute, addresses and restart details are never read, so they can never be sent. A `reported.json` for another host counts as missing.
 
 Phase of each app the agent was given (`deploymentId` is the one nibrunner runs, empty until it runs one):
 

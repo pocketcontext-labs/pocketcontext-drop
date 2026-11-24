@@ -38,6 +38,7 @@ export type Op = (typeof OPS)[number];
 
 export type Role = "admin" | "user";
 export interface Me {
+  hosted?: boolean;
   id: string;
   email: string;
   role: Role;
@@ -93,6 +94,7 @@ export interface App {
   memory_mib: number;
   disk_mib: number;
   http_port: number;
+  hook_port: number;
   executable_name: string;
   args: string[];
   env: Record<string, string>;
@@ -131,6 +133,7 @@ export interface AppSettings {
   memory_mib?: number;
   disk_mib?: number;
   http_port?: number;
+  hook_port?: number;
   executable_name?: string;
   args?: string[];
   health_kind?: HealthKind;
@@ -209,6 +212,7 @@ export interface AppStatus {
   node?: string;
   restart_count: number;
   last_exit_code: number | null;
+  last_hook?: { event: string; outcome: string; time: string; durationMs: number };
   converged_at: string;
   observed_at: string;
   last_seen: string;

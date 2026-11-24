@@ -134,6 +134,18 @@ func validateApp(app App, lim Limits) *AppError {
 	if app.HTTPPort < minPort || app.HTTPPort > maxPort {
 		return fail("httpPort", "must be %d–%d", minPort, maxPort)
 	}
+	if !appspec.ValidHookPort(app.HookPort, app.HTTPPort) {
+		return fail("hookPort", "must be zero or a guest port different from httpPort")
+	}
+	if app.ManagedCrew && (app.CrewOwnerEmail == "" || len(app.Hostnames) != 1 || app.Hostnames[0].Kind != "platform") {
+		return fail("managedCrew", "requires the verified owner and one platform hostname")
+	}
+	if app.ManagedCrew && (!crewBucket.MatchString(app.CrewReplicaBucket) || strings.Contains(app.CrewReplicaBucket, "..")) {
+		return fail("crewReplicaBucket", "must be an S3 bucket name")
+	}
+	if app.ManagedCrew && !crewRegion.MatchString(app.AWSRegion) {
+		return fail("awsRegion", "must be an AWS region name")
+	}
 	if field, reason := appspec.CheckArgs(app.Args); field != "" {
 		return fail(field, "%s", reason)
 	}
@@ -196,11 +208,14 @@ func validateApp(app App, lim Limits) *AppError {
 	return nil
 }
 
+var crewBucket = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$`)
+var crewRegion = regexp.MustCompile(`^[a-z]{2}(-[a-z0-9]+)+-[0-9]+$`)
+
 func checkEnvEntry(app App, field, name, value string) *AppError {
 	fail := func(msg string) *AppError {
 		return &AppError{AppID: app.AppID, Code: CodeInvalidApp, Field: field, Message: msg}
 	}
-	if reason := appspec.CheckEnvName(name); reason != "" {
+	if reason := appspec.CheckAppEnvName(name, app.ManagedCrew); reason != "" {
 		return fail(reason)
 	}
 	if reason := appspec.CheckEnvValue(name, value); reason != "" {

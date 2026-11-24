@@ -131,7 +131,7 @@ function Workspace({ view, hash }: { view: View; hash: string }) {
   let page;
   const app = view === "app" ? appRouteFromHash(hash) : null;
   if (view === "connect") page = <Connect />;
-  else if (view === "app-new") page = <AppNew />;
+  else if (view === "app-new") page = <AppNew hosted={me?.hosted === true} />;
   else if (app) page = <AppPage key={app.id} id={app.id} tab={app.tab} />;
   else if (view === "admin-users" || view === "admin-nodes")
     page = me?.admin ? (

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -197,6 +198,9 @@ func checkReport(r *dropapi.Report) error {
 		if a.LastExitCode != nil && (*a.LastExitCode < -1<<31 || *a.LastExitCode > 1<<31-1) {
 			return reportInvalid(field+".lastExitCode", "lastExitCode is out of range.")
 		}
+		if !a.LastHook.Valid() {
+			return reportInvalid(field+".lastHook", "Invalid lifecycle hook result.")
+		}
 		if !shortText(a.ConvergedAt, 40) {
 			return reportInvalid(field+".convergedAt", "convergedAt is at most 40 characters.")
 		}
@@ -322,6 +326,7 @@ func ingestApps(app core.App, nodeID string, reports []dropapi.AppReport, now ti
 			row.Set("last_exit_code", *r.LastExitCode)
 		}
 		row.Set("converged_at", r.ConvergedAt)
+		row.Set("last_hook", r.LastHook)
 		if previousPhase != r.Phase || row.GetDateTime("observed_at").IsZero() {
 			row.Set("observed_at", now)
 		}
@@ -341,10 +346,16 @@ func ingestApps(app core.App, nodeID string, reports []dropapi.AppReport, now ti
 	return out, nil
 }
 
+func storedHook(row *core.Record) *dropapi.HookResult {
+	var hook *dropapi.HookResult
+	_ = row.UnmarshalJSONField("last_hook", &hook)
+	return hook
+}
+
 // sameReport reports whether a stored row already says what r says.
 func sameReport(row *core.Record, r dropapi.AppReport) bool {
 	exitSame := row.GetBool("has_exit_code") == (r.LastExitCode != nil) && (r.LastExitCode == nil || row.GetInt("last_exit_code") == *r.LastExitCode)
-	return exitSame && row.GetString("deployment_id") == r.DeploymentID && row.GetString("phase") == r.Phase &&
+	return reflect.DeepEqual(storedHook(row), r.LastHook) && exitSame && row.GetString("deployment_id") == r.DeploymentID && row.GetString("phase") == r.Phase &&
 		row.GetString("message") == r.Message && row.GetInt("restart_count") == r.RestartCount &&
 		row.GetString("converged_at") == r.ConvergedAt
 }

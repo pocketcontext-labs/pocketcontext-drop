@@ -167,20 +167,21 @@ const (
 // when the node first reported this phase; LastSeen when it last reported at
 // all.
 type Status struct {
-	App                  string `json:"app"`
-	Phase                string `json:"phase"`
-	Message              string `json:"message"`
-	DesiredState         string `json:"desired_state"`
-	DeploymentID         string `json:"deployment_id"`
-	ReportedDeploymentID string `json:"reported_deployment_id"`
-	Hostname             string `json:"hostname"`
-	Placed               bool   `json:"placed"`
-	Node                 string `json:"node,omitempty"`
-	RestartCount         int    `json:"restart_count"`
-	LastExitCode         *int   `json:"last_exit_code"`
-	ConvergedAt          string `json:"converged_at"`
-	ObservedAt           string `json:"observed_at"`
-	LastSeen             string `json:"last_seen"`
+	App                  string      `json:"app"`
+	Phase                string      `json:"phase"`
+	Message              string      `json:"message"`
+	DesiredState         string      `json:"desired_state"`
+	DeploymentID         string      `json:"deployment_id"`
+	ReportedDeploymentID string      `json:"reported_deployment_id"`
+	Hostname             string      `json:"hostname"`
+	Placed               bool        `json:"placed"`
+	Node                 string      `json:"node,omitempty"`
+	RestartCount         int         `json:"restart_count"`
+	LastExitCode         *int        `json:"last_exit_code"`
+	LastHook             *HookResult `json:"last_hook,omitempty"`
+	ConvergedAt          string      `json:"converged_at"`
+	ObservedAt           string      `json:"observed_at"`
+	LastSeen             string      `json:"last_seen"`
 }
 
 // Error codes of nodes and placements.

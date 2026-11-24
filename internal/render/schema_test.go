@@ -14,7 +14,7 @@ import (
 // this digest only together with a deliberate schema bump (docs/render.md).
 func TestVendoredSchemaDigest(t *testing.T) {
 	sum := sha256.Sum256(DesiredSchema)
-	if got := hex.EncodeToString(sum[:]); got != "70dcfb1ceb104e25366bd598c6a62b8a7e5756d5620badb171961cd663cba67f" {
+	if got := hex.EncodeToString(sum[:]); got != "cb47fb89bf8d6fe50dccc8df436194d24d08f7a14b80f1682c08535b760904d6" {
 		t.Fatalf("schema/desired.schema.json sha256 %s", got)
 	}
 	if _, err := loadSchema(); err != nil {

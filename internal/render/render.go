@@ -50,8 +50,12 @@ type Input struct {
 
 // App is one resolved app as the agent hands it to Render.
 type App struct {
-	AppID        string `json:"appId"`        // ^d-[a-z0-9]{15}$
-	DeploymentID string `json:"deploymentId"` // <appId>-dep-<n>
+	AppID               string `json:"appId"`        // ^d-[a-z0-9]{15}$
+	DeploymentID        string `json:"deploymentId"` // <appId>-dep-<n>
+	ManagedCrew         bool   `json:"managedCrew,omitempty"`
+	CrewFreshEnrollment bool   `json:"crewFreshEnrollment,omitempty"`
+	CrewReplicaBucket   string `json:"crewReplicaBucket,omitempty"`
+	AWSRegion           string `json:"awsRegion,omitempty"`
 	// CrewOwnerEmail is the immutable address Drop verified at creation.
 	CrewOwnerEmail     string `json:"crewOwnerEmail,omitempty"`
 	SignInEmailEnabled bool   `json:"signInEmailEnabled,omitzero"`
@@ -64,6 +68,7 @@ type App struct {
 	Release        Release     `json:"release"`
 	ExecutableName string      `json:"executableName"` // ^[a-z][a-z0-9-]{0,31}$
 	HTTPPort       int         `json:"httpPort"`       // Guest HTTP listener port (1–65535).
+	HookPort       int         `json:"hookPort,omitempty"`
 	Args           []string    `json:"args"`
 	Resources      Resources   `json:"resources"`
 	HealthCheck    HealthCheck `json:"healthCheck"`
@@ -328,6 +333,19 @@ func renderEnvironment(app App) map[string]string {
 	if app.CrewOwnerEmail != "" {
 		env["DROP_OWNER_EMAIL"] = app.CrewOwnerEmail
 	}
+	if app.ManagedCrew {
+		env["POCKETCONTEXT_DOMAIN"] = app.Hostnames[0].Hostname
+		env["CREW_DROP_APP_ID"] = app.AppID
+		env["AWS_WORKLOAD_IDENTITY"] = "async"
+		env["CREW_DROP_BUCKET"] = app.CrewReplicaBucket
+		env["AWS_REGION"] = app.AWSRegion
+		if app.CrewFreshEnrollment {
+			env["CREW_DROP_BOOTSTRAP"] = "1"
+		}
+	}
+	if mode := env["AWS_WORKLOAD_IDENTITY"]; mode == "1" || mode == "async" {
+		env["AWS_ROLE_SESSION_NAME"] = app.AppID
+	}
 	env[envHost] = envHostRef
 	env["NIBRUN_DATA_DIR"] = dataDir
 	env["HOME"] = dataDir
@@ -372,6 +390,9 @@ func renderInstance(app App) instance {
 		},
 		Hostnames: hostnames,
 		Access:    access{Kind: "public"},
+	}
+	if app.HookPort != 0 {
+		inst.Config.Hooks = &hooks{Port: app.HookPort}
 	}
 	if app.SignInEmailEnabled && app.DesiredState != appspec.StateStopped {
 		inst.SignInEmail = &signInEmail{Recipient: app.CrewOwnerEmail}

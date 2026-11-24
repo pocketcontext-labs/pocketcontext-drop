@@ -117,12 +117,12 @@ func (c *Ctx) appOut(r *core.Record, emails map[string]string) dropapi.App {
 		kind = "crew"
 	}
 	return dropapi.App{
-		Kind: kind, CrewOwnerEmail: crewOwnerEmail, SignInEmailEnabled: r.GetBool("sign_in_email_enabled"),
+		CrewFreshEnrollment: r.GetString("crew_enrollment") == "fresh", Kind: kind, CrewOwnerEmail: crewOwnerEmail, SignInEmailEnabled: r.GetBool("sign_in_email_enabled"),
 		ID: r.Id, Name: r.GetString("name"), Slug: r.GetString("slug"), Owner: owner, OwnerEmail: email,
 		NibAppID: r.GetString("nib_app_id"), VolumeID: r.GetString("volume_id"), Hostname: r.GetString("hostname"),
 		DesiredState: r.GetString("desired_state"), IdleTimeoutMs: r.GetInt("idle_timeout_ms"),
 		VCPU: r.GetInt("vcpu"), MemoryMiB: r.GetInt("memory_mib"), DiskMiB: r.GetInt("disk_mib"),
-		HTTPPort: r.GetInt("http_port"), ExecutableName: r.GetString("executable_name"),
+		HookPort: r.GetInt("hook_port"), HTTPPort: r.GetInt("http_port"), ExecutableName: r.GetString("executable_name"),
 		Args: appArgs(r), Env: appEnv(r), HealthKind: r.GetString("health_kind"), HealthPath: r.GetString("health_path"),
 		DeploymentSeq: r.GetInt("deployment_seq"), DeploymentID: deploymentID(r),
 		CurrentRelease: r.GetString("current_release"), DiskLocked: !r.GetDateTime("first_placed_at").IsZero(),
@@ -202,7 +202,8 @@ type settings struct {
 	desiredState, startState string
 	idleTimeoutMs            int
 	vcpu, memoryMiB, diskMiB int
-	httpPort                 int
+	hookPort, httpPort       int
+	crew                     bool
 	executable               string
 	args                     []string
 	env                      map[string]string
@@ -213,7 +214,7 @@ func settingsOf(r *core.Record) settings {
 	return settings{
 		desiredState: r.GetString("desired_state"), startState: r.GetString("start_state"),
 		idleTimeoutMs: r.GetInt("idle_timeout_ms"), vcpu: r.GetInt("vcpu"), memoryMiB: r.GetInt("memory_mib"),
-		diskMiB: r.GetInt("disk_mib"), httpPort: r.GetInt("http_port"), executable: r.GetString("executable_name"),
+		hookPort: r.GetInt("hook_port"), crew: r.GetString("crew_enrollment") != "", diskMiB: r.GetInt("disk_mib"), httpPort: r.GetInt("http_port"), executable: r.GetString("executable_name"),
 		args: appArgs(r), env: appEnv(r), healthKind: r.GetString("health_kind"), healthPath: r.GetString("health_path"),
 	}
 }
@@ -232,6 +233,7 @@ func (s settings) apply(r *core.Record) {
 	r.Set("memory_mib", s.memoryMiB)
 	r.Set("disk_mib", s.diskMiB)
 	r.Set("http_port", s.httpPort)
+	r.Set("hook_port", s.hookPort)
 	r.Set("executable_name", s.executable)
 	r.Set("args", s.args)
 	r.Set("env", s.env)
@@ -273,6 +275,9 @@ func (s settings) check(secretNames []string) error {
 			return err
 		}
 	}
+	if !appspec.ValidHookPort(s.hookPort, s.httpPort) {
+		return Invalid("hook_port", "Use 0 to disable hooks or a guest port from 1 to 65535 different from the HTTP port.")
+	}
 	if !appspec.ExecutablePattern.MatchString(s.executable) {
 		return Invalid("executable_name", "executable_name must be 1-32 lowercase letters, digits and hyphens, starting with a letter.")
 	}
@@ -283,7 +288,7 @@ func (s settings) check(secretNames []string) error {
 		return Invalid("health_"+field, "health "+field+": "+reason+".")
 	}
 	for _, name := range slices.Sorted(maps.Keys(s.env)) {
-		if reason := appspec.CheckEnvName(name); reason != "" {
+		if reason := appspec.CheckAppEnvName(name, s.crew); reason != "" {
 			return Invalid("env", "env: "+reason+".")
 		}
 		if reason := appspec.CheckEnvValue(name, s.env[name]); reason != "" {
@@ -344,10 +349,15 @@ func appCreate(c *Ctx, in *dropapi.AppCreateInput) (any, error) {
 		}
 		return v
 	}
+	defaultExecutable, defaultHook := appspec.DefaultExecutable, 0
+	if in.Kind == "crew" {
+		defaultExecutable, defaultHook = "crew", 8081
+	}
 	s := settings{
+		crew: in.Kind == "crew", hookPort: orInt(in.HookPort, defaultHook),
 		idleTimeoutMs: orInt(in.IdleTimeoutMs, appspec.DefaultIdleMs), vcpu: orInt(in.VCPU, appspec.DefaultVCPU),
 		memoryMiB: orInt(in.MemoryMiB, appspec.DefaultMemoryMiB), diskMiB: orInt(in.DiskMiB, appspec.DefaultDiskMiB),
-		httpPort: orInt(in.HTTPPort, appspec.DefaultPort), executable: orString(in.ExecutableName, appspec.DefaultExecutable),
+		httpPort: orInt(in.HTTPPort, appspec.DefaultPort), executable: orString(in.ExecutableName, defaultExecutable),
 		args: in.Args, env: in.Env, healthKind: orString(in.HealthKind, appspec.HealthTCP), healthPath: in.HealthPath,
 		startState: appspec.StateOnRequest,
 	}
@@ -377,7 +387,12 @@ func appCreate(c *Ctx, in *dropapi.AppCreateInput) (any, error) {
 		if !appspec.ValidSignInMailbox(email) || email == droppolicy.Identity.LocalAccountEmail {
 			return nil, Invalid("kind", "The verified account address cannot receive Crew sign-in email.")
 		}
+		services := servicesOf(c.App)
+		if services.CrewReplicaBucket == "" || services.AWSRegion == "" || services.AppDomain == "" {
+			return nil, Invalid("kind", "Configure the Crew replica bucket, AWS region and app domain before creating a Crew app.")
+		}
 		app.Set("crew_owner_email", email)
+		app.Set("crew_enrollment", "fresh")
 		app.Set("sign_in_email_enabled", true)
 	default:
 		return nil, Invalid("kind", "App kind must be ordinary or crew.")
@@ -406,6 +421,13 @@ func appSet(c *Ctx, in *dropapi.AppSetInput) (any, error) {
 	}
 	s := settingsOf(app)
 	var changed []string
+	if in.FinishEnrollment {
+		if !s.crew {
+			return nil, Invalid("finish_enrollment", "Only a Crew app has a fresh enrollment.")
+		}
+		app.Set("crew_enrollment", "established")
+		changed = append(changed, "crew_enrollment")
+	}
 	if in.SignInEmailEnabled != nil {
 		if app.GetString("crew_owner_email") == "" {
 			return nil, Invalid("sign_in_email_enabled", "Sign-in email is available for Crew apps.")
@@ -433,7 +455,7 @@ func appSet(c *Ctx, in *dropapi.AppSetInput) (any, error) {
 		value *int
 		into  *int
 	}{
-		{"idle_timeout_ms", in.IdleTimeoutMs, &s.idleTimeoutMs}, {"vcpu", in.VCPU, &s.vcpu},
+		{"hook_port", in.HookPort, &s.hookPort}, {"idle_timeout_ms", in.IdleTimeoutMs, &s.idleTimeoutMs}, {"vcpu", in.VCPU, &s.vcpu},
 		{"memory_mib", in.MemoryMiB, &s.memoryMiB}, {"disk_mib", in.DiskMiB, &s.diskMiB}, {"http_port", in.HTTPPort, &s.httpPort},
 	}
 	for _, f := range ints {

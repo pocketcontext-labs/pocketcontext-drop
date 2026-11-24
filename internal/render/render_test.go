@@ -647,9 +647,27 @@ func TestCanonicalForm(t *testing.T) {
 
 func TestCrewDeliveryFollowsAppliedInstance(t *testing.T) {
 	in := loadInput(t, "crew-dev.input.json")
+	in.Apps[0].HTTPPort = 8080
+	in.Apps[0].Env = nil
+	in.Apps[0].Secrets = nil
+	in.Apps[0].HookPort = 8081
+	in.Apps[0].ManagedCrew = true
+	in.Apps[0].CrewFreshEnrollment = true
+	in.Apps[0].AWSRegion = "eu-north-1"
+	in.Apps[0].CrewReplicaBucket = "crew-example"
 	in.Apps[0].CrewOwnerEmail = "owner+crew@example.test"
 	in.Apps[0].SignInEmailEnabled = true
 	current := mustRender(t, in)
+	golden := filepath.Join("testdata", "crew-managed.golden.json")
+	if *update {
+		if err := os.WriteFile(golden, current.Document, 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want, err := os.ReadFile(golden)
+	if err != nil || !bytes.Equal(want, current.Document) {
+		t.Fatalf("managed Crew output differs from %s: %v", golden, err)
+	}
 	instanceOf := func(out *Output) instance {
 		t.Helper()
 		var doc document
@@ -662,6 +680,14 @@ func TestCrewDeliveryFollowsAppliedInstance(t *testing.T) {
 		return doc.Instances[0]
 	}
 	inst := instanceOf(current)
+	if inst.Config.Hooks == nil || inst.Config.Hooks.Port != 8081 {
+		t.Fatal("missing hook listener")
+	}
+	for name, want := range map[string]string{"AWS_REGION": "eu-north-1", "AWS_ROLE_SESSION_NAME": inst.AppID, "CREW_DROP_APP_ID": inst.AppID, "CREW_DROP_BUCKET": "crew-example", "POCKETCONTEXT_DOMAIN": in.Apps[0].Hostnames[0].Hostname, "AWS_WORKLOAD_IDENTITY": "async", "CREW_DROP_BOOTSTRAP": "1"} {
+		if got := inst.Config.Command.Environment[name]; got != want {
+			t.Fatalf("%s = %q, want %q", name, got, want)
+		}
+	}
 	if inst.SignInEmail == nil || inst.SignInEmail.Recipient != in.Apps[0].CrewOwnerEmail || inst.Config.Command.Environment["DROP_OWNER_EMAIL"] != inst.SignInEmail.Recipient {
 		t.Fatal("host and guest owner differ")
 	}

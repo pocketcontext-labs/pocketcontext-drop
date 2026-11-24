@@ -24,6 +24,7 @@ type MeInput struct{}
 
 // Me is the signed-in account. Admin is true for role admin.
 type Me struct {
+	Hosted   bool   `json:"hosted"`
 	ID       string `json:"id"`
 	Email    string `json:"email"`
 	Role     Role   `json:"role"`

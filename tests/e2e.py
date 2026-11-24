@@ -291,7 +291,7 @@ def scenario(pc):
     schema = pc.json('schema')
     tables = {t['name']: sorted(c['name'] for c in t['columns']) for t in schema['tables']}
     check(tables == {'apps': sorted(['id', 'owner', 'name', 'slug', 'nib_app_id', 'hostname', 'desired_state', 'idle_timeout_ms', 'vcpu',
-                                     'memory_mib', 'disk_mib', 'http_port', 'executable_name', 'health_kind', 'health_path',
+                                     'memory_mib', 'disk_mib', 'http_port', 'hook_port', 'executable_name', 'health_kind', 'health_path',
                                      'deployment_seq', 'current_release', 'archived', 'archived_at', 'created', 'updated']),
                      'releases': sorted(['id', 'app', 'sha256', 'size_bytes', 's3_key', 'note', 'created_by', 'created']),
                      'app_secret_names': sorted(['id', 'app', 'name', 'ssm_version', 'length', 'set_via', 'updated_by', 'created', 'updated']),

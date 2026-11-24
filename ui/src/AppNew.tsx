@@ -10,6 +10,7 @@ export const limits = {
   vcpu: { min: 1, max: 2, label: "vCPU" },
   memory_mib: { min: 128, max: 4096, label: "Memory (MiB)" },
   disk_mib: { min: 256, max: 16384, label: "Disk (MiB)" },
+  hook_port: { min: 0, max: 65535, label: "Hooks port" },
   http_port: { min: 1, max: 65535, label: "HTTP port" },
 } as const;
 export type NumberField = keyof typeof limits;
@@ -40,12 +41,15 @@ export function NumberInput({
         value={Number.isNaN(value) ? "" : value}
         onChange={(event) => onChange(event.target.valueAsNumber)}
       />
+      {field === "hook_port" && <small>0 disables lifecycle hooks.</small>}
+      {field === "http_port" && value > 0 && value < 1024 &&
+        <small>Ports below 1024 require a guest image that permits binding them.</small>}
     </label>
   );
 }
 
 /** `#/apps/new`: create an app with its name, slug and settings. */
-export default function AppNew() {
+export default function AppNew({ hosted }: { hosted: boolean }) {
   const [name, setName] = useState("");
   const [kind, setKind] = useState<AppKind>("ordinary");
   const [slug, setSlug] = useState("");
@@ -55,6 +59,7 @@ export default function AppNew() {
   const [healthPath, setHealthPath] = useState("/");
   const [numbers, setNumbers] = useState<Record<NumberField, number>>({
     http_port: 8080,
+    hook_port: 0,
     vcpu: 1,
     memory_mib: 512,
     disk_mib: 1024,
@@ -108,16 +113,21 @@ export default function AppNew() {
             placeholder="Hello app"
           />
         </label>
-        <label>
+        {hosted && <label>
           App type
           <select
             value={kind}
-            onChange={(event) => setKind(event.target.value as AppKind)}
+            onChange={(event) => {
+              const newKind = event.target.value as AppKind;
+              setKind(newKind);
+              setExecutable(newKind === "crew" ? "crew" : "server");
+              setNumbers((n) => ({ ...n, hook_port: newKind === "crew" ? 8081 : 0 }));
+            }}
           >
             <option value="ordinary">Ordinary app</option>
             <option value="crew">PocketContext Crew</option>
           </select>
-        </label>
+        </label>}
         {kind === "crew" && (
           <p className="quiet">
             Crew sign-in codes go to the email you verified with Drop when you create the app.
@@ -155,6 +165,7 @@ export default function AppNew() {
             </select>
           </label>
           {number("http_port")}
+          {number("hook_port")}
           <label>
             Executable
             <input

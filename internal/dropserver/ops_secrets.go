@@ -118,7 +118,7 @@ func secretSet(c *Ctx, in *dropapi.SecretSetInput) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if reason := appspec.CheckEnvName(in.Name); reason != "" {
+	if reason := appspec.CheckAppEnvName(in.Name, app.GetString("crew_enrollment") != ""); reason != "" {
 		return nil, Invalid("name", "name: "+reason+".")
 	}
 	if in.Value == "" || len(in.Value) > dropapi.MaxSecretBytes {

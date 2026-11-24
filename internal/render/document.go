@@ -67,7 +67,12 @@ type layer struct {
 	ObjectKey       string `json:"objectKey"`
 }
 
+type hooks struct {
+	Port int `json:"port"`
+}
+
 type config struct {
+	Hooks         *hooks        `json:"hooks,omitempty"`
 	HTTPPort      int           `json:"httpPort"`
 	Command       command       `json:"command"`
 	Resources     resources     `json:"resources"`

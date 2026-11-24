@@ -720,6 +720,19 @@ func TestCrewSignInProvisioning(t *testing.T) {
 		t.Fatalf("creation %v", appA)
 	}
 	idA, idB := appA["id"].(string), appB["id"].(string)
+	if num(appA["hook_port"]) != 8081 || appA["executable_name"] != "crew" || num(ordinary["hook_port"]) != 0 {
+		t.Fatal("invalid app defaults")
+	}
+	wantError(t, h.Op(a.Token, "app.set", map[string]any{"app": idA, "hook_port": 8080}), 400, "invalid_input")
+	wantError(t, h.Op(b.Token, "app.set", map[string]any{"app": idA, "hook_port": 8181}), 404, "not_found")
+	change := h.MustOp(a.Token, "app.set", map[string]any{"app": idA, "hook_port": 8181})
+	if change["deployment_bumped"] != true {
+		t.Fatal("hook change did not bump deployment")
+	}
+	for _, name := range []string{"CREW_DROP_BUCKET", "AWS_REGION", "CREW_DROP_APP_ID", "AWS_WORKLOAD_IDENTITY", "POCKETCONTEXT_DOMAIN", "CREW_DROP_BOOTSTRAP", "AWS_ROLE_SESSION_NAME"} {
+		wantError(t, h.Op(a.Token, "secret.set", map[string]any{"app": idA, "name": name, "value": "dummy"}), 400, "invalid_input")
+		wantError(t, h.Op(a.Token, "app.set", map[string]any{"app": idA, "env": map[string]any{"set": map[string]string{name: "dummy"}}}), 400, "invalid_input")
+	}
 	for _, field := range []string{"crew_owner_email", "recipient", "owner_email"} {
 		wantError(t, h.Op(a.Token, "app.create", map[string]any{"slug": "other", "name": "Other", "kind": "crew", field: bob}), 400, "invalid_input")
 		wantError(t, h.Op(a.Token, "app.set", map[string]any{"app": idA, field: bob}), 400, "invalid_input")
@@ -739,6 +752,15 @@ func TestCrewSignInProvisioning(t *testing.T) {
 	}
 	assertRecipient(nodeA, alice, bob, true)
 	assertRecipient(nodeB, bob, alice, true)
+	wantError(t, h.Op(b.Token, "app.set", map[string]any{"app": idA, "finish_enrollment": true}), 404, "not_found")
+	finished := h.MustOp(a.Token, "app.set", map[string]any{"app": idA, "finish_enrollment": true})
+	if finished["deployment_bumped"] != true {
+		t.Fatal("finishing enrollment did not remove bootstrap")
+	}
+	next, _ := desired(t, h, nodeA)
+	if !next.Apps[0].ManagedCrew || next.Apps[0].CrewFreshEnrollment {
+		t.Fatal("finished enrollment must keep the managed runtime without bootstrap")
+	}
 	h.MustOp(a.Token, "app.set", map[string]any{"app": idA, "sign_in_email_enabled": false})
 	assertRecipient(nodeA, alice, bob, false)
 	h.MustOp(a.Token, "app.set", map[string]any{"app": idA, "sign_in_email_enabled": true})

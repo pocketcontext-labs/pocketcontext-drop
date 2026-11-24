@@ -1,0 +1,92 @@
+{
+  "checkpoints": [],
+  "exports": [],
+  "hostId": "walter-dev",
+  "instances": [
+    {
+      "access": {
+        "kind": "public"
+      },
+      "activation": {
+        "sleepWhen": {
+          "kind": "traffic-idle",
+          "timeoutMs": 300000
+        }
+      },
+      "appId": "d-crewdev00000001",
+      "config": {
+        "command": {
+          "args": [],
+          "environment": {
+            "AWS_REGION": "eu-north-1",
+            "AWS_ROLE_SESSION_NAME": "d-crewdev00000001",
+            "AWS_WORKLOAD_IDENTITY": "async",
+            "CREW_DROP_APP_ID": "d-crewdev00000001",
+            "CREW_DROP_BOOTSTRAP": "1",
+            "CREW_DROP_BUCKET": "crew-example",
+            "DROP_OWNER_EMAIL": "owner+crew@example.test",
+            "HOME": "/app/data",
+            "NIBRUN_DATA_DIR": "/app/data",
+            "NIBRUN_HOSTNAME": "${NIBRUN_HOSTNAME}",
+            "POCKETCONTEXT_DOMAIN": "crew-dev.bigconfig.space"
+          },
+          "program": "/app/crew",
+          "workingDirectory": "/app"
+        },
+        "healthCheck": {
+          "gracePeriodMs": 60000,
+          "healthyThreshold": 1,
+          "intervalMs": 2000,
+          "kind": "tcp",
+          "timeoutMs": 2000,
+          "unhealthyThreshold": 3
+        },
+        "hooks": {
+          "port": 8081
+        },
+        "httpPort": 8080,
+        "resources": {
+          "memoryMib": 512,
+          "vcpuCount": 1
+        },
+        "restartPolicy": {
+          "backoffFactor": 2,
+          "initialBackoffMs": 500,
+          "maxBackoffMs": 30000,
+          "maxRestarts": 3,
+          "resetAfterMs": 60000
+        }
+      },
+      "deploymentId": "d-crewdev00000001-dep-1",
+      "desiredState": "on-request",
+      "hostnames": [
+        {
+          "hostname": "crew-dev.bigconfig.space",
+          "kind": "platform"
+        }
+      ],
+      "layers": [
+        {
+          "destinationPath": "/app/crew",
+          "digest": "1ae3cb5471536bead6b9395b86d154c64db1233d6f56ae4896c58f3fcdc98715",
+          "kind": "executable",
+          "objectKey": "1ae3cb5471536bead6b9395b86d154c64db1233d6f56ae4896c58f3fcdc98715"
+        }
+      ],
+      "signInEmail": {
+        "recipient": "owner+crew@example.test"
+      },
+      "volumeId": "d-crewdev00000001-vol"
+    }
+  ],
+  "revision": "drop-1-6d05a1e15276",
+  "volumes": [
+    {
+      "appId": "d-crewdev00000001",
+      "desiredState": "present",
+      "sizeBytes": 4294967296,
+      "storage": null,
+      "volumeId": "d-crewdev00000001-vol"
+    }
+  ]
+}

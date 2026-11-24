@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"regexp"
+	"slices"
+	"time"
 
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/render"
 )
@@ -145,18 +147,37 @@ type HostReport struct {
 	Versions    map[string]any `json:"versions"`
 }
 
+// HookResult contains only bounded lifecycle metadata. Guest response bodies never leave the node.
+type HookResult struct {
+	Event      string `json:"event"`
+	Outcome    string `json:"outcome"`
+	Time       string `json:"time"`
+	DurationMs int64  `json:"durationMs"`
+}
+
+func (h *HookResult) Valid() bool {
+	if h == nil {
+		return true
+	}
+	_, err := time.Parse(time.RFC3339Nano, h.Time)
+	return err == nil && len(h.Time) <= 40 && h.DurationMs >= 0 &&
+		slices.Contains([]string{"suspend", "resume", "terminate"}, h.Event) &&
+		slices.Contains([]string{"ok", "error", "timeout", "unreachable"}, h.Outcome)
+}
+
 // AppReport is the agent's view of one app: its phase (one of ReportPhases),
 // a message for people (no secret or environment values), the deployment
 // nibrunner runs, and nibrunner's restart count, last exit code and
 // convergence time (RFC 3339, or empty).
 type AppReport struct {
-	AppID        string `json:"appId"`
-	DeploymentID string `json:"deploymentId"`
-	Phase        string `json:"phase"`
-	Message      string `json:"message"`
-	RestartCount int    `json:"restartCount"`
-	LastExitCode *int   `json:"lastExitCode"`
-	ConvergedAt  string `json:"convergedAt"`
+	LastHook     *HookResult `json:"lastHook,omitempty"`
+	AppID        string      `json:"appId"`
+	DeploymentID string      `json:"deploymentId"`
+	Phase        string      `json:"phase"`
+	Message      string      `json:"message"`
+	RestartCount int         `json:"restartCount"`
+	LastExitCode *int        `json:"lastExitCode"`
+	ConvergedAt  string      `json:"convergedAt"`
 }
 
 // ReportResult answers a report: the node's current desiredSeq and state, so

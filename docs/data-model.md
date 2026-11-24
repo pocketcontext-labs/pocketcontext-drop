@@ -68,6 +68,8 @@ A partial unique index allows one open invite per address (`email_lower` where `
 | `vcpu` | number 1-2 | required (default 1) |
 | `memory_mib` | number 128-4096 | required (default 512) |
 | `disk_mib` | number 256-16384 | required (default 1024); fixed once placed (`first_placed_at`) |
+| `hook_port` | integer 0–65535 | 0 disables hooks. A nonzero value must differ from the HTTP port. |
+| `crew_enrollment` | select | New Crew apps start `fresh`; the owner can finish enrollment to transition to `established`. Empty on ordinary and pre-upgrade apps. |
 | `http_port` | integer 1-65535 | required (default 8080) |
 | `executable_name` | text | required, `^[a-z][a-z0-9-]{0,31}$` (default `server`): the file `/app/<name>` |
 | `args` | json, at most 4 KiB | a list of strings |
@@ -101,7 +103,7 @@ What the node needs to run a release (M7 and M9) is `sha256`, `s3_key` and `size
 
 ## Node reports
 
-`pb_migrations/1820001200_node_reports.js` creates `node_reports`, the last phase each node reported for each app placed on it: `node`, `app`, `nib_app_id` (unique with `node`), `deployment_id`, `phase` (`pending`, `staging`, `staging_failed`, `secret_failed`, `deploying`, `starting`, `running`, `sleeping`, `unhealthy`, `stopped`, `failed`, `unknown`), `message` (at most 2000), `restart_count`, `last_exit_code` with `has_exit_code`, `converged_at`, `observed_at` (when the phase was first reported). A row is rewritten only when something in it changes. List and view: admins, and the app's owner; writes closed. The `status` operation reads it.
+`pb_migrations/1820001200_node_reports.js` creates `node_reports`, the last phase each node reported for each app placed on it: `node`, `app`, `nib_app_id` (unique with `node`), `deployment_id`, `phase` (`pending`, `staging`, `staging_failed`, `secret_failed`, `deploying`, `starting`, `running`, `sleeping`, `unhealthy`, `stopped`, `failed`, `unknown`), `message` (at most 2000), `restart_count`, `last_exit_code` with `has_exit_code`, `converged_at`, optional `last_hook` (event, outcome, time and duration), `observed_at` (when the phase was first reported). A row is rewritten only when something in it changes. List and view: admins, and the app's owner; writes closed. The `status` operation reads it.
 
 ## Upload links
 
@@ -113,7 +115,7 @@ What the node needs to run a release (M7 and M9) is `sha256`, `s3_key` and `size
 
 | Table | Columns |
 | --- | --- |
-| `apps` | `id`, `owner`, `name`, `slug`, `nib_app_id`, `hostname`, `desired_state`, `idle_timeout_ms`, `vcpu`, `memory_mib`, `disk_mib`, `http_port`, `executable_name`, `health_kind`, `health_path`, `deployment_seq`, `current_release`, `archived`, `archived_at`, `created`, `updated` (not `env` or `args`) |
+| `apps` | `id`, `owner`, `name`, `slug`, `nib_app_id`, `hostname`, `desired_state`, `idle_timeout_ms`, `vcpu`, `memory_mib`, `disk_mib`, `http_port`, `hook_port`, `executable_name`, `health_kind`, `health_path`, `deployment_seq`, `current_release`, `archived`, `archived_at`, `created`, `updated` (not `env` or `args`) |
 | `app_secret_names` | `id`, `app`, `name`, `ssm_version`, `length`, `set_via`, `updated_by`, `created`, `updated` |
 | `releases` | `id`, `app`, `sha256`, `size_bytes`, `s3_key`, `note`, `created_by`, `created` |
 | `events` | `id`, `actor`, `actor_node`, `app`, `subject_user`, `action`, `detail`, `created` |

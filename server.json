@@ -14,6 +14,7 @@
       "memory_mib",
       "disk_mib",
       "http_port",
+      "hook_port",
       "executable_name",
       "health_kind",
       "health_path",

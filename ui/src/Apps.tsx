@@ -112,6 +112,7 @@ export default function Apps() {
               </p>
               <p className="quiet">
                 {app.archived ? "Archived" : stateLabels[app.desired_state]}
+                {app.kind === "crew" && <> · Crew · {app.crew_owner_email}</>}
                 {app.hostname && <> · {app.hostname}</>} ·{" "}
                 <time dateTime={app.created.replace(" ", "T")}>
                   {formatDate(app.created)}

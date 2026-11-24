@@ -23,7 +23,7 @@ const EnvReleaseMaxBytes = "DROP_RELEASE_MAX_BYTES"
 // (DROP_RELEASE_MAX_BYTES, optional, at most 90 MiB) and the app domain
 // (DROP_APP_DOMAIN, optional).
 func serveServices(a *args, hosted bool, listenAddr string, getenv func(string) string) (dropserver.Services, error) {
-	var s dropserver.Services
+	s := dropserver.Services{CrewReplicaBucket: getenv("DROP_CREW_REPLICA_BUCKET"), AWSRegion: getenv(awsx.EnvRegion)}
 	if domain := getenv(EnvAppDomain); domain != "" {
 		if !dropserver.ValidAppDomain(domain) {
 			return s, fail(2, "%s must be a lower-case domain name such as apps.example.com", EnvAppDomain)

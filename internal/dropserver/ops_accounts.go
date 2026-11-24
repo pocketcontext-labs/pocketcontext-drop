@@ -32,7 +32,7 @@ func me(c *Ctx) dropapi.Me {
 	if c.Admin {
 		role = dropapi.RoleAdmin
 	}
-	return dropapi.Me{ID: c.Auth.Id, Email: c.Auth.Email(), Role: role, Admin: c.Admin, Owner: c.Owner, AppQuota: c.Auth.GetInt("app_quota")}
+	return dropapi.Me{Hosted: accountsOf(c.App).hosted, ID: c.Auth.Id, Email: c.Auth.Email(), Role: role, Admin: c.Admin, Owner: c.Owner, AppQuota: c.Auth.GetInt("app_quota")}
 }
 
 func userOut(app core.App, r *core.Record) dropapi.User {
