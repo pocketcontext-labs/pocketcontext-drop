@@ -22,6 +22,8 @@ ExecStart=/usr/local/bin/drop agent run
 EnvironmentFile=/etc/drop/agent.env
 # The node password, never in the environment or on the command line.
 LoadCredential=node-secret:/etc/drop/agent.secret
+RuntimeDirectory=drop-agent-identity
+RuntimeDirectoryMode=0700
 StateDirectory=drop-agent
 StateDirectoryMode=0700
 UMask=0077
@@ -35,7 +37,7 @@ RestartPreventExitStatus=3
 # store) and its own /var/lib/drop-agent.
 NoNewPrivileges=yes
 ProtectSystem=strict
-ReadWritePaths=/var/lib/nibrunner
+ReadWritePaths=/var/lib/nibrunner -/etc/nibrunner/workload-identity
 ProtectHome=yes
 PrivateTmp=yes
 PrivateDevices=yes

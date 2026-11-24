@@ -79,6 +79,7 @@ var (
 
 // Config is the agent's configuration. Paths are absolute.
 type Config struct {
+	identity          identityConfig
 	Server            string // http(s) URL of the Drop server, no trailing slash
 	Host              string // the Drop domain, sent as the Host header
 	Node              string // node name (sign-in identity)
@@ -131,6 +132,7 @@ func LoadConfig(getenv func(string) string, o Overrides, needServer bool) (Confi
 		secretFallback = filepath.Join(dir, CredentialName)
 	}
 	c := Config{
+		identity:          identityConfig{issuer: getenv("DROP_IDENTITY_ISSUER"), audience: pick("", "DROP_IDENTITY_AUDIENCE", "sts.amazonaws.com"), role: getenv("DROP_IDENTITY_ROLE_ARN"), keyFile: getenv("DROP_IDENTITY_KEY_FILE"), roleDir: "/etc/nibrunner/workload-identity", sourceDir: "/run/drop-agent-identity"},
 		Server:            strings.TrimRight(pick("server", EnvServer, DefaultServer), "/"),
 		Host:              pick("host", EnvHost, ""),
 		Node:              pick("node", EnvNode, ""),

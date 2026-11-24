@@ -1,0 +1,75 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Drop workload identity issuer and private application replicas
+Parameters:
+  EnableRole:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['false', 'true']
+Conditions:
+  Published: !Equals [!Ref EnableRole, 'true']
+Resources:
+  Replica:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      VersioningConfiguration: {Status: Enabled}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+  Issuer:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: false
+        RestrictPublicBuckets: false
+  DiscoveryPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref Issuer
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: '*'
+            Action: s3:GetObject
+            Resource:
+              - !Sub '${Issuer.Arn}/.well-known/openid-configuration'
+              - !Sub '${Issuer.Arn}/keys.json'
+  Provider:
+    Condition: Published
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: !Sub 'https://${Issuer.RegionalDomainName}'
+      ClientIdList: [sts.amazonaws.com]
+  Role:
+    Condition: Published
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: !Sub |
+        {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Federated":"${Provider}"},"Action":["sts:AssumeRoleWithWebIdentity","sts:TagSession"],"Condition":{"StringEquals":{"${Issuer.RegionalDomainName}:aud":"sts.amazonaws.com"},"StringLike":{"${Issuer.RegionalDomainName}:sub":"d-*","aws:RequestTag/app_id":"d-*"},"ForAllValues:StringEquals":{"aws:TagKeys":["app_id"]}}}]}
+      Policies:
+        - PolicyName: ReplicaPrefix
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt Replica.Arn
+                Condition:
+                  StringLike:
+                    s3:prefix: '${aws:PrincipalTag/app_id}/*'
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:DeleteObject, s3:AbortMultipartUpload, s3:ListMultipartUploadParts]
+                Resource: !Sub '${Replica.Arn}/${!aws:PrincipalTag/app_id}/*'
+Outputs:
+  ReplicaBucket: {Value: !Ref Replica}
+  IssuerBucket: {Value: !Ref Issuer}
+  IssuerURL: {Value: !Sub 'https://${Issuer.RegionalDomainName}'}
+  SharedRole: {Condition: Published, Value: !GetAtt Role.Arn}

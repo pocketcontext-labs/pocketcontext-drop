@@ -92,3 +92,32 @@ Behind an AWS Application Load Balancer, listen on `0.0.0.0:8100`, use `--hosted
 ## Remote MCP
 
 See [MCP](mcp.md).
+
+### Set up workload identity once per node
+
+The agent can sign two-minute RS256 assertions for running and on-request apps. Every 30 seconds it reads the applied local desired document and writes a fresh assertion to the host's private runtime directory. Rotation starts before the agent signs in to Drop, including after an agent restart. Stopped apps cease receiving renewals. Already issued STS sessions retain their AWS expiry.
+
+Use the operator's AWS profile and region. From the repository root, deploy the stack in two stages. IAM validates the published discovery document when creating the provider.
+
+1. Run `aws cloudformation deploy --stack-name drop-workloads --template-file deploy/walter-aws/workload-identity.yml --capabilities CAPABILITY_IAM`. Obtain IssuerURL, IssuerBucket and ReplicaBucket from the stack outputs.
+2. On the node, create a root-only directory and a new PKCS8 RSA signing key. Keep the private key on the node. Use a fresh filename when rotating keys.
+
+   ```sh
+   sudo install -d -m 0700 /etc/drop/workload-identity /etc/nibrunner/workload-identity
+   sudo sh -ec 'umask 077; test ! -e /etc/drop/workload-identity/key.pem; openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out /etc/drop/workload-identity/key.pem'
+   sudo /usr/bin/python3 deploy/walter-aws/publish-issuer.py "$ISSUER_URL" "$PUBLIC_DIR" /etc/drop/workload-identity/key.pem
+   ```
+
+3. Upload the two public documents with the operator profile. The export utility uses Python cryptography on the operator host. The agent signs in Go.
+
+   ```sh
+   aws s3 cp "$PUBLIC_DIR/keys.json" "s3://$ISSUER_BUCKET/keys.json" --content-type application/json --cache-control 'public,max-age=60'
+   aws s3 cp "$PUBLIC_DIR/openid-configuration" "s3://$ISSUER_BUCKET/.well-known/openid-configuration" --content-type application/json --cache-control 'public,max-age=60'
+   curl -fsS "$ISSUER_URL/keys.json" | cmp - "$PUBLIC_DIR/keys.json"
+   curl -fsS "$ISSUER_URL/.well-known/openid-configuration" | cmp - "$PUBLIC_DIR/openid-configuration"
+   aws cloudformation deploy --stack-name drop-workloads --template-file deploy/walter-aws/workload-identity.yml --capabilities CAPABILITY_IAM --parameter-overrides EnableRole=true
+   ```
+
+4. Configure the agent environment with `DROP_IDENTITY_ISSUER` (IssuerURL), `DROP_IDENTITY_ROLE_ARN` (SharedRole) and `DROP_IDENTITY_KEY_FILE` (the private key path). The default audience is `sts.amazonaws.com`. Install the release's drop-agent systemd unit and set `NIBRUN_IDENTITY_SOURCE_DIR=/run/drop-agent-identity` on nibrunnerd. Set `DROP_CREW_REPLICA_BUCKET` to ReplicaBucket and `DROP_AWS_REGION` to its region on the Drop server. Reload systemd and restart the affected services. The release storage bucket and replica bucket serve different purposes.
+5. In each guest the AWS SDK exchanges the assertion for a shared-role session. The signed subject and app_id principal tag identify the same app. The role allows ListBucket with an app-prefixed request and object operations under that prefix. Confirm access to its own prefix and denied access to the root and another prefix.
+6. For signing-key rotation export both the old and new keys in one invocation. Publish that combined JWKS, verify the public document and allow cache propagation. Switch the agent key path and restart it. Verify STS accepts the new key, then wait until every old assertion has expired before publishing a JWKS containing only the new key.
