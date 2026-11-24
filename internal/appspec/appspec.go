@@ -21,7 +21,7 @@ const MiB = 1 << 20
 const (
 	MinDiskMiB, MaxDiskMiB, DefaultDiskMiB       = 256, 16384, 1024
 	MinIdleMs, MaxIdleMs, DefaultIdleMs          = 60000, 86400000, 300000
-	MinPort, MaxPort, DefaultPort                = 1024, 65535, 8080
+	MinPort, MaxPort, DefaultPort                = 1, 65535, 8080
 	MinVCPU, MaxVCPU, DefaultVCPU                = 1, 2, 1
 	MinMemoryMiB, MaxMemoryMiB, DefaultMemoryMiB = 128, 4096, 512
 	// MaxReleaseBytes is the largest release (90 MiB, under Cloudflare's

@@ -4,6 +4,8 @@ Drop stores accounts with roles (`users`), `invites`, `apps`, the names of their
 
 `1820000200_apps.js` replaced the unreleased placeholder `1810000100_apps.js` (an owner, a name and a slug) before any database had shipped. Migration `1820001300_secret_cleanup.js` adds the private SQLite table `drop_secret_deletions` for outstanding SSM deletions and removes the shared object store’s deduplication flag from historical upload events. The queue holds parameter names only, and Drop exposes it through neither the collection API nor the SQL reader. Back up the project before upgrading. To roll back, restore the pre-upgrade backup and account for external parameter changes made since the backup.
 
+Migration `1820001400_app_http_port.js` lowers the minimum guest HTTP port to 1. It preserves existing app settings and deployment numbers. Back up the control database before upgrading so it can be restored if you roll back to 0.1.0.
+
 ## The account
 
 - `users` is PocketBase's built-in auth collection, configured by `pb_migrations/1810000000_users.js` (password sign-in by email locally, 7-day tokens, no OAuth2, OTP or MFA) and `1820000000_drop_users.js`, which adds Drop's fields and rules:
@@ -64,7 +66,7 @@ A partial unique index allows one open invite per address (`email_lower` where `
 | `vcpu` | number 1-2 | required (default 1) |
 | `memory_mib` | number 128-4096 | required (default 512) |
 | `disk_mib` | number 256-16384 | required (default 1024); fixed once placed (`first_placed_at`) |
-| `http_port` | number 1024-65535 | required (default 8080) |
+| `http_port` | integer 1-65535 | required (default 8080) |
 | `executable_name` | text | required, `^[a-z][a-z0-9-]{0,31}$` (default `server`): the file `/app/<name>` |
 | `args` | json, at most 4 KiB | a list of strings |
 | `env` | json, at most 32 KiB | plain environment variables (never secrets) |

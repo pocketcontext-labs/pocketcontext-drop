@@ -523,7 +523,7 @@ func TestAppValidation(t *testing.T) {
 		{"executableName", func(a *App) { a.ExecutableName = "../crew" }},
 		{"executableName", func(a *App) { a.ExecutableName = "Crew" }},
 		{"executableName", func(a *App) { a.ExecutableName = "" }},
-		{"httpPort", func(a *App) { a.HTTPPort = 80 }},
+		{"httpPort", func(a *App) { a.HTTPPort = 0 }},
 		{"httpPort", func(a *App) { a.HTTPPort = 65536 }},
 		{"args", func(a *App) { a.Args = make([]string, 65) }},
 		{"args[0]", func(a *App) { a.Args = []string{"a\x00b"} }},
@@ -596,6 +596,24 @@ func TestAppValidation(t *testing.T) {
 	out := mustRender(t, in)
 	if len(out.Rejected) != 0 || bytes.Contains(out.Document, []byte("activation")) {
 		t.Fatalf("running app: %v\n%s", out.Rejected, out.Document)
+	}
+}
+
+func TestRenderGuestHTTPPort(t *testing.T) {
+	in := loadInput(t, "crew-dev.input.json")
+	for _, port := range []int{1, 80, 1023, 1024, 65535} {
+		in.Apps[0].HTTPPort = port
+		out := mustRender(t, in)
+		if len(out.Rejected) != 0 {
+			t.Fatalf("port %d rejected: %v", port, out.Rejected)
+		}
+		var doc document
+		if err := json.Unmarshal(out.Document, &doc); err != nil {
+			t.Fatal(err)
+		}
+		if len(doc.Instances) != 1 || doc.Instances[0].Config.HTTPPort != port {
+			t.Fatalf("expected one instance configured on port %d", port)
+		}
 	}
 }
 

@@ -196,7 +196,7 @@ def scenario(binary, root):
     node = None
     try:
         check(hosted_request(server.port, 'GET', '/up', host='127.0.0.1')[0] == 200, 'the hosted server answers /up')
-        app = server.owner('app', 'create', 'Agent app', '--slug', 'agent-app')['app']
+        app = server.owner('app', 'create', 'Agent app', '--slug', 'agent-app', '--port', '80')['app']
         server.owner('secret', 'set', 'agent-app', 'API_KEY', stdin=SENTINEL + '\n')
         hello = build_hello(server_root)
         hello_bytes = hello.read_bytes()
@@ -233,6 +233,7 @@ def scenario(binary, root):
         check(doc['hostId'] == HOST_ID and [i['appId'] for i in doc['instances']] == [app_id]
               and [v['volumeId'] for v in doc['volumes']] == [app_id + '-vol'], 'desired.json holds the placed app and its volume')
         instance = doc['instances'][0]
+        check(instance['config']['httpPort'] == 80, 'the agent renders the configured guest HTTP port 80')
         check(instance['deploymentId'] == uploaded['deployment_id'] and instance['layers'][0]['objectKey'] == hello_sha
               and instance['layers'][0]['digest'] == hello_sha, 'the instance runs the deployed release by sha256')
         check(instance['config']['command']['environment'].get('API_KEY') == SENTINEL, 'the secret version is resolved from the store')
@@ -241,7 +242,7 @@ def scenario(binary, root):
         check(staged.is_file() and staged.read_bytes() == hello_bytes and stat.S_IMODE(staged.stat().st_mode) == 0o600,
               'the release is staged under its sha256 (0600)')
         check(Path(str(node.desired) + '.drop-prev').read_bytes() == empty, 'desired.json.drop-prev holds the previous file')
-        state = read_json(node.state_dir / 'state.json')
+        state = wait_for('the first state.json write', lambda: read_json(node.state_dir / 'state.json'))
         check(state and state['schema'] == 'drop.agent-state/v1' and state['hostId'] == HOST_ID and state['lastRevision'] == node.revision()
               and state['artifacts'].get(hello_sha, {}).get('size') == len(hello_bytes), f'state.json records the applied document: {state}')
 

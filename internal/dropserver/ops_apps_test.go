@@ -50,14 +50,14 @@ func TestAppCreateDefaults(t *testing.T) {
 	}
 	full := appOf(t, h.MustOp(token, "app.create", map[string]any{
 		"name": "Full", "slug": "full-app", "desired_state": "running", "idle_timeout_ms": 60000, "vcpu": 2, "memory_mib": 4096,
-		"disk_mib": 16384, "http_port": 9000, "executable_name": "crew", "args": []string{"serve", "--port", "9000"},
+		"disk_mib": 16384, "http_port": 1, "executable_name": "crew", "args": []string{"serve", "--port", "1"},
 		"env": map[string]string{"WELCOME_TEXT": "hi", "URL": "https://${NIBRUN_HOSTNAME}:${NIBRUN_HTTP_PORT}/"}, "health_kind": "http",
 	}))
 	if full["health_path"] != "/" || full["desired_state"] != "running" || num(full["disk_mib"]) != 16384 || len(full["args"].([]any)) != 3 {
 		t.Fatalf("%v", full)
 	}
 	// By slug or id, for the owner.
-	if got := appOf(t, h.MustOp(token, "app.get", map[string]any{"app": "full-app"})); got["id"] != full["id"] {
+	if got := appOf(t, h.MustOp(token, "app.get", map[string]any{"app": "full-app"})); got["id"] != full["id"] || num(got["http_port"]) != 1 {
 		t.Fatalf("app.get by slug: %v", got)
 	}
 }
@@ -94,7 +94,7 @@ func TestAppValidation(t *testing.T) {
 		{"memory_mib", base(map[string]any{"memory_mib": 4097})},
 		{"disk_mib", base(map[string]any{"disk_mib": 255})},
 		{"disk_mib", base(map[string]any{"disk_mib": 16385})},
-		{"http_port", base(map[string]any{"http_port": 80})},
+		{"http_port", base(map[string]any{"http_port": 0})},
 		{"http_port", base(map[string]any{"http_port": 65536})},
 		{"executable_name", base(map[string]any{"executable_name": "../bin/sh"})},
 		{"executable_name", base(map[string]any{"executable_name": "Server"})},
@@ -127,6 +127,9 @@ func TestAppValidation(t *testing.T) {
 	wantError(t, h.Op(token, "app.create", base(map[string]any{"env": many})), 400, "invalid_input")
 	wantError(t, h.Op(token, "app.create", base(map[string]any{"colour": "red"})), 400, "invalid_input")
 	h.MustOp(token, "app.create", base(nil))
+	for _, port := range []int{0, 65536} {
+		wantError(t, h.Op(token, "app.set", map[string]any{"app": "valid-app", "http_port": port}), 400, "invalid_input")
+	}
 	wantError(t, h.Op(token, "app.create", base(nil)), 409, "slug_taken")
 	wantError(t, h.Op(token, "app.set", map[string]any{"app": "valid-app", "slug": "renamed"}), 400, "invalid_input")
 	wantError(t, h.Op(token, "app.set", map[string]any{"app": "valid-app"}), 400, "invalid_input")
@@ -194,7 +197,8 @@ func TestDeploymentBumps(t *testing.T) {
 		{map[string]any{"vcpu": 2}, true},
 		{map[string]any{"vcpu": 2}, false}, // same value
 		{map[string]any{"memory_mib": 1024}, true},
-		{map[string]any{"http_port": 9000}, true},
+		{map[string]any{"http_port": 80}, true},
+		{map[string]any{"http_port": 65535}, true},
 		{map[string]any{"executable_name": "crew"}, true},
 		{map[string]any{"args": []string{"x"}}, false},
 		{map[string]any{"args": []string{"y"}}, true},

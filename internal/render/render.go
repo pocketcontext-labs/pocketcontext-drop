@@ -58,7 +58,7 @@ type App struct {
 	Volume         Volume      `json:"volume"`
 	Release        Release     `json:"release"`
 	ExecutableName string      `json:"executableName"` // ^[a-z][a-z0-9-]{0,31}$
-	HTTPPort       int         `json:"httpPort"`       // 1024–65535
+	HTTPPort       int         `json:"httpPort"`       // Guest HTTP listener port (1–65535).
 	Args           []string    `json:"args"`
 	Resources      Resources   `json:"resources"`
 	HealthCheck    HealthCheck `json:"healthCheck"`

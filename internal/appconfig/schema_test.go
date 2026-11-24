@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/fs"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -14,6 +15,73 @@ import (
 
 	assets "github.com/pocketcontext-labs/pocketcontext-drop"
 )
+
+func TestAppHTTPPortMigration(t *testing.T) {
+	app := newHookApp(t)
+	const portMigration = "1820001400_app_http_port.js"
+	var previous, upgrade core.MigrationsList
+	for _, migration := range core.AppMigrations.Items() {
+		if migration.File < portMigration {
+			previous.Add(migration)
+		} else if migration.File == portMigration {
+			upgrade.Add(migration)
+		}
+	}
+	if _, err := core.NewMigrationsRunner(app, previous).Up(); err != nil {
+		t.Fatal(err)
+	}
+
+	users, err := app.FindCollectionByNameOrId("users")
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := core.NewRecord(users)
+	owner.SetEmail("owner@example.test")
+	owner.SetRandomPassword()
+	owner.Set("role", "admin")
+	if err := app.Save(owner); err != nil {
+		t.Fatal(err)
+	}
+	apps, err := app.FindCollectionByNameOrId("apps")
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := core.NewRecord(apps)
+	record.Load(map[string]any{
+		"owner": owner.Id, "name": "Existing app", "slug": "existing-app",
+		"nib_app_id": "d-aaaaaaaaaaaaaaa", "volume_id": "d-aaaaaaaaaaaaaaa-vol",
+		"desired_state": "stopped", "start_state": "running", "idle_timeout_ms": 300000,
+		"vcpu": 1, "memory_mib": 512, "disk_mib": 1024, "http_port": 8080,
+		"executable_name": "server", "health_kind": "tcp", "deployment_seq": 2,
+	})
+	if err := app.Save(record); err != nil {
+		t.Fatal(err)
+	}
+	record, err = app.FindRecordById("apps", record.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := record.FieldsData()
+	record.Set("http_port", 80)
+	if err := app.Validate(record); err == nil {
+		t.Fatal("pre-upgrade schema accepted port 80")
+	}
+
+	if _, err := core.NewMigrationsRunner(app, upgrade).Up(); err != nil {
+		t.Fatal(err)
+	}
+	upgraded, err := app.FindRecordById("apps", record.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(before, upgraded.FieldsData()) {
+		t.Fatal("migration changed the existing app")
+	}
+	upgraded.Set("http_port", 80)
+	if err := app.Save(upgraded); err != nil {
+		t.Fatalf("saving port 80 after upgrade: %v", err)
+	}
+}
 
 func migrationsDB(t *testing.T, files ...string) string {
 	t.Helper()

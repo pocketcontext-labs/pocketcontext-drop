@@ -211,7 +211,7 @@ class FakeAgent:
             rel = a['release']
             need(SHA256.match(rel['sha256']) and rel['s3Key'] == 'releases/' + rel['sha256'] and rel['sizeBytes'] > 0, 'release')
             need(re.match(r'^[a-z][a-z0-9-]{0,31}$', a['executableName']), 'executableName')
-            need(1024 <= a['httpPort'] <= 65535, 'httpPort')
+            need(type(a['httpPort']) is int and 1 <= a['httpPort'] <= 65535, 'httpPort')
             need(isinstance(a['args'], list) and isinstance(a['env'], dict), 'args and env')
             for s in a['secrets']:
                 need(set(s) == {'name', 'parameter', 'version'}, f'a secret has no value field: {sorted(s)}')

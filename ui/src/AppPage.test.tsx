@@ -56,10 +56,18 @@ it("creates an app from #/apps/new and opens its page", async () => {
   render(<App />);
   fireEvent.change(await screen.findByLabelText("App name"), { target: { value: " Hello app " } });
   fireEvent.change(screen.getByLabelText("Slug"), { target: { value: "hello-app" } });
-  fireEvent.change(screen.getByLabelText("HTTP port"), { target: { value: "9000" } });
+  const port = screen.getByLabelText("HTTP port");
+  expect(port).toHaveValue(8080);
+  for (const value of ["0", "65536"]) {
+    fireEvent.change(port, { target: { value } });
+    expect(port).toBeInvalid();
+  }
+  fireEvent.change(port, { target: { value: "65535" } });
+  expect(port).toBeValid();
+  fireEvent.change(port, { target: { value: "1" } });
   fireEvent.click(screen.getByRole("button", { name: "Create app" }));
   await vi.waitFor(() => expect(location.hash).toBe(`#/apps/${id}`));
-  expect(create).toHaveBeenCalledWith(expect.objectContaining({ name: "Hello app", slug: "hello-app", http_port: 9000, desired_state: "on-request", health_kind: "tcp" }));
+  expect(create).toHaveBeenCalledWith(expect.objectContaining({ name: "Hello app", slug: "hello-app", http_port: 1, desired_state: "on-request", health_kind: "tcp" }));
 });
 
 it("shows the runtime phase on the Overview", async () => {
@@ -79,12 +87,13 @@ it("shows the runtime phase on the Overview", async () => {
 it("saves only the changed settings and reports a new deployment", async () => {
   history.replaceState(null, "", `/#/apps/${id}/settings`);
   vi.spyOn(dropApi, "getApp").mockResolvedValue({ app, secrets: [] });
-  const set = vi.spyOn(dropApi, "setApp").mockResolvedValue({ app: { ...app, memory_mib: 1024, deployment_id: `d-${id}-dep-2` }, deployment_bumped: true });
+  const set = vi.spyOn(dropApi, "setApp").mockResolvedValue({ app: { ...app, memory_mib: 1024, http_port: 80, deployment_id: `d-${id}-dep-2` }, deployment_bumped: true });
   render(<App />);
   fireEvent.change(await screen.findByLabelText("Memory (MiB)"), { target: { value: "1024" } });
+  fireEvent.change(screen.getByLabelText("HTTP port"), { target: { value: "80" } });
   fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
   expect(await screen.findByText(`Saved. New deployment d-${id}-dep-2.`)).toBeInTheDocument();
-  expect(set).toHaveBeenCalledWith(id, { memory_mib: 1024 });
+  expect(set).toHaveBeenCalledWith(id, { memory_mib: 1024, http_port: 80 });
 });
 
 it("sets a secret write-only and never keeps its value", async () => {

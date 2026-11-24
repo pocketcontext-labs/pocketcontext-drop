@@ -10,7 +10,7 @@ export const limits = {
   vcpu: { min: 1, max: 2, label: "vCPU" },
   memory_mib: { min: 128, max: 4096, label: "Memory (MiB)" },
   disk_mib: { min: 256, max: 16384, label: "Disk (MiB)" },
-  http_port: { min: 1024, max: 65535, label: "HTTP port" },
+  http_port: { min: 1, max: 65535, label: "HTTP port" },
 } as const;
 export type NumberField = keyof typeof limits;
 

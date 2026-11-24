@@ -14,6 +14,9 @@ import (
 // signed in, but refuses to delete one that has, whatever deletes it.
 func TestRealHooksAllowAccountsButKeepSignedIn(t *testing.T) {
 	app := newHookApp(t)
+	if err := app.RunAllMigrations(); err != nil {
+		t.Fatal(err)
+	}
 	users, err := app.FindCollectionByNameOrId("users")
 	if err != nil {
 		t.Fatal(err)
@@ -54,8 +57,5 @@ func newHookApp(t *testing.T) core.App {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = app.ResetBootstrapState() })
-	if err := app.RunAllMigrations(); err != nil {
-		t.Fatal(err)
-	}
 	return app
 }
