@@ -356,9 +356,8 @@ def publish(args):
         base = f"https://github.com/{REPOSITORY}/releases/download/{tag}"
         body = (f"Drop {release_version}: server, reader and CLI in one binary.\n\n"
                 "Linux only: static musl binaries for amd64 and arm64.\n\n"
-                f"`curl -fsSL {base}/install.sh | sh -s -- /absolute/folder` installs from this release's download URLs, "
-                "which need no authentication only in a public repository. While the repository is private, download "
-                f"the archive with `gh release download {tag} -R {REPOSITORY}` and check it against checksums.txt.\n\n"
+                f"`curl -fsSL {base}/install.sh | sh -s -- /absolute/folder` installs this release. To download "
+                f"the archives, use `gh release download {tag} -R {REPOSITORY}` and check it against checksums.txt.\n\n"
                 f"See the [README](https://github.com/{REPOSITORY}/blob/{tag}/README.md).\n\n{marker}")
         notes = ROOT / "docs" / "releases" / f"{release_version}.md"
         if notes.is_file():
