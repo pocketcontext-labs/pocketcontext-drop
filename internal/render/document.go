@@ -23,13 +23,23 @@ type document struct {
 }
 
 type volume struct {
+	// The current runner requires an explicit null to select host storage.
+	// Keep raw input so we can refuse foreign volume backends in previous files.
+	Storage json.RawMessage `json:"storage"`
+
 	VolumeID     string `json:"volumeId"`
 	AppID        string `json:"appId"`
 	SizeBytes    int64  `json:"sizeBytes"`
 	DesiredState string `json:"desiredState"`
 }
 
+type signInEmail struct {
+	Recipient string `json:"recipient"`
+}
+
 type instance struct {
+	SignInEmail *signInEmail `json:"signInEmail,omitempty"`
+
 	AppID        string      `json:"appId"`
 	DeploymentID string      `json:"deploymentId"`
 	VolumeID     string      `json:"volumeId"`
@@ -245,6 +255,9 @@ func parsePrevious(raw json.RawMessage, hostID string) (previous, error) {
 		return p, &Error{Code: CodeUnsupportedEntries, Message: "Drop v0 never writes checkpoints or exports; the operator must remove them"}
 	}
 	for _, v := range doc.Volumes {
+		if len(v.Storage) != 0 && !bytes.Equal(bytes.TrimSpace(v.Storage), []byte("null")) {
+			return p, bad("Drop does not manage volumes with a custom storage backend")
+		}
 		if !reAppID.MatchString(v.AppID) || v.VolumeID != v.AppID+"-vol" {
 			return p, bad("volume %q of app %q is not a Drop volume", v.VolumeID, v.AppID)
 		}

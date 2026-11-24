@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { NAME_LIMIT, validName, validSlug } from "./api";
-import { dropApi, type DesiredState, type HealthKind } from "./dropApi";
+import { dropApi, type AppKind, type DesiredState, type HealthKind } from "./dropApi";
 import { message } from "./errors";
 import { appHash, viewHashes } from "./routes";
 
@@ -47,6 +47,7 @@ export function NumberInput({
 /** `#/apps/new`: create an app with its name, slug and settings. */
 export default function AppNew() {
   const [name, setName] = useState("");
+  const [kind, setKind] = useState<AppKind>("ordinary");
   const [slug, setSlug] = useState("");
   const [state, setState] = useState<DesiredState>("on-request");
   const [executable, setExecutable] = useState("server");
@@ -69,6 +70,7 @@ export default function AppNew() {
       const app = await dropApi.createApp({
         name: validName(name),
         slug: validSlug(slug),
+        kind,
         desired_state: state,
         executable_name: executable.trim(),
         health_kind: health,
@@ -106,6 +108,21 @@ export default function AppNew() {
             placeholder="Hello app"
           />
         </label>
+        <label>
+          App type
+          <select
+            value={kind}
+            onChange={(event) => setKind(event.target.value as AppKind)}
+          >
+            <option value="ordinary">Ordinary app</option>
+            <option value="crew">PocketContext Crew</option>
+          </select>
+        </label>
+        {kind === "crew" && (
+          <p className="quiet">
+            Crew sign-in codes go to the email you verified with Drop when you create the app.
+          </p>
+        )}
         <label>
           Slug
           <input

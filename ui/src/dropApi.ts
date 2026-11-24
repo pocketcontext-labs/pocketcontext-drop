@@ -71,10 +71,14 @@ export interface Invite {
   created: string;
 }
 
+export type AppKind = "ordinary" | "crew";
 export type DesiredState = "running" | "on-request" | "stopped";
 export type HealthKind = "tcp" | "http";
 /** An app (internal/dropapi App). Env holds plain values only. */
 export interface App {
+  kind: AppKind;
+  crew_owner_email?: string;
+  sign_in_email_enabled: boolean;
   id: string;
   name: string;
   slug: string;
@@ -331,13 +335,14 @@ async function getApp(app: string): Promise<{ app: App; secrets: Secret[] }> {
   return op("app.get", { app });
 }
 async function createApp(
-  input: { name: string; slug: string; env?: Record<string, string> } & AppSettings,
+  input: { name: string; slug: string; kind?: AppKind; env?: Record<string, string> } & AppSettings,
 ): Promise<App> {
   return (await op<{ app: App }>("app.create", input)).app;
 }
 async function setApp(
   app: string,
   change: AppSettings & {
+    sign_in_email_enabled?: boolean;
     name?: string;
     env?: { set?: Record<string, string>; unset?: string[] };
   },

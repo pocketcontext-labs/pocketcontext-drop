@@ -1,5 +1,5 @@
 // Package render turns Drop's resolved apps for one node into nibrunner's whole
-// desired.json document (nibrunner v2026.11.12, schema/desired.schema.json).
+// desired.json document (schema/desired.schema.json).
 //
 // Render is pure: no clock, no randomness, no file or network access. The same
 // Input always gives byte-identical output. Drop owns the whole document
@@ -21,6 +21,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/appspec"
 )
 
 // Input is everything Render needs. It is also the JSON form of the golden
@@ -50,6 +52,9 @@ type Input struct {
 type App struct {
 	AppID        string `json:"appId"`        // ^d-[a-z0-9]{15}$
 	DeploymentID string `json:"deploymentId"` // <appId>-dep-<n>
+	// CrewOwnerEmail is the immutable address Drop verified at creation.
+	CrewOwnerEmail     string `json:"crewOwnerEmail,omitempty"`
+	SignInEmailEnabled bool   `json:"signInEmailEnabled,omitzero"`
 	// DesiredState is running, on-request or stopped.
 	DesiredState string `json:"desiredState"`
 	// IdleTimeoutMs is the traffic-idle sleep timeout of an on-request app,
@@ -258,6 +263,7 @@ func Render(in Input) (*Output, error) {
 		}
 		inst.DesiredState = "stopped"
 		inst.Activation = nil
+		inst.SignInEmail = nil
 		instances[id] = inst
 		out.Tombstoned = append(out.Tombstoned, id)
 	}
@@ -319,6 +325,9 @@ func renderEnvironment(app App) map[string]string {
 	for _, s := range app.Secrets {
 		env[s.Name] = s.Value
 	}
+	if app.CrewOwnerEmail != "" {
+		env["DROP_OWNER_EMAIL"] = app.CrewOwnerEmail
+	}
 	env[envHost] = envHostRef
 	env["NIBRUN_DATA_DIR"] = dataDir
 	env["HOME"] = dataDir
@@ -363,6 +372,9 @@ func renderInstance(app App) instance {
 		},
 		Hostnames: hostnames,
 		Access:    access{Kind: "public"},
+	}
+	if app.SignInEmailEnabled && app.DesiredState != appspec.StateStopped {
+		inst.SignInEmail = &signInEmail{Recipient: app.CrewOwnerEmail}
 	}
 	if app.DesiredState == "on-request" {
 		inst.Activation = &activation{SleepWhen: sleepWhen{Kind: "traffic-idle", TimeoutMs: app.IdleTimeoutMs}}

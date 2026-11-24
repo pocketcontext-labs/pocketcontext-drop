@@ -73,12 +73,13 @@
       "volumeId": "d-crewdev00000001-vol"
     }
   ],
-  "revision": "drop-1-85595f79cd8c",
+  "revision": "drop-1-3e2fb8144978",
   "volumes": [
     {
       "appId": "d-crewdev00000001",
       "desiredState": "present",
       "sizeBytes": 4294967296,
+      "storage": null,
       "volumeId": "d-crewdev00000001-vol"
     }
   ]

@@ -201,7 +201,11 @@ class FakeAgent:
         for r in d['rejected']:
             need(APP_ID.match(r['appId']) and r['code'] and r['message'] and r['appId'] not in ids, f'rejected entry {r}')
         for a in d['apps']:
-            need(set(a) <= APP_KEYS and set(a) >= APP_KEYS - {'idleTimeoutMs'}, f'app keys {sorted(a)}')
+            extra = set(a) - APP_KEYS
+            need(extra <= {'crewOwnerEmail', 'signInEmailEnabled'} and set(a) >= APP_KEYS - {'idleTimeoutMs'}, f'app keys {sorted(a)}')
+            if extra:
+                need(isinstance(a.get('crewOwnerEmail'), str) and '@' in a['crewOwnerEmail'], 'Crew owner email')
+                need('signInEmailEnabled' not in a or a['signInEmailEnabled'] is True, 'enabled Crew binding')
             app_id = a['appId']
             need(APP_ID.match(app_id), 'appId')
             need(re.match('^' + re.escape(app_id) + r'-dep-[0-9]{1,9}$', a['deploymentId']), 'deploymentId')

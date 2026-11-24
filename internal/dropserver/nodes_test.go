@@ -258,6 +258,9 @@ func TestDesiredDocument(t *testing.T) {
 	if strings.Contains(raw, "sentinel-secret-value") || strings.Contains(raw, `"value"`) {
 		t.Fatal("the desired document carries a secret value field")
 	}
+	if strings.Contains(raw, "signInEmailEnabled") || strings.Contains(raw, "crewOwnerEmail") {
+		t.Fatal("ordinary app changed the drop.desired/v1 wire format")
+	}
 	a := d.Apps[0]
 	release := record.GetString("current_release")
 	rel, _ := h.App.FindRecordById("releases", release)

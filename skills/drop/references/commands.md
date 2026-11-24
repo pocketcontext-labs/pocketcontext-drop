@@ -18,7 +18,7 @@
 ```sh
 drop app list [--all] [--archived] [--limit N]
 drop app show APP
-drop app create NAME|- --slug SLUG [--mode running|on-request|stopped] [--idle-timeout MS] [--vcpu N] [--memory MIB] [--disk MIB] [--port N] [--executable NAME] [--args-json JSON] [--health tcp|http] [--health-path PATH]
+drop app create NAME|- --slug SLUG [--kind ordinary|crew] [--mode running|on-request|stopped] [--idle-timeout MS] [--vcpu N] [--memory MIB] [--disk MIB] [--port N] [--executable NAME] [--args-json JSON] [--health tcp|http] [--health-path PATH]
 drop app set APP [--name NAME] [the same settings]
 drop app env APP KEY=VALUE|-KEY ...
 drop app start|stop|archive|restore APP
@@ -28,6 +28,7 @@ APP is an app's id or slug; another account's app is "not found" (exit 1).
 
 - An app: `id`, `name`, `slug`, `owner`, `owner_email`, `nib_app_id` (`d-<id>`), `volume_id`, `hostname` (`SLUG.<app domain>`, empty without one), `desired_state`, `idle_timeout_ms` (60000-86400000), `vcpu` (1-2), `memory_mib` (128-4096), `disk_mib` (256-16384), `http_port` (guest HTTP port, 1-65535), `executable_name` (`^[a-z][a-z0-9-]{0,31}$`), `args`, `env` (plain values only), `health_kind` (`tcp` or `http`), `health_path`, `deployment_seq`, `deployment_id` (`<nib_app_id>-dep-<deployment_seq>`), `current_release` (a release id, empty before the first deploy), `archived`, `archived_at`, `created`, `updated`.
 - `app list` prints `{"apps", "has_more", "quota"}` newest first; `quota` is `{"used", "limit", "unlimited"}`. `--archived` lists archived apps; `--all` (admins) every account's.
+- For a hosted PocketContext Crew app, pass `--kind crew`. Drop uses the account email verified at creation. Toggle delivery with `app set APP --sign-in-email enabled|disabled`. Other apps default to ordinary.
 - `app create` defaults: `on-request`, 300000 ms, 1 vCPU, 512 MiB, 1024 MiB disk, port 8080, executable `server`, a tcp health check (`--health http` checks `/` unless `--health-path` says otherwise). Prints `{"app"}`. A taken slug (`slug_taken`) or a full quota (`quota_exceeded`) exits 4; a reserved slug (`drop`, `www`, `api`, ...) or a bad value exits 1 with the field.
 - `app set` prints `{"app", "deployment_bumped"}`; the slug never changes. A changed state, port, executable, arguments, environment, health check, vCPU, memory or idle timeout starts a new deployment (`deployment_bumped: true`); the name, `app start`/`app stop` and the disk do not.
 - `app env` sets `KEY=VALUE` and removes `-KEY`. Names are `^[A-Z][A-Z0-9_]{0,63}$`, not `HOME`, `PATH`, `NIBRUN_*` or `DROP_*`, at most 64 together with the secrets; values at most 4096 bytes and may use only `${NIBRUN_HOSTNAME}` and `${NIBRUN_HTTP_PORT}` among `${NIBRUN_*}` references.

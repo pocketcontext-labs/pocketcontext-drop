@@ -206,7 +206,7 @@ parsed:
 		"schema":         {nil, nil},
 		"sql":            {nil, nil},
 		"query":          {nil, nil},
-		"app":            {{"slug", "name", "mode", "idle-timeout", "vcpu", "memory", "disk", "port", "executable", "args-json", "health", "health-path", "limit"}, {"all", "archived"}},
+		"app":            {{"kind", "sign-in-email", "slug", "name", "mode", "idle-timeout", "vcpu", "memory", "disk", "port", "executable", "args-json", "health", "health-path", "limit"}, {"all", "archived"}},
 		"secret":         {nil, nil},
 		"release":        {{"note", "limit"}, {"activate"}},
 		"search":         {{"limit", "offset", "generation"}, nil},

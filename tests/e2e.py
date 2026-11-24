@@ -511,6 +511,8 @@ def single_user_scenario(pc):
     # Apps change only through operations; the records API reads the account's apps and writes none.
     status, _ = pc.http('POST', '/api/collections/apps/records', {'name': 'Through the records API', 'slug': 'records-api', 'owner': 'aaaaaaaaaaaaaaa'}, headers={'Authorization': mine})
     check(status == 403, 'the records API creates no app')
+    status, _ = pc.http('POST', '/api/drop/op', {'op': 'app.create', 'input': {'name': 'Crew', 'slug': 'local-crew', 'kind': 'crew'}}, headers={'Authorization': mine})
+    check(status == 403, 'a local password account cannot provision managed email')
     created = pc.json('app', 'create', 'Records reader app', '--slug', 'records-app')['app']
     check(created['owner'] == me, 'app create makes an app owned by the caller')
     status, body = pc.http('GET', '/api/collections/apps/records?perPage=100', headers={'Authorization': mine})

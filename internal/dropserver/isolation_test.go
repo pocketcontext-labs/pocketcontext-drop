@@ -39,6 +39,7 @@ import (
 //	Agent routes anonymous 401, users' tokens (owner included) 403            TestNodeIsolation
 //	             N1's desired document holds only N1's apps; reports about    TestNodeIsolation
 //	             another node's app are ignored; another host is 409
+//	             Crew mailbox snapshot and node isolation through a move       TestCrewSignInProvisioning
 //	             per-address node sign-in limiter, per-node route limiter     TestNodeSignInRateLimit, TestAgentRouteRateLimit (hardening_test.go)
 //	             a restore invalidates node tokens                            TestHostedRestoreInvalidatesNodeTokens (hardening_test.go)
 //	Realtime     A's subscriptions never deliver B's records; N1's never     TestRealtimeIsolation
@@ -679,5 +680,97 @@ func TestRealtimeIsolation(t *testing.T) {
 	}
 	if got := anonymous.snapshot(); len(got) != 0 {
 		t.Errorf("an anonymous subscription received %v", got)
+	}
+}
+
+// TestCrewSignInProvisioning exercises the verified mailbox through the same
+// creation, upload, placement and node pull a real Crew deployment uses.
+func TestCrewSignInProvisioning(t *testing.T) {
+	h := droptest.NewHosted(t, droptest.Options{})
+	admin := h.Token(h.Owner())
+	_, _, nodeA := h.Node("node-one", hostA)
+	_, _, nodeB := h.Node("node-two", hostB)
+	create := func(token, slug string) map[string]any {
+		t.Helper()
+		return appOf(t, h.MustOp(token, "app.create", map[string]any{"slug": slug, "name": slug, "kind": "crew"}))
+	}
+	place := func(token, app, node string) {
+		t.Helper()
+		path := uploadLink(t, h, token, app, map[string]any{"activate": true})
+		if a := upload(t, h, path, droptest.ELF(4096, 1)); a.Status != http.StatusOK {
+			t.Fatal(a.Raw)
+		}
+		h.MustOp(admin, "placement.set", map[string]any{"app": app, "node": node})
+	}
+	// The hosted owner hasn't signed in yet. An existing account alone is insufficient.
+	wantError(t, h.Op(admin, "app.create", map[string]any{"name": "Pending", "slug": "pending", "kind": "crew"}), 403, "forbidden")
+	const alice = "alice+crew@example.test"
+	const bob = "bob@example.test"
+	h.Invite(alice, "user")
+	h.Invite(bob, "user")
+	a := h.SignIn(alice)
+	b := h.SignIn(bob)
+	ordinary := appOf(t, h.MustOp(a.Token, "app.create", map[string]any{"name": "Ordinary", "slug": "plain-app"}))
+	if ordinary["kind"] != "ordinary" || ordinary["sign_in_email_enabled"] != false || ordinary["crew_owner_email"] != nil {
+		t.Fatal("ordinary app received mail configuration")
+	}
+	wantError(t, h.Op(a.Token, "app.set", map[string]any{"app": ordinary["id"], "sign_in_email_enabled": true}), 400, "invalid_input")
+	appA, appB := create(a.Token, "crew-alice"), create(b.Token, "crew-bob")
+	if appA["kind"] != "crew" || appA["crew_owner_email"] != alice || appA["sign_in_email_enabled"] != true {
+		t.Fatalf("creation %v", appA)
+	}
+	idA, idB := appA["id"].(string), appB["id"].(string)
+	for _, field := range []string{"crew_owner_email", "recipient", "owner_email"} {
+		wantError(t, h.Op(a.Token, "app.create", map[string]any{"slug": "other", "name": "Other", "kind": "crew", field: bob}), 400, "invalid_input")
+		wantError(t, h.Op(a.Token, "app.set", map[string]any{"app": idA, field: bob}), 400, "invalid_input")
+	}
+	wantError(t, h.Op(a.Token, "app.set", map[string]any{"app": idA, "kind": "ordinary"}), 400, "invalid_input")
+	wantError(t, h.Op(a.Token, "app.set", map[string]any{"app": idA, "env": map[string]any{"set": map[string]string{"DROP_OWNER_EMAIL": bob}}}), 400, "invalid_input")
+	wantError(t, h.Op(a.Token, "secret.set", map[string]any{"app": idA, "name": "DROP_OWNER_EMAIL", "value": bob}), 400, "invalid_input")
+	wantError(t, h.Op(b.Token, "app.set", map[string]any{"app": idA, "sign_in_email_enabled": false}), 404, "not_found")
+	place(a.Token, idA, "node-one")
+	place(b.Token, idB, "node-two")
+	assertRecipient := func(node, want, other string, enabled bool) {
+		t.Helper()
+		d, raw := desired(t, h, node)
+		if len(d.Apps) != 1 || d.Apps[0].CrewOwnerEmail != want || d.Apps[0].SignInEmailEnabled != enabled || strings.Contains(raw, other) {
+			t.Fatalf("unexpected per-node Crew binding: %s", raw)
+		}
+	}
+	assertRecipient(nodeA, alice, bob, true)
+	assertRecipient(nodeB, bob, alice, true)
+	h.MustOp(a.Token, "app.set", map[string]any{"app": idA, "sign_in_email_enabled": false})
+	assertRecipient(nodeA, alice, bob, false)
+	h.MustOp(a.Token, "app.set", map[string]any{"app": idA, "sign_in_email_enabled": true})
+
+	const updated = "alice-new@example.test"
+	user, err := h.App.FindAuthRecordByEmail("users", alice)
+	if err != nil {
+		t.Fatal(err)
+	}
+	user.SetEmail(updated)
+	user.SetVerified(false)
+	if err = h.App.Save(user); err != nil {
+		t.Fatal(err)
+	}
+	// Verify the new address through the same hosted OTP endpoint.
+	next := h.SignIn(updated)
+	if newApp := create(next.Token, "crew-new"); newApp["crew_owner_email"] != updated {
+		t.Fatal(newApp)
+	}
+	h.MustOp(next.Token, "app.set", map[string]any{"app": idA, "memory_mib": 768})
+	assertRecipient(nodeA, alice, updated, true)
+	h.MustOp(admin, "placement.set", map[string]any{"app": idA, "node": "node-two"})
+	if d, _ := desired(t, h, nodeA); len(d.Apps) != 0 {
+		t.Fatal("old node still receives moved app")
+	}
+	d, _ := desired(t, h, nodeB)
+	if len(d.Apps) != 2 {
+		t.Fatal("destination missing app")
+	}
+	for _, app := range d.Apps {
+		if app.AppID == appA["nib_app_id"] && (app.CrewOwnerEmail != alice || !app.SignInEmailEnabled) {
+			t.Fatal("move changed binding")
+		}
 	}
 }

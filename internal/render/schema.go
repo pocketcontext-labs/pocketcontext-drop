@@ -11,14 +11,12 @@ import (
 	"strings"
 	"sync"
 	"unicode/utf8"
+
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/appspec"
 )
 
-// DesiredSchema is nibrunner's desired.schema.json, vendored byte for byte from
-// github.com/ilbertt/nibrunner tag v2026.11.12 (commit
-// e7986824ed5abdb738364667456b5a24df5f6d62,
-// crates/protocol/schema/desired.schema.json, sha256 bc53425dad8e0b3a…). nibrun's
-// apps/agent/src/lib/nibrunner/desired.gen.ts is generated from the same file.
-// TestVendoredSchemaDigest pins it; docs/render.md says how to update it.
+// DesiredSchema is pocketcontext-nibrunner's crates/protocol/schema/desired.schema.json.
+// TestVendoredSchemaDigest pins its bytes. See docs/render.md for provenance.
 //
 //go:embed schema/desired.schema.json
 var DesiredSchema []byte
@@ -26,8 +24,8 @@ var DesiredSchema []byte
 // ValidateSchema checks a desired.json document against DesiredSchema with a
 // focused JSON Schema 2020-12 evaluator: exactly the keywords that schema uses
 // (local $ref, type, properties, required, additionalProperties, items,
-// min/maxItems, minimum, maximum, min/maxLength, pattern, enum, const, anyOf,
-// oneOf, not, if/then/else, propertyNames, and the uint32, uint64 and double
+// min/maxItems, minimum, maximum, min/maxLength, pattern, enum, const, allOf, anyOf,
+// oneOf, not, if/then/else, propertyNames, and the email, uint32, uint64 and double
 // formats). A schema using any other keyword is refused, so a schema bump
 // cannot silently weaken the check.
 func ValidateSchema(doc []byte) error {
@@ -82,10 +80,10 @@ var (
 		"$ref": true, "type": true, "properties": true, "required": true, "additionalProperties": true,
 		"items": true, "minItems": true, "maxItems": true, "minimum": true, "maximum": true,
 		"minLength": true, "maxLength": true, "pattern": true, "enum": true, "const": true,
-		"anyOf": true, "oneOf": true, "not": true, "if": true, "then": true, "else": true,
+		"anyOf": true, "allOf": true, "oneOf": true, "not": true, "if": true, "then": true, "else": true,
 		"propertyNames": true, "format": true,
 	}
-	knownFormats = map[string]bool{"uint32": true, "uint64": true, "double": true}
+	knownFormats = map[string]bool{"email": true, "uint32": true, "uint64": true, "double": true}
 )
 
 // checkKeywords walks every subschema and refuses unknown keywords, formats
@@ -119,7 +117,7 @@ func checkKeywords(s map[string]any, at string) error {
 					return err
 				}
 			}
-		case "anyOf", "oneOf":
+		case "allOf", "anyOf", "oneOf":
 			list, _ := val.([]any)
 			for i, sub := range list {
 				if err := checkSub(sub, fmt.Sprintf("%s/%s/%d", at, k, i)); err != nil {
@@ -257,6 +255,9 @@ func (v *validator) check(s map[string]any, inst any, at string) []string {
 			}
 		}
 	case string:
+		if s["format"] == "email" && !appspec.ValidSignInMailbox(x) {
+			fail("invalid email format")
+		}
 		length := utf8.RuneCountInString(x)
 		if lim, ok := ratOf(s["minLength"]); ok && big.NewRat(int64(length), 1).Cmp(lim) < 0 {
 			fail("shorter than %v", s["minLength"])
@@ -310,6 +311,11 @@ func (v *validator) check(s map[string]any, inst any, at string) []string {
 			} else if ap, ok := s["additionalProperties"]; ok {
 				errs = append(errs, v.sub(ap, x[k], child)...)
 			}
+		}
+	}
+	if list, ok := s["allOf"].([]any); ok {
+		for _, sub := range list {
+			errs = append(errs, v.sub(sub, inst, at)...)
 		}
 	}
 	if list, ok := s["anyOf"].([]any); ok {

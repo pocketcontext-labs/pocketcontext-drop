@@ -55,6 +55,8 @@ A partial unique index allows one open invite per address (`email_lower` where `
 | Field | Type | Rules |
 | --- | --- | --- |
 | `owner` | relation to `users` | required; the account that created the app; never changes |
+| `crew_owner_email` | text, at most 254 | Verified hosted account email copied when creating a Crew app. Empty on ordinary apps. Its value fixes the app kind and the Crew owner through moves, redeployments and restores. |
+| `sign_in_email_enabled` | bool | Enables managed delivery for a Crew app. Set at creation and editable through `app.set`. |
 | `name` | text, at most 80 | required |
 | `slug` | text | required, `^[a-z][a-z0-9-]{1,30}[a-z0-9]$`, unique across all accounts, not a reserved name; immutable |
 | `nib_app_id` | text | `d-<record id>`: nibrunner's app id; unique, immutable |

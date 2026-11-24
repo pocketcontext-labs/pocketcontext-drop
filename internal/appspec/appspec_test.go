@@ -52,3 +52,16 @@ func TestArgsHealthAndIDs(t *testing.T) {
 		t.Fatal("ids")
 	}
 }
+
+func TestSignInMailbox(t *testing.T) {
+	for _, address := range []string{"owner+drop@example.test", "a.b@domain", strings.Repeat("x", 64) + "@example.test"} {
+		if !ValidSignInMailbox(address) {
+			t.Errorf("refused %q", address)
+		}
+	}
+	for _, address := range []string{"", "addr", "name <a@b>", "a@b,c@d", "a@é.test", "one..two@test", "a\r\nb@c", strings.Repeat("a", 65) + "@example.test", "a@" + strings.Repeat("b", 64) + ".org", "a@-domain.org", "a@domain-.org"} {
+		if ValidSignInMailbox(address) {
+			t.Errorf("accepted %q", address)
+		}
+	}
+}

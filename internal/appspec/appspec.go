@@ -71,6 +71,23 @@ var (
 	nibrunRef  = regexp.MustCompile(`\$\{NIBRUN_[^}]*\}`)
 )
 
+var crewLocalPart = regexp.MustCompile("^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(\\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*$")
+var mailDomainLabel = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$`)
+
+// ValidSignInMailbox accepts ASCII dot-atom mailboxes with DNS domains.
+func ValidSignInMailbox(address string) bool {
+	local, domain, ok := strings.Cut(address, "@")
+	if !ok || len(address) > 254 || len(local) > 64 || !crewLocalPart.MatchString(local) {
+		return false
+	}
+	for label := range strings.SplitSeq(domain, ".") {
+		if !mailDomainLabel.MatchString(label) {
+			return false
+		}
+	}
+	return true
+}
+
 // ValidDesiredState reports whether s is running, on-request or stopped.
 func ValidDesiredState(s string) bool {
 	return s == StateRunning || s == StateOnRequest || s == StateStopped

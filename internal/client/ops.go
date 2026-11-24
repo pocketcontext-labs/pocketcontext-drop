@@ -255,6 +255,12 @@ func typedOp[In any](c *Client, op string, fields map[string]any) (any, error) {
 }
 
 func runApp(c *Client, sub string, a *args) (any, error) {
+	if a.has("kind") && sub != "create" {
+		return nil, fail(2, "--kind is only for app create")
+	}
+	if a.has("sign-in-email") && sub != "set" {
+		return nil, fail(2, "--sign-in-email is only for app set")
+	}
 	settingsOK := func() error {
 		for _, flag := range []string{"all", "archived"} {
 			if a.bools[flag] {
@@ -279,7 +285,7 @@ func runApp(c *Client, sub string, a *args) (any, error) {
 		}
 		return c.Op("app.get", dropapi.AppGetInput{App: a.pos[1]}, "")
 	case "create":
-		usage := "app create NAME|- --slug SLUG " + appSettingsUsage
+		usage := "app create NAME|- --slug SLUG [--kind ordinary|crew] " + appSettingsUsage
 		if err := a.need(2, usage); err != nil {
 			return nil, err
 		}
@@ -297,10 +303,13 @@ func runApp(c *Client, sub string, a *args) (any, error) {
 		if err != nil {
 			return nil, err
 		}
+		if a.has("kind") {
+			fields["kind"] = a.flags["kind"]
+		}
 		fields["name"], fields["slug"] = strings.TrimSpace(string(name)), a.flags["slug"]
 		return typedOp[dropapi.AppCreateInput](c, "app.create", fields)
 	case "set":
-		usage := "app set APP [--name NAME] " + appSettingsUsage
+		usage := "app set APP [--name NAME] [--sign-in-email enabled|disabled] " + appSettingsUsage
 		if err := a.need(2, usage); err != nil {
 			return nil, err
 		}
@@ -316,6 +325,16 @@ func runApp(c *Client, sub string, a *args) (any, error) {
 		}
 		if a.has("name") {
 			fields["name"] = a.flags["name"]
+		}
+		if a.has("sign-in-email") {
+			switch a.flags["sign-in-email"] {
+			case "enabled":
+				fields["sign_in_email_enabled"] = true
+			case "disabled":
+				fields["sign_in_email_enabled"] = false
+			default:
+				return nil, fail(2, "--sign-in-email must be enabled or disabled")
+			}
 		}
 		if len(fields) == 0 {
 			return nil, fail(2, "usage: drop %s", usage)

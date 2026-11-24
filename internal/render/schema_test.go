@@ -10,11 +10,11 @@ import (
 	"testing"
 )
 
-// The vendored schema is nibrunner v2026.11.12's file, byte for byte. Update
+// The vendored schema is the pinned NibRunner file, byte for byte. Update
 // this digest only together with a deliberate schema bump (docs/render.md).
 func TestVendoredSchemaDigest(t *testing.T) {
 	sum := sha256.Sum256(DesiredSchema)
-	if got := hex.EncodeToString(sum[:]); got != "bc53425dad8e0b3a1959e32774c20c8a81ffeb4450e06a93b0b7c78999ee33dd" {
+	if got := hex.EncodeToString(sum[:]); got != "70dcfb1ceb104e25366bd598c6a62b8a7e5756d5620badb171961cd663cba67f" {
 		t.Fatalf("schema/desired.schema.json sha256 %s", got)
 	}
 	if _, err := loadSchema(); err != nil {

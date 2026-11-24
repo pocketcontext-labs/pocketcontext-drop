@@ -33,6 +33,10 @@ const (
 // the instance configuration changes (see docs/ops.md). Env holds plain values
 // only: secrets are listed by name with secret.list and never returned.
 type App struct {
+	Kind               string `json:"kind"`
+	CrewOwnerEmail     string `json:"crew_owner_email,omitempty"`
+	SignInEmailEnabled bool   `json:"sign_in_email_enabled"`
+
 	ID             string            `json:"id"`
 	Name           string            `json:"name"`
 	Slug           string            `json:"slug"`
@@ -111,6 +115,7 @@ type AppDetail struct {
 type AppCreateInput struct {
 	Name           string            `json:"name"`
 	Slug           string            `json:"slug"`
+	Kind           string            `json:"kind,omitempty"`
 	DesiredState   string            `json:"desired_state,omitempty"`
 	IdleTimeoutMs  *int              `json:"idle_timeout_ms,omitempty"`
 	VCPU           *int              `json:"vcpu,omitempty"`
@@ -147,6 +152,8 @@ type AppSetInput struct {
 	Env            *EnvChange `json:"env,omitempty"`
 	HealthKind     *string    `json:"health_kind,omitempty"`
 	HealthPath     *string    `json:"health_path,omitempty"`
+
+	SignInEmailEnabled *bool `json:"sign_in_email_enabled,omitempty"`
 }
 
 // AppResult is a created or changed app.

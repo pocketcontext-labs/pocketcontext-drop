@@ -47,6 +47,10 @@ Without `--db`, the database is `bin/drop.db`. The server listens on `http://127
 
 **Local** (plain `serve`, for developing the reader): a project has exactly one account, created by `init`, with no name or email to choose (`users` holds one hidden record). The reader asks only for its password. `open` signs the browser in with a single-use link valid for two minutes; `login-code` issues one-time codes for remote clients (see below). The CLI needs no password: it reads a random key that the server writes to the private cache at start and exchanges it, in the `X-Drop-Local-Key` header, for an ordinary `users` token. Anyone who can read that key can already read the database. All APIs, including SQL and search, still require a token, CORS allows only the server's own origin, and requests for any other `Host` are refused, so web pages cannot reach the server through `127.0.0.1`. The local server listens on loopback only. `/api/bundle/instance` answers `{"app": "drop", ...}` so the CLI and the launcher can tell this server from another program on the port.
 
+### Creating a Crew app
+
+In hosted Drop, select **PocketContext Crew** when creating an app or pass `--kind crew` to `drop app create`. Drop copies your verified address to the new app. Crew and the node mail service use that address across restarts and moves. Configure the relay once on NibRunner. To pause delivery for a Crew app, change its sign-in email setting or run `drop app set APP --sign-in-email disabled`.
+
 ## Several computers
 
 Only one computer may run a project at a time. `drop.db.lease` carries a heartbeat; another computer refuses to start for two minutes after the last one (`--take-over` overrides when that computer is off). Run `drop stop` before switching computers and wait for the sync client to finish.

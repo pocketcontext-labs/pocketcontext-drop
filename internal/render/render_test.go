@@ -82,8 +82,7 @@ func TestGolden(t *testing.T) {
 }
 
 // The golden entry is the live crew-dev entry (sanitized copy attached to the
-// M8 task), renamed to a Drop id. Only the ids and the objectKey (Drop stages
-// artifacts under their sha256) may differ.
+// M8 task), renamed to a Drop id, with its staged objectKey and explicit host storage.
 func TestGoldenMatchesLiveEntry(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("testdata", "crew-dev.live.json"))
 	if err != nil {
@@ -117,6 +116,8 @@ func TestGoldenMatchesLiveEntry(t *testing.T) {
 	if !reflect.DeepEqual(insts[0], live["instance"]) {
 		t.Fatalf("instance differs from the live entry:\n got %s\nwant %s", js(insts[0]), js(live["instance"]))
 	}
+	// The current NibRunner schema spells the original host backend explicitly.
+	live["volume"].(map[string]any)["storage"] = nil
 	if !reflect.DeepEqual(vols[0], live["volume"]) {
 		t.Fatalf("volume differs from the live entry:\n got %s\nwant %s", js(vols[0]), js(live["volume"]))
 	}
@@ -478,6 +479,9 @@ func TestWholeInputRefusals(t *testing.T) {
 		{"previous checkpoint", func(in *Input) {
 			in.Previous = bytes.Replace(first.Document, []byte(`"checkpoints": []`), []byte(`"checkpoints": [{"checkpointId":"c","volumeId":"d-crewdev00000001-vol","desiredState":"present"}]`), 1)
 		}, CodeUnsupportedEntries},
+		{"custom volume backend", func(in *Input) {
+			in.Previous = bytes.Replace(first.Document, []byte(`"storage": null`), []byte(`"storage": {"bucket":"foreign"}`), 1)
+		}, CodeInvalidPrevious},
 		{"previous absent volume", func(in *Input) {
 			in.Previous = bytes.Replace(first.Document, []byte(`"desiredState": "present"`), []byte(`"desiredState": "absent"`), 1)
 		}, CodeUnsupportedEntries},
@@ -638,5 +642,49 @@ func TestCanonicalForm(t *testing.T) {
 	other := bytes.Replace(compact.Bytes(), []byte(out.Revision), []byte("hand-1"), 1)
 	if h, err := ContentHash(other); err != nil || h != out.ContentHash {
 		t.Fatalf("ContentHash(compact, other revision) = %s, %v", h, err)
+	}
+}
+
+func TestCrewDeliveryFollowsAppliedInstance(t *testing.T) {
+	in := loadInput(t, "crew-dev.input.json")
+	in.Apps[0].CrewOwnerEmail = "owner+crew@example.test"
+	in.Apps[0].SignInEmailEnabled = true
+	current := mustRender(t, in)
+	instanceOf := func(out *Output) instance {
+		t.Helper()
+		var doc document
+		if err := json.Unmarshal(out.Document, &doc); err != nil {
+			t.Fatal(err)
+		}
+		if len(doc.Instances) != 1 {
+			t.Fatalf("missing instance: %+v", out.Rejected)
+		}
+		return doc.Instances[0]
+	}
+	inst := instanceOf(current)
+	if inst.SignInEmail == nil || inst.SignInEmail.Recipient != in.Apps[0].CrewOwnerEmail || inst.Config.Command.Environment["DROP_OWNER_EMAIL"] != inst.SignInEmail.Recipient {
+		t.Fatal("host and guest owner differ")
+	}
+	in.Previous = current.Document
+	in.Apps[0].CrewOwnerEmail = "Owner <untrusted@example.test>"
+	rejected := mustRender(t, in)
+	if len(rejected.Rejected) != 1 || !bytes.Equal(rejected.Document, current.Document) {
+		t.Fatal("malformed update replaced applied binding")
+	}
+	in.Apps[0].CrewOwnerEmail = inst.SignInEmail.Recipient
+	in.Apps[0].SignInEmailEnabled = false
+	disabled := instanceOf(mustRender(t, in))
+	if disabled.SignInEmail != nil || disabled.Config.Command.Environment["DROP_OWNER_EMAIL"] != inst.SignInEmail.Recipient {
+		t.Fatal("disabled binding or guest owner incorrect")
+	}
+	in.Apps[0].SignInEmailEnabled = true
+	in.Apps[0].DesiredState = "stopped"
+	if instanceOf(mustRender(t, in)).SignInEmail != nil {
+		t.Fatal("stopped app retained mail")
+	}
+	in.Apps = nil
+	dead := instanceOf(mustRender(t, in))
+	if dead.SignInEmail != nil || dead.DesiredState != "stopped" {
+		t.Fatal("tombstone retained mail")
 	}
 }

@@ -246,6 +246,7 @@ function Settings({
 }) {
   const [name, setName] = useState(app.name);
   const [state, setState] = useState<DesiredState>(app.desired_state);
+  const [emailEnabled, setEmailEnabled] = useState(Boolean(app.sign_in_email_enabled));
   const [executable, setExecutable] = useState(app.executable_name);
   const [args, setArgs] = useState(app.args.join("\n"));
   const [health, setHealth] = useState<HealthKind>(app.health_kind);
@@ -264,7 +265,7 @@ function Settings({
     event.preventDefault();
     setError("");
     setStatus("");
-    const change: AppSettings & { name?: string } = {};
+    const change: AppSettings & { name?: string; sign_in_email_enabled?: boolean } = {};
     try {
       const trimmed = validName(name);
       if (trimmed !== app.name) change.name = trimmed;
@@ -273,6 +274,8 @@ function Settings({
       return;
     }
     if (state !== app.desired_state) change.desired_state = state;
+    if (app.kind === "crew" && emailEnabled !== Boolean(app.sign_in_email_enabled))
+      change.sign_in_email_enabled = emailEnabled;
     if (executable.trim() !== app.executable_name)
       change.executable_name = executable.trim();
     const list = args.split("\n").filter((line) => line !== "");
@@ -378,6 +381,12 @@ function Settings({
             </label>
           )}
         </div>
+        {app.kind === "crew" && (
+          <label>
+            <input type="checkbox" checked={emailEnabled} onChange={(event) => setEmailEnabled(event.target.checked)} />
+            Deliver sign-in codes to {app.crew_owner_email}
+          </label>
+        )}
         <label>
           Arguments (one per line)
           <textarea

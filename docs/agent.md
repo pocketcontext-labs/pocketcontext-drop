@@ -20,6 +20,10 @@ drop agent render --input FILE|- [--previous FILE]
 - **Never an unstaged artifact.** When staging or a secret fails for an app, its previous entry is kept unchanged (`render.Input.Keep`), or a new app is left out; the report says `staging_failed` or `secret_failed`. Apps the server refused (`rejected`) keep their previous entries and are reported `failed`. An app that is gone becomes a stopped tombstone with its volume kept; nothing is ever `absent` in v0, and artifacts are never deleted.
 - **Secrets** live in memory (cached by deployment, parameter and version) and in `desired.json` only. They never reach `state.json`, a report, a log line or an error (errors name parameters, never values); the agent leaves free-text host and instance diagnostics on the node. The node secret is read from a file, never from an argument or an environment variable.
 
+## Crew sign-in email
+
+NibRunner uses the last desired state it applied, including across restarts while Drop is unavailable. A stopped or tombstoned instance has no sign-in email binding. Disabling delivery removes the binding when the node applies the update. A node disconnected before a move can still use its old binding. Fence the source before activating the destination when exclusive delivery is required. Configure the SMTP relay, sender and credential on NibRunner. The guest receives its fixed owner email through `DROP_OWNER_EMAIL`.
+
 ## The loop
 
 1. **Start:** read `desired.json` (refuse foreign entries, learn `hostId`; a missing file is fine when `reported.json` names the host) and `state.json` (rebuilt when missing or unreadable).

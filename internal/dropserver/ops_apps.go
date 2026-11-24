@@ -16,6 +16,7 @@ import (
 
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/appspec"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/droppolicy"
 )
 
 // App operations (M5a). Ownership: an app belongs to the account that created
@@ -110,7 +111,13 @@ func (c *Ctx) appOut(r *core.Record, emails map[string]string) dropapi.App {
 			emails[owner] = email
 		}
 	}
+	crewOwnerEmail := r.GetString("crew_owner_email")
+	kind := "ordinary"
+	if crewOwnerEmail != "" {
+		kind = "crew"
+	}
 	return dropapi.App{
+		Kind: kind, CrewOwnerEmail: crewOwnerEmail, SignInEmailEnabled: r.GetBool("sign_in_email_enabled"),
 		ID: r.Id, Name: r.GetString("name"), Slug: r.GetString("slug"), Owner: owner, OwnerEmail: email,
 		NibAppID: r.GetString("nib_app_id"), VolumeID: r.GetString("volume_id"), Hostname: r.GetString("hostname"),
 		DesiredState: r.GetString("desired_state"), IdleTimeoutMs: r.GetInt("idle_timeout_ms"),
@@ -358,6 +365,23 @@ func appCreate(c *Ctx, in *dropapi.AppCreateInput) (any, error) {
 	app := core.NewRecord(collection)
 	app.Id = core.GenerateDefaultRandomId()
 	nibAppID := appspec.AppID(app.Id)
+	switch in.Kind {
+	case "", "ordinary":
+	case "crew":
+		// authorizeOp reloaded this account inside the creation transaction.
+		// Only hosted OTP verification proves ownership of this mailbox.
+		if !accountsOf(c.App).hosted || !c.Auth.Verified() {
+			return nil, Forbidden("Sign in to hosted Drop with a verified email to create a Crew app.")
+		}
+		email := lowerASCII(c.Auth.Email())
+		if !appspec.ValidSignInMailbox(email) || email == droppolicy.Identity.LocalAccountEmail {
+			return nil, Invalid("kind", "The verified account address cannot receive Crew sign-in email.")
+		}
+		app.Set("crew_owner_email", email)
+		app.Set("sign_in_email_enabled", true)
+	default:
+		return nil, Invalid("kind", "App kind must be ordinary or crew.")
+	}
 	app.Set("owner", c.Auth.Id)
 	app.Set("name", name)
 	app.Set("slug", in.Slug)
@@ -382,6 +406,13 @@ func appSet(c *Ctx, in *dropapi.AppSetInput) (any, error) {
 	}
 	s := settingsOf(app)
 	var changed []string
+	if in.SignInEmailEnabled != nil {
+		if app.GetString("crew_owner_email") == "" {
+			return nil, Invalid("sign_in_email_enabled", "Sign-in email is available for Crew apps.")
+		}
+		app.Set("sign_in_email_enabled", *in.SignInEmailEnabled)
+		changed = append(changed, "sign_in_email_enabled")
+	}
 	if in.Name != nil {
 		name, err := cleanName(*in.Name)
 		if err != nil {

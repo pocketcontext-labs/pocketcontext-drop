@@ -9,7 +9,7 @@ const user = { id: "user00000000001", collectionId: "_pb_users_auth_", collectio
 const member: Me = { id: user.id, email: user.email, role: "user", admin: false, owner: false, app_quota: 3 };
 const id = "app000000000001";
 const app: DropApp = {
-  id, name: "Hello app", slug: "hello-app", owner: user.id, owner_email: user.email, nib_app_id: `d-${id}`,
+  id, kind: "ordinary", sign_in_email_enabled: false, name: "Hello app", slug: "hello-app", owner: user.id, owner_email: user.email, nib_app_id: `d-${id}`,
   volume_id: `d-${id}-vol`, hostname: "hello-app.apps.example.test", desired_state: "on-request", idle_timeout_ms: 300000,
   vcpu: 1, memory_mib: 512, disk_mib: 1024, http_port: 8080, executable_name: "server", args: [], env: { WELCOME_TEXT: "hi" },
   health_kind: "tcp", health_path: "", deployment_seq: 1, deployment_id: `d-${id}-dep-1`, current_release: "", disk_locked: false, archived: false, archived_at: "",
@@ -56,6 +56,7 @@ it("creates an app from #/apps/new and opens its page", async () => {
   render(<App />);
   fireEvent.change(await screen.findByLabelText("App name"), { target: { value: " Hello app " } });
   fireEvent.change(screen.getByLabelText("Slug"), { target: { value: "hello-app" } });
+  fireEvent.change(screen.getByLabelText("App type"), { target: { value: "crew" } });
   const port = screen.getByLabelText("HTTP port");
   expect(port).toHaveValue(8080);
   for (const value of ["0", "65536"]) {
@@ -67,7 +68,7 @@ it("creates an app from #/apps/new and opens its page", async () => {
   fireEvent.change(port, { target: { value: "1" } });
   fireEvent.click(screen.getByRole("button", { name: "Create app" }));
   await vi.waitFor(() => expect(location.hash).toBe(`#/apps/${id}`));
-  expect(create).toHaveBeenCalledWith(expect.objectContaining({ name: "Hello app", slug: "hello-app", http_port: 1, desired_state: "on-request", health_kind: "tcp" }));
+  expect(create).toHaveBeenCalledWith(expect.objectContaining({ name: "Hello app", slug: "hello-app", kind: "crew", http_port: 1, desired_state: "on-request", health_kind: "tcp" }));
 });
 
 it("shows the runtime phase on the Overview", async () => {

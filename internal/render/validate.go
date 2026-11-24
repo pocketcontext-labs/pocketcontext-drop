@@ -101,6 +101,9 @@ func validateApp(app App, lim Limits) *AppError {
 	if !deploymentIDOK(app.AppID, app.DeploymentID) {
 		return fail("deploymentId", "must be <appId>-dep-<1 to 9 digits>")
 	}
+	if (app.CrewOwnerEmail != "" || app.SignInEmailEnabled) && (!appspec.ValidSignInMailbox(app.CrewOwnerEmail) || strings.ToLower(app.CrewOwnerEmail) != app.CrewOwnerEmail) {
+		return fail("crewOwnerEmail", "must be a canonical verified mailbox for a Crew app")
+	}
 	switch app.DesiredState {
 	case "running", "stopped":
 	case "on-request":
