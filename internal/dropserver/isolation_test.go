@@ -757,8 +757,8 @@ func TestCrewSignInProvisioning(t *testing.T) {
 	if finished["deployment_bumped"] != true {
 		t.Fatal("finishing enrollment did not remove bootstrap")
 	}
-	next, _ := desired(t, h, nodeA)
-	if !next.Apps[0].ManagedCrew || next.Apps[0].CrewFreshEnrollment {
+	afterEnrollment, _ := desired(t, h, nodeA)
+	if !afterEnrollment.Apps[0].ManagedCrew || afterEnrollment.Apps[0].CrewFreshEnrollment {
 		t.Fatal("finished enrollment must keep the managed runtime without bootstrap")
 	}
 	h.MustOp(a.Token, "app.set", map[string]any{"app": idA, "sign_in_email_enabled": false})
