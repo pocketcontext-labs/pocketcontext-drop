@@ -202,10 +202,14 @@ class FakeAgent:
             need(APP_ID.match(r['appId']) and r['code'] and r['message'] and r['appId'] not in ids, f'rejected entry {r}')
         for a in d['apps']:
             extra = set(a) - APP_KEYS
-            need(extra <= {'crewOwnerEmail', 'signInEmailEnabled'} and set(a) >= APP_KEYS - {'idleTimeoutMs'}, f'app keys {sorted(a)}')
-            if extra:
+            need(extra <= {'crewOwnerEmail', 'signInEmailEnabled', 'managedCrew', 'crewFreshEnrollment', 'crewReplicaBucket', 'awsRegion', 'hookPort'} and set(a) >= APP_KEYS - {'idleTimeoutMs'}, f'app keys {sorted(a)}')
+            if 'hookPort' in a:
+                need(type(a['hookPort']) is int and 1 <= a['hookPort'] <= 65535 and a['hookPort'] != a['httpPort'], 'private hooks port')
+            if extra - {'hookPort'}:
                 need(isinstance(a.get('crewOwnerEmail'), str) and '@' in a['crewOwnerEmail'], 'Crew owner email')
                 need('signInEmailEnabled' not in a or a['signInEmailEnabled'] is True, 'enabled Crew binding')
+            if a.get('managedCrew'):
+                need(a.get('crewReplicaBucket') and a.get('awsRegion'), 'managed Crew storage')
             app_id = a['appId']
             need(APP_ID.match(app_id), 'appId')
             need(re.match('^' + re.escape(app_id) + r'-dep-[0-9]{1,9}$', a['deploymentId']), 'deploymentId')

@@ -52,8 +52,8 @@ type Input struct {
 type App struct {
 	AppID               string `json:"appId"`        // ^d-[a-z0-9]{15}$
 	DeploymentID        string `json:"deploymentId"` // <appId>-dep-<n>
-	ManagedCrew         bool   `json:"managedCrew,omitempty"`
-	CrewFreshEnrollment bool   `json:"crewFreshEnrollment,omitempty"`
+	ManagedCrew         bool   `json:"managedCrew,omitzero"`
+	CrewFreshEnrollment bool   `json:"crewFreshEnrollment,omitzero"`
 	CrewReplicaBucket   string `json:"crewReplicaBucket,omitempty"`
 	AWSRegion           string `json:"awsRegion,omitempty"`
 	// CrewOwnerEmail is the immutable address Drop verified at creation.
@@ -68,7 +68,7 @@ type App struct {
 	Release        Release     `json:"release"`
 	ExecutableName string      `json:"executableName"` // ^[a-z][a-z0-9-]{0,31}$
 	HTTPPort       int         `json:"httpPort"`       // Guest HTTP listener port (1–65535).
-	HookPort       int         `json:"hookPort,omitempty"`
+	HookPort       int         `json:"hookPort,omitzero"`
 	Args           []string    `json:"args"`
 	Resources      Resources   `json:"resources"`
 	HealthCheck    HealthCheck `json:"healthCheck"`
