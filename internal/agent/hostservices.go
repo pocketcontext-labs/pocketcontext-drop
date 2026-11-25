@@ -206,8 +206,13 @@ func runHostServices(ctx context.Context, c HostServicesConfig, signer *workload
 		return err
 	}
 	if client == nil {
-		client = &http.Client{Transport: &http.Transport{Proxy: nil, ForceAttemptHTTP2: true, MaxIdleConnsPerHost: 64,
-			IdleConnTimeout: 90 * time.Second, TLSHandshakeTimeout: 10 * time.Second, ExpectContinueTimeout: 2 * time.Second}}
+		// No environment proxy and no redirects: a signed request goes to S3 or
+		// STS as built, and a redirect reaches the guest as S3 answered it.
+		client = &http.Client{
+			Transport: &http.Transport{Proxy: nil, ForceAttemptHTTP2: true, MaxIdleConnsPerHost: 64,
+				IdleConnTimeout: 90 * time.Second, TLSHandshakeTimeout: 10 * time.Second, ExpectContinueTimeout: 2 * time.Second},
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		}
 	}
 	region := c.STSRegion
 	creds := &stsSessions{signer: signer, region: region, endpoint: c.STSEndpoint, client: client, now: time.Now}
