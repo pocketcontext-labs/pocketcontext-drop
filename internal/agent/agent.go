@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -401,8 +402,16 @@ func (a *Agent) reconcile(ctx context.Context) (wrote bool, err error) {
 	for _, r := range d.Rejected {
 		fail(r.AppID, "", "failed", "The server rejected this app's configuration.")
 	}
+	hostApps := map[string]dropapi.DesiredApp{}
 	for _, app := range d.Apps {
 		id := app.AppID
+		if !app.Limits.Valid() {
+			fail(id, app.DeploymentID, "failed", "refused on the node: invalid host services limits")
+			continue
+		}
+		if a.cfg.HostServices && app.ManagedCrew {
+			app.HostS3 = true
+		}
 		if err := a.stager.Stage(ctx, app.Release); err != nil {
 			fail(id, app.DeploymentID, "staging_failed", cut(err.Error(), dropapi.MaxReportMessage))
 			continue
@@ -416,6 +425,9 @@ func (a *Agent) reconcile(ctx context.Context) (wrote bool, err error) {
 			used[secretKey{app.DeploymentID, s.Parameter, s.Version}] = true
 		}
 		apps = append(apps, app.RenderApp(values))
+		if app.HostS3 {
+			hostApps[id] = app
+		}
 		intents = append(intents, appIntent{AppID: id, DeploymentID: app.DeploymentID})
 		phases[id] = StateApp{AppID: id, DeploymentID: app.DeploymentID, Phase: "rendered"}
 	}
@@ -454,6 +466,10 @@ func (a *Agent) reconcile(ctx context.Context) (wrote bool, err error) {
 	}
 	for _, id := range out.Tombstoned {
 		phases[id] = StateApp{AppID: id, Phase: "tombstoned"}
+	}
+
+	if err := a.writeHostApps(hostApps, out.Rejected, keep); err != nil {
+		return false, fmt.Errorf("writing %s: %w", HostServicesAppsFile, err)
 	}
 
 	currentHash := ""
@@ -507,6 +523,13 @@ func (a *Agent) report(ctx context.Context) error {
 		a.logf("%v", err)
 	}
 	body := buildReport(a.hostID, a.version, a.appliedSeq, a.intents, rep, a.writtenRevision, a.now())
+	if usage := hostUsage(filepath.Join(a.cfg.StateDir, HostServicesUsageFile)); len(usage) > 0 {
+		for i := range body.Apps {
+			if u := usage[body.Apps[i].DeploymentID]; u != nil && body.Apps[i].DeploymentID != "" {
+				body.Apps[i].Usage = u
+			}
+		}
+	}
 	res, err := a.client.Report(ctx, body)
 	if err != nil {
 		if statusOf(err) == http.StatusConflict && codeOf(err) == "host_mismatch" {

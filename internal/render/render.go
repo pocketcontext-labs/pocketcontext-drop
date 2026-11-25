@@ -63,6 +63,10 @@ type App struct {
 	// (1-300 s), handed to the guest as DROP_REPLICA_SYNC_INTERVAL; zero
 	// leaves the guest's own default.
 	ReplicaSyncSeconds int `json:"replicaSyncSeconds,omitzero"`
+	// HostS3 gives a managed Crew app the node's S3 proxy (nibrunner
+	// hostServices.s3) instead of a workload identity token: the guest holds
+	// no AWS credential. The node agent sets it (DROP_AGENT_HOST_SERVICES).
+	HostS3 bool `json:"hostS3,omitzero"`
 	// DesiredState is running, on-request or stopped.
 	DesiredState string `json:"desiredState"`
 	// IdleTimeoutMs is the traffic-idle sleep timeout of an on-request app,
@@ -273,6 +277,7 @@ func Render(in Input) (*Output, error) {
 		inst.DesiredState = "stopped"
 		inst.Activation = nil
 		inst.SignInEmail = nil
+		inst.HostServices = nil
 		instances[id] = inst
 		out.Tombstoned = append(out.Tombstoned, id)
 	}
@@ -340,7 +345,9 @@ func renderEnvironment(app App) map[string]string {
 	if app.ManagedCrew {
 		env["POCKETCONTEXT_DOMAIN"] = app.Hostnames[0].Hostname
 		env["CREW_DROP_APP_ID"] = app.AppID
-		env["AWS_WORKLOAD_IDENTITY"] = "async"
+		if !app.HostS3 {
+			env["AWS_WORKLOAD_IDENTITY"] = "async"
+		}
 		env["CREW_DROP_BUCKET"] = app.CrewReplicaBucket
 		env["AWS_REGION"] = app.AWSRegion
 		if app.CrewFreshEnrollment {
@@ -403,6 +410,9 @@ func renderInstance(app App) instance {
 	}
 	if app.SignInEmailEnabled && app.DesiredState != appspec.StateStopped {
 		inst.SignInEmail = &signInEmail{Recipient: app.CrewOwnerEmail}
+	}
+	if app.HostS3 && app.DesiredState != appspec.StateStopped {
+		inst.HostServices = &hostServices{S3: true}
 	}
 	if app.DesiredState == "on-request" {
 		inst.Activation = &activation{SleepWhen: sleepWhen{Kind: "traffic-idle", TimeoutMs: app.IdleTimeoutMs}}

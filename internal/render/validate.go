@@ -149,6 +149,9 @@ func validateApp(app App, lim Limits) *AppError {
 	if !appspec.ValidReplicaSyncSeconds(app.ReplicaSyncSeconds) || (app.ReplicaSyncSeconds != 0 && !app.ManagedCrew) {
 		return fail("replicaSyncSeconds", "must be zero, or %d–%d on a managed Crew app", appspec.MinReplicaSyncSeconds, appspec.MaxReplicaSyncSeconds)
 	}
+	if app.HostS3 && !app.ManagedCrew {
+		return fail("hostS3", "host S3 serves only a managed Crew app's replica bucket")
+	}
 	if field, reason := appspec.CheckArgs(app.Args); field != "" {
 		return fail(field, "%s", reason)
 	}

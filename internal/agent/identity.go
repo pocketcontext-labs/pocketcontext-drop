@@ -101,8 +101,11 @@ func (s *workloadSigner) token(id string, now time.Time) ([]byte, error) {
 func (s *workloadSigner) publish(doc []byte, now time.Time, includeToken bool) error {
 	var d struct {
 		Instances []struct {
-			AppID string `json:"appId"`
-			State string `json:"desiredState"`
+			AppID        string `json:"appId"`
+			State        string `json:"desiredState"`
+			HostServices *struct {
+				S3 bool `json:"s3"`
+			} `json:"hostServices"`
 		}
 	}
 	if len(doc) == 0 {
@@ -123,6 +126,17 @@ func (s *workloadSigner) publish(doc []byte, now time.Time, includeToken bool) e
 	}
 	for _, i := range d.Instances {
 		if i.State == "stopped" {
+			continue
+		}
+		if i.HostServices != nil && i.HostServices.S3 {
+			// The node's S3 proxy serves this app: no token or role for its guest.
+			for _, base := range []string{s.roleDir, s.sourceDir} {
+				for _, name := range []string{"token", "role-arn"} {
+					if err := os.Remove(filepath.Join(base, i.AppID, name)); err != nil && !os.IsNotExist(err) {
+						return err
+					}
+				}
+			}
 			continue
 		}
 		for _, base := range []string{s.roleDir, s.sourceDir} {

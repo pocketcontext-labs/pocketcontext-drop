@@ -24,6 +24,24 @@ drop agent render --input FILE|- [--previous FILE]
 
 NibRunner uses the last desired state it applied, including across restarts while Drop is unavailable. A stopped or tombstoned instance has no sign-in email binding. Disabling delivery removes the binding when the node applies the update. A node disconnected before a move can still use its old binding. Fence the source before activating the destination when exclusive delivery is required. Configure the SMTP relay, sender and credential on NibRunner. The guest receives its fixed owner email through `DROP_OWNER_EMAIL`.
 
+## Host services
+
+With `DROP_AGENT_HOST_SERVICES=s3`, `drop agent run` gives every managed Crew app the node's S3 proxy instead of a workload identity token. Those apps' nibrunner entries carry `hostServices: {"s3": true}` and no `AWS_WORKLOAD_IDENTITY`. The agent removes their token and role files. Before writing `desired.json`, it writes `<state dir>/host-services.json` (`drop.host-services/v1`, 0600): each such app's deployment, replica bucket, region and limits from the desired document. Each report carries the proxy's counters for the app's deployment (`usage`, read from `<state dir>/host-services-usage.json`).
+
+`drop agent host-services` is a separate process with its own unit (`deploy/drop-ax41/drop-agent-host-services.service`) and the same environment file. It listens on `DROP_HOST_SERVICES_SOCKET` (default `/run/drop-agent/host-services.sock`, 0600 in a 0700 directory). It accepts only `DROP_HOST_SERVICES_PEER_UID` (nibrunnerd, default 0) through `SO_PEERCRED`. nibrunner relays each guest connection from vsock 51007 there, after one line `CONNECT <appId> <deploymentId>`. The proxy serves a deployment only while nibrunner's `desired.json` runs it with `hostServices.s3` and `host-services.json` names it. Otherwise it answers 403, at the handshake and on every request.
+
+| Rule | Enforcement |
+| --- | --- |
+| Credentials | The guest holds placeholder keys. The proxy drops the guest's `Authorization`, date, token, ACL, grant, storage-class, tagging, object-lock, encryption and redirect headers. It signs again with the app's STS session, from `AssumeRoleWithWebIdentity` with a token it signs with the node key (`app_id` session tag). Sessions are cached per app until five minutes before they expire. |
+| Scope | Path-style requests only. The bucket must be the app's replica bucket, and every key, list prefix, `start-after` and DeleteObjects key must start with `<appId>/`. Keys may not contain empty, `.` or `..` segments or control characters. Version IDs and copies are refused. |
+| Operations | GetObject, HeadObject, PutObject, DeleteObject, DeleteObjects, ListObjectsV2 and multipart upload (create, part, complete, abort). Anything else is `NotImplemented`. |
+| Payloads | A hex `x-amz-content-sha256` passes through, so S3 verifies the bytes. `UNSIGNED-PAYLOAD` and `STREAMING-UNSIGNED-PAYLOAD-TRAILER` pass through. Signed aws-chunked bodies are decoded and sent unsigned. Their trailer form is refused. `Content-Length`, `Content-MD5`, `x-amz-checksum-*`, conditional headers and `x-amz-meta-*` are kept. Uploads use `Expect: 100-continue`. |
+| Rate | Token bucket per app: `limits.rps` (default 20 per second), burst `limits.burst` (default 200). `503 SlowDown` when exceeded. Each app may hold 32 connections and the node 512. |
+| Size | `limits.maxObjectBytes` (default 100 MiB) per PutObject and per multipart object. Exceeding it gives `400 EntityTooLarge`. |
+| Quota | `limits.storedBytesQuota` against a listing of the app's prefix, relisted every 15 minutes and kept current by the proxy's own writes. Exceeding it gives `403 QuotaExceeded`. |
+| Download budget | `limits.monthlyBytesOut` per UTC month, counted on the node. Exceeding it gives `403 DownloadBudgetExceeded`. |
+| Usage | Monotonic counters per deployment: read, write, list, delete and rejected requests, and bytes in and out. They are flushed every 5 seconds, and `seq` goes up with every flush that changed them. |
+
 ## The loop
 
 1. **Start:** read `desired.json` (refuse foreign entries, learn `hostId`; a missing file is fine when `reported.json` names the host) and `state.json` (rebuilt when missing or unreadable).
@@ -118,6 +136,9 @@ Environment (`/etc/drop/agent.env`, example `deploy/walter-aws/agent.env.example
 | `DROP_SSM_PREFIX` | Secret parameter prefix, default `/drop` |
 | `DROP_AWS_REGION`, `DROP_S3_BUCKET` | S3 and SSM through the default credential chain (`docs/aws.md`) |
 | `DROP_AGENT_PULL_INTERVAL`, `DROP_AGENT_REPORT_INTERVAL` | Seconds, default 60 (5–3600) and 30 (5–300) |
+| `DROP_AGENT_HOST_SERVICES` | Empty, or `s3` to give managed Crew apps the node's S3 proxy (above) |
+| `DROP_HOST_SERVICES_SOCKET`, `DROP_HOST_SERVICES_PEER_UID` | `drop agent host-services`: its socket (default `/run/drop-agent/host-services.sock`) and nibrunnerd's uid (default 0) |
+| `DROP_HOST_SERVICES_STS_REGION`, `DROP_HOST_SERVICES_S3_ENDPOINT`, `DROP_HOST_SERVICES_STS_ENDPOINT` | STS region (default `DROP_AWS_REGION`). The endpoint overrides are for offline tests: HTTPS, or HTTP on loopback only. The host-services process also needs `DROP_IDENTITY_ISSUER`, `DROP_IDENTITY_ROLE_ARN` and `DROP_IDENTITY_KEY_FILE`. |
 
 `--fake-aws DIR` reads releases and secrets from the directory a `serve --fake-aws DIR` writes (`docs/aws.md`), only with a loopback server URL, for tests.
 

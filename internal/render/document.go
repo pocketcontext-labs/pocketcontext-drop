@@ -37,8 +37,15 @@ type signInEmail struct {
 	Recipient string `json:"recipient"`
 }
 
+// hostServices enables nibrunner's host-service forwarder (vsock 51007) and
+// the guest's S3 bridge on 127.0.0.1:9000 instead of workload identity.
+type hostServices struct {
+	S3 bool `json:"s3"`
+}
+
 type instance struct {
-	SignInEmail *signInEmail `json:"signInEmail,omitempty"`
+	SignInEmail  *signInEmail  `json:"signInEmail,omitempty"`
+	HostServices *hostServices `json:"hostServices,omitempty"`
 
 	AppID        string      `json:"appId"`
 	DeploymentID string      `json:"deploymentId"`

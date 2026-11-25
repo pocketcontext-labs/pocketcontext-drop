@@ -1,0 +1,57 @@
+# Drop host services (docs/agent.md "Host services"): the node's S3 proxy for
+# guests with nibrunner hostServices.s3. A separate process from
+# drop-agent.service, from the same binary and environment file. It reads
+# nibrunner's desired.json and the agent's host-services.json, signs each
+# app's web-identity token with the node key, exchanges it for the app's STS
+# session and serves only nibrunnerd (root, SO_PEERCRED) on
+# /run/drop-agent/host-services.sock. nibrunner's config.toml names that
+# socket under [host_services].
+#
+#   install -m 0644 drop-agent-host-services.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now drop-agent-host-services
+[Unit]
+Description=Drop host services (S3 proxy for guests without credentials)
+Documentation=https://github.com/pocketcontext-labs/pocketcontext-drop/blob/main/docs/agent.md
+Wants=network-online.target
+After=network-online.target
+Before=nibrunnerd.service
+
+[Service]
+Type=exec
+ExecStart=/usr/local/bin/drop agent host-services
+EnvironmentFile=/etc/drop/agent.env
+RuntimeDirectory=drop-agent
+RuntimeDirectoryMode=0700
+StateDirectory=drop-agent
+StateDirectoryMode=0700
+UMask=0077
+Restart=always
+RestartSec=2
+
+# Hardening: reads the signing key, desired.json and its state directory,
+# talks to STS and S3, and writes only its usage file and socket.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadOnlyPaths=/var/lib/nibrunner
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target

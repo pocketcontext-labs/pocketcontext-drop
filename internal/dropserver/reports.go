@@ -204,6 +204,9 @@ func checkReport(r *dropapi.Report) error {
 		if !shortText(a.ConvergedAt, 40) {
 			return reportInvalid(field+".convergedAt", "convergedAt is at most 40 characters.")
 		}
+		if err := checkHostUsage(a, field); err != nil {
+			return err
+		}
 		a.Message = cleanMessage(a.Message)
 	}
 	return nil
@@ -302,7 +305,7 @@ func ingestApps(app core.App, nodeID string, reports []dropapi.AppReport, now ti
 		previousPhase := ""
 		if row != nil {
 			previousPhase = row.GetString("phase")
-			if sameReport(row, r) {
+			if sameReport(row, r) && !hostUsageDue(row, r, now) {
 				continue
 			}
 		}
@@ -327,6 +330,7 @@ func ingestApps(app core.App, nodeID string, reports []dropapi.AppReport, now ti
 		}
 		row.Set("converged_at", r.ConvergedAt)
 		row.Set("last_hook", r.LastHook)
+		applyHostUsage(row, r, now)
 		if previousPhase != r.Phase || row.GetDateTime("observed_at").IsZero() {
 			row.Set("observed_at", now)
 		}

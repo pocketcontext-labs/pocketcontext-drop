@@ -135,6 +135,7 @@ func desiredApp(app core.App, record *core.Record, services Services) (dropapi.D
 		a.CrewReplicaBucket, a.AWSRegion = services.CrewReplicaBucket, services.AWSRegion
 		a.CrewFreshEnrollment = state == "fresh"
 		a.ReplicaSyncSeconds = record.GetInt("replica_sync_seconds")
+		a.Limits = hostLimits(record)
 	}
 	if a.HealthCheck.Kind != appspec.HealthHTTP {
 		a.HealthCheck.Path = ""

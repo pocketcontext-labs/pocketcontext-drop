@@ -85,6 +85,9 @@ func (d Desired) ComputeContentHash() (string, error) {
 type DesiredApp struct {
 	render.App
 	Secrets []DesiredSecret `json:"secrets"`
+	// Limits bound the app's S3 traffic through the node's host services
+	// proxy (hostservices.go); nil gives the node's defaults.
+	Limits *HostLimits `json:"limits,omitempty"`
 }
 
 // DesiredSecret names one secret version; the agent reads its value from SSM
@@ -178,6 +181,9 @@ type AppReport struct {
 	RestartCount int         `json:"restartCount"`
 	LastExitCode *int        `json:"lastExitCode"`
 	ConvergedAt  string      `json:"convergedAt"`
+	// Usage is the host services proxy's counters of the app's deployment
+	// (hostservices.go), when the app used it.
+	Usage *HostUsage `json:"usage,omitempty"`
 }
 
 // ReportResult answers a report: the node's current desiredSeq and state, so

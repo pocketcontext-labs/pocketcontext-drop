@@ -43,6 +43,11 @@ import (
 //	             Crew mailbox snapshot and node isolation through a move       TestCrewSignInProvisioning
 //	             per-address node sign-in limiter, per-node route limiter     TestNodeSignInRateLimit, TestAgentRouteRateLimit (hardening_test.go)
 //	             a restore invalidates node tokens                            TestHostedRestoreInvalidatesNodeTokens (hardening_test.go)
+//	             host services usage (node_reports.host_usage*): N2's usage   TestHostUsageReports (host_usage_test.go)
+//	             about N1's app ignored; owners read only their apps' rows
+//	Host         the node's S3 proxy socket: only nibrunnerd's uid; only a    TestHostServicesEndToEnd,
+//	services     current deployment; only its app's prefix, bucket and        TestHostServicesRefuseOtherPeers (internal/agent),
+//	             operations; the STS session never leaves the agent           TestParseRequestAllowsOnlyTheAppsOperations (internal/hostservices)
 //	Realtime     A's subscriptions never deliver B's records; N1's never     TestRealtimeIsolation
 //	             deliver N2's record or placements, or any app, release,
 //	             event or report; anonymous subscriptions deliver nothing

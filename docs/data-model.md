@@ -107,7 +107,7 @@ What the node needs to run a release (M7 and M9) is `sha256`, `s3_key` and `size
 
 ## Node reports
 
-`pb_migrations/1820001200_node_reports.js` creates `node_reports`, the last phase each node reported for each app placed on it: `node`, `app`, `nib_app_id` (unique with `node`), `deployment_id`, `phase` (`pending`, `staging`, `staging_failed`, `secret_failed`, `deploying`, `starting`, `running`, `sleeping`, `unhealthy`, `stopped`, `failed`, `unknown`), `message` (at most 2000), `restart_count`, `last_exit_code` with `has_exit_code`, `converged_at`, optional `last_hook` (event, outcome, time and duration), `observed_at` (when the phase was first reported). A row is rewritten only when something in it changes. List and view: admins, and the app's owner; writes closed. The `status` operation reads it.
+`pb_migrations/1820001200_node_reports.js` creates `node_reports`, the last phase each node reported for each app placed on it: `node`, `app`, `nib_app_id` (unique with `node`), `deployment_id`, `phase` (`pending`, `staging`, `staging_failed`, `secret_failed`, `deploying`, `starting`, `running`, `sleeping`, `unhealthy`, `stopped`, `failed`, `unknown`), `message` (at most 2000), `restart_count`, `last_exit_code` with `has_exit_code`, `converged_at`, optional `last_hook` (event, outcome, time and duration), `observed_at` (when the phase was first reported). A row is rewritten only when something in it changes. `pb_migrations/1820001900_host_usage.js` adds the host services usage: `host_usage_deployment`, `host_usage_seq` and `host_usage` (the last counters taken), `host_usage_total` (the running sum of their differences) and `host_usage_at`. List and view: admins, and the app's owner; writes closed. The `status` operation reads it.
 
 ## Usage
 

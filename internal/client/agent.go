@@ -17,7 +17,7 @@ import (
 // agentValueFlags are the options of `drop agent`; each overrides its
 // DROP_AGENT_* variable (docs/agent.md).
 var agentValueFlags = []string{"server", "host", "node", "secret-file", "desired", "reported", "artifacts", "state-dir",
-	"allowed-host-suffix", "ssm-prefix", "fake-aws", "input", "previous"}
+	"allowed-host-suffix", "ssm-prefix", "fake-aws", "input", "previous", "socket"}
 
 // exitRefused is the exit code of `drop agent run|check|render` when
 // desired.json holds something only the operator can fix (entries Drop did
@@ -33,7 +33,7 @@ func runAgent(a *args) error {
 		return fail(2, "drop agent takes no --db or --url; it talks to DROP_AGENT_SERVER")
 	}
 	if len(a.pos) != 1 {
-		return fail(2, "usage: drop agent run|check|render [options]; see `drop help agent`")
+		return fail(2, "usage: drop agent run|check|render|host-services [options]; see `drop help agent`")
 	}
 	o := agent.Overrides{}
 	for _, name := range agentValueFlags {
@@ -45,7 +45,23 @@ func runAgent(a *args) error {
 		}
 	}
 	sub := a.pos[0]
+	if sub != "host-services" && a.has("socket") {
+		return fail(2, "--socket is an option of `drop agent host-services`")
+	}
 	switch sub {
+	case "host-services":
+		cfg, err := agent.LoadHostServicesConfig(os.Getenv, o)
+		if err != nil {
+			return fail(2, "agent host-services: %v", err)
+		}
+		logger := log.New(os.Stderr, "drop agent host-services: ", log.LstdFlags)
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		if err := agent.RunHostServices(ctx, cfg, logger.Printf); err != nil {
+			return fail(1, "agent host-services: %v", err)
+		}
+		logger.Printf("stopped")
+		return nil
 	case "run", "check":
 		if a.has("input") || a.has("previous") {
 			return fail(2, "--input and --previous are options of `drop agent render`")
@@ -122,7 +138,7 @@ func runAgent(a *args) error {
 		Print(out, a.bools["pretty"])
 		return nil
 	}
-	return fail(2, "unknown agent command %q; use run, check or render", sub)
+	return fail(2, "unknown agent command %q; use run, check, render or host-services", sub)
 }
 
 // openAgentStores opens the read-only AWS views: --fake-aws DIR (loopback

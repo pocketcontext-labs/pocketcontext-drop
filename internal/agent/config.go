@@ -93,6 +93,9 @@ type Config struct {
 	FakeAWS           string // --fake-aws DIR (loopback server only)
 	PullInterval      time.Duration
 	ReportInterval    time.Duration
+	// HostServices gives managed Crew apps the node's S3 proxy instead of a
+	// workload identity token (DROP_AGENT_HOST_SERVICES=s3, hostservices.go).
+	HostServices bool
 }
 
 // StatePath is the full path of state.json.
@@ -148,6 +151,9 @@ func LoadConfig(getenv func(string) string, o Overrides, needServer bool) (Confi
 		ReportInterval:    DefaultReportInterval,
 	}
 	var err error
+	if c.HostServices, err = hostServicesEnabled(getenv); err != nil {
+		return c, err
+	}
 	if c.PullInterval, err = seconds(getenv(EnvPullInterval), DefaultPullInterval, 5, 3600, EnvPullInterval); err != nil {
 		return c, err
 	}

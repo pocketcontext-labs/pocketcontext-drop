@@ -50,11 +50,11 @@ out, err := render.Render(render.Input{HostID, DesiredSeq, Apps, Keep, Previous,
 - Every rendered document is checked against the vendored schema
   (`ValidateSchema`) before it is returned.
 
-A configured hook port becomes `config.hooks.port`. With zero, Drop omits the hooks block. Hooks have no public port mapping. Crew apps receive the verified owner email, public domain, app ID, replica bucket, region, role session name and asynchronous workload identity in their guest environment. Newly enrolled apps receive `CREW_DROP_BOOTSTRAP=1` until the owner finishes enrollment.
+A configured hook port becomes `config.hooks.port`. With zero, Drop omits the hooks block. Hooks have no public port mapping. Crew apps receive the verified owner email, public domain, app ID, replica bucket, region, role session name and asynchronous workload identity in their guest environment. Newly enrolled apps receive `CREW_DROP_BOOTSTRAP=1` until the owner finishes enrollment. When the node agent sets `hostS3` (`DROP_AGENT_HOST_SERVICES=s3`), a Crew app gets `hostServices: {"s3": true}` instead of the workload identity variables; a stopped tombstone drops it like `signInEmail`.
 
 ## Vendored schema
 
-`internal/render/schema/desired.schema.json` is the byte-for-byte copy of the PocketContext NibRunner lifecycle hooks and sign-in email contract at `crates/protocol/schema/desired.schema.json` (SHA-256 `cb47fb89bf8d6fe50dccc8df436194d24d08f7a14b80f1682c08535b760904d6`). This runner requires new writers to set volume `storage: null` for host storage. Drop accepts its own earlier files with the field absent and refuses custom storage backends. `ValidateSchema` is a focused JSON Schema
+`internal/render/schema/desired.schema.json` is the byte-for-byte copy of the PocketContext NibRunner lifecycle hooks, sign-in email and host services contract at `crates/protocol/schema/desired.schema.json` (SHA-256 `c1eed54c97343390ea8dd46d72767001d0daeb001bfda44bdeeb8bb5a829b8c4`). This runner requires new writers to set volume `storage: null` for host storage. Drop accepts its own earlier files with the field absent and refuses custom storage backends. `ValidateSchema` is a focused JSON Schema
 2020-12 evaluator for exactly the keywords that file uses; it refuses a schema
 with any other keyword, and runs the one lookahead pattern (guest paths) as
 hand-written code. To bump nibrunner: copy the new file, update the digest in

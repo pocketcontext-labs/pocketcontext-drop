@@ -759,3 +759,41 @@ func TestReplicaSyncInterval(t *testing.T) {
 		t.Error("an interval on an app that is not managed Crew accepted")
 	}
 }
+
+func TestHostS3ReplacesWorkloadIdentity(t *testing.T) {
+	in := loadInput(t, "crew-dev.input.json")
+	in.Apps[0].HTTPPort, in.Apps[0].Env, in.Apps[0].Secrets = 8080, nil, nil
+	in.Apps[0].ManagedCrew, in.Apps[0].AWSRegion, in.Apps[0].CrewReplicaBucket = true, "eu-north-1", "crew-example"
+	in.Apps[0].CrewOwnerEmail = "owner@example.test"
+	in.Apps[0].HostS3 = true
+	out := mustRender(t, in)
+	var doc document
+	if err := json.Unmarshal(out.Document, &doc); err != nil || len(doc.Instances) != 1 {
+		t.Fatalf("render: %v %+v", err, out.Rejected)
+	}
+	inst := doc.Instances[0]
+	if inst.HostServices == nil || !inst.HostServices.S3 {
+		t.Fatal("host S3 not enabled on the instance")
+	}
+	env := inst.Config.Command.Environment
+	for _, name := range []string{"AWS_WORKLOAD_IDENTITY", "AWS_ROLE_SESSION_NAME"} {
+		if _, ok := env[name]; ok {
+			t.Fatalf("%s rendered beside host S3", name)
+		}
+	}
+	if env["CREW_DROP_BUCKET"] != "crew-example" || env["AWS_REGION"] != "eu-north-1" {
+		t.Fatal("bucket or region missing")
+	}
+	in.Previous = out.Document
+	in.Apps = nil
+	var dead document
+	_ = json.Unmarshal(mustRender(t, in).Document, &dead)
+	if dead.Instances[0].HostServices != nil || dead.Instances[0].DesiredState != "stopped" {
+		t.Fatal("tombstone kept host services")
+	}
+	plain := loadInput(t, "crew-dev.input.json")
+	plain.Apps[0].HostS3 = true
+	if r := mustRender(t, plain).Rejected; len(r) != 1 || r[0].Field != "hostS3" {
+		t.Fatalf("host S3 on an app that is not managed Crew: %+v", r)
+	}
+}
