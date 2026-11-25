@@ -1,0 +1,158 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Drop on drop-ax41: scoped operator access. Deployed by an account administrator
+  as stack access-drop-ax41 (outside the drop-ax41-* pattern the deploy user may
+  change). The deploy user changes drop-ax41-* stacks only through the
+  CloudFormation role, which cannot grant more than the workload boundary.
+Parameters:
+  ServerUser:
+    Type: String
+    Default: drop-ax41
+    Description: IAM user of the Drop server (releases, SSM, metering).
+Resources:
+  # Caps the workload role whatever its own policy says.
+  WorkloadBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: pocketcontext-drop-ax41-workload-boundary
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: [s3:ListBucket]
+            Resource: !Sub 'arn:${AWS::Partition}:s3:::pocketcontext-drop-ax41-replicas-${AWS::AccountId}'
+          - Effect: Allow
+            Action: [s3:GetObject, s3:PutObject, s3:DeleteObject, s3:AbortMultipartUpload, s3:ListMultipartUploadParts]
+            Resource: !Sub 'arn:${AWS::Partition}:s3:::pocketcontext-drop-ax41-replicas-${AWS::AccountId}/*'
+  CfnRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: drop-ax41-cfn
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: cloudformation.amazonaws.com}
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals: {aws:SourceAccount: !Ref AWS::AccountId}
+      Policies:
+        - PolicyName: DropAx41Resources
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: Buckets
+                Effect: Allow
+                Action: 's3:*'
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:s3:::pocketcontext-drop-ax41-replicas-${AWS::AccountId}'
+                  - !Sub 'arn:${AWS::Partition}:s3:::pocketcontext-drop-ax41-logs-${AWS::AccountId}'
+                  - !Sub 'arn:${AWS::Partition}:s3:::pocketcontext-drop-ax41-issuer-${AWS::AccountId}'
+              - Sid: NoReplicaOrLogDataOrPublicAccess
+                Effect: Deny
+                Action: [s3:PutBucketPublicAccessBlock, s3:DeleteBucketPolicy, s3:DeleteBucket, s3:PutBucketVersioning]
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:s3:::pocketcontext-drop-ax41-replicas-${AWS::AccountId}'
+                  - !Sub 'arn:${AWS::Partition}:s3:::pocketcontext-drop-ax41-logs-${AWS::AccountId}'
+              - Sid: RolesOnlyWithinBoundary
+                Effect: Allow
+                Action: [iam:CreateRole, iam:PutRolePolicy, iam:DeleteRolePolicy, iam:AttachRolePolicy, iam:DetachRolePolicy, iam:PutRolePermissionsBoundary]
+                Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/pocketcontext-drop-ax41-*'
+                Condition:
+                  StringEquals: {iam:PermissionsBoundary: !Ref WorkloadBoundary}
+              - Sid: RoleUpkeep
+                Effect: Allow
+                Action: [iam:GetRole, iam:GetRolePolicy, iam:ListRolePolicies, iam:ListAttachedRolePolicies, iam:UpdateAssumeRolePolicy, iam:UpdateRole, iam:UpdateRoleDescription, iam:TagRole, iam:UntagRole, iam:DeleteRole]
+                Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/pocketcontext-drop-ax41-*'
+              - Sid: Issuer
+                Effect: Allow
+                Action: [iam:CreateOpenIDConnectProvider, iam:DeleteOpenIDConnectProvider, iam:GetOpenIDConnectProvider, iam:UpdateOpenIDConnectProviderThumbprint, iam:AddClientIDToOpenIDConnectProvider, iam:RemoveClientIDFromOpenIDConnectProvider, iam:TagOpenIDConnectProvider, iam:UntagOpenIDConnectProvider]
+                Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/pocketcontext-drop-ax41-issuer-*'
+              - Sid: NoBoundaryRemoval
+                Effect: Deny
+                Action: iam:DeleteRolePermissionsBoundary
+                Resource: '*'
+  DeployUser:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: drop-ax41-deploy
+  DeployPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: pocketcontext-drop-ax41-deploy
+      Users: [!Ref DeployUser]
+      PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: Stacks
+                Effect: Allow
+                Action: 'cloudformation:*'
+                Resource: !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/drop-ax41-*/*'
+              - Sid: StackReads
+                Effect: Allow
+                Action: [cloudformation:ValidateTemplate, cloudformation:ListStacks, cloudformation:GetTemplateSummary, cloudformation:DescribeStacks]
+                Resource: '*'
+              - Sid: OnlyThroughTheRole
+                Effect: Deny
+                Action: [cloudformation:CreateStack, cloudformation:UpdateStack, cloudformation:CreateChangeSet, cloudformation:DeleteStack]
+                Resource: '*'
+                Condition:
+                  'Null': {cloudformation:RoleArn: 'true'}
+              - Sid: PassCfnRole
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt CfnRole.Arn
+                Condition:
+                  StringEquals: {iam:PassedToService: cloudformation.amazonaws.com}
+              - Sid: PublishIssuer
+                Effect: Allow
+                Action: [s3:PutObject, s3:GetObject]
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:s3:::pocketcontext-drop-ax41-issuer-${AWS::AccountId}/keys.json'
+                  - !Sub 'arn:${AWS::Partition}:s3:::pocketcontext-drop-ax41-issuer-${AWS::AccountId}/.well-known/openid-configuration'
+              - Sid: ReadForChecks
+                Effect: Allow
+                Action: [s3:ListBucket, s3:ListBucketVersions, s3:GetObject, s3:GetObjectVersion, 's3:GetBucket*', 's3:GetLifecycleConfiguration', 's3:GetInventoryConfiguration', 's3:GetMetricsConfiguration', 's3:GetEncryptionConfiguration', 's3:ListBucketMetricsConfigurations', 's3:ListBucketInventoryConfigurations']
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:s3:::pocketcontext-drop-ax41-*'
+                  - !Sub 'arn:${AWS::Partition}:s3:::pocketcontext-drop-ax41-*/*'
+              - Sid: CleanUpVerificationObjects
+                Effect: Allow
+                Action: [s3:DeleteObjectVersion]
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::pocketcontext-drop-ax41-replicas-${AWS::AccountId}/*/verify-*'
+              - Sid: IamReads
+                Effect: Allow
+                Action: [iam:GetRole, iam:GetRolePolicy, iam:ListRolePolicies, iam:GetPolicy, iam:GetPolicyVersion, iam:GetOpenIDConnectProvider, iam:GetUser, iam:ListAttachedUserPolicies, iam:ListUserPolicies]
+                Resource: '*'
+              - Sid: Metrics
+                Effect: Allow
+                Action: [cloudwatch:GetMetricData, cloudwatch:GetMetricStatistics, cloudwatch:ListMetrics, s3:ListAllMyBuckets]
+                Resource: '*'
+  # Batch 2: the Drop server reads S3 access logs and inventory and keeps one
+  # CloudWatch request-metrics filter per app on the replica bucket.
+  ServerMetering:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: pocketcontext-drop-ax41-server-metering
+      Users: [!Ref ServerUser]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ReadLogs
+            Effect: Allow
+            Action: [s3:ListBucket, s3:GetObject]
+            Resource:
+              - !Sub 'arn:${AWS::Partition}:s3:::pocketcontext-drop-ax41-logs-${AWS::AccountId}'
+              - !Sub 'arn:${AWS::Partition}:s3:::pocketcontext-drop-ax41-logs-${AWS::AccountId}/*'
+          - Sid: PerAppRequestMetrics
+            Effect: Allow
+            Action: [s3:PutMetricsConfiguration, s3:GetMetricsConfiguration, s3:ListBucketMetricsConfigurations]
+            Resource: !Sub 'arn:${AWS::Partition}:s3:::pocketcontext-drop-ax41-replicas-${AWS::AccountId}'
+          - Sid: ReadRequestMetrics
+            Effect: Allow
+            Action: [cloudwatch:GetMetricData, cloudwatch:GetMetricStatistics]
+            Resource: '*'
+Outputs:
+  WorkloadBoundary: {Value: !Ref WorkloadBoundary}
+  CfnRole: {Value: !GetAtt CfnRole.Arn}
+  DeployUser: {Value: !Ref DeployUser}

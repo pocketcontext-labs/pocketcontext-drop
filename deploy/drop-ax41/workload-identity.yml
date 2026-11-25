@@ -175,6 +175,8 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       RoleName: pocketcontext-drop-ax41-workloads
+      # From stack access-drop-ax41 (access.yml): caps the role at the replica bucket.
+      PermissionsBoundary: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/pocketcontext-drop-ax41-workload-boundary'
       AssumeRolePolicyDocument: !Sub
         - |
           {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Federated":"${Provider}"},"Action":["sts:AssumeRoleWithWebIdentity","sts:TagSession"],"Condition":{"StringEquals":{"${Issuer.RegionalDomainName}:aud":"sts.amazonaws.com"},"StringLike":{"${Issuer.RegionalDomainName}:sub":"d-*","aws:RequestTag/app_id":"d-*"},"ForAllValues:StringEquals":{"aws:TagKeys":["app_id"]},"IpAddress":{"aws:SourceIp":["${Ips}"]}}}]}
