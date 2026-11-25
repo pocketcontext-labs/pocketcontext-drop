@@ -1,0 +1,193 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Drop on drop-ax41: workload identity issuer, private application replicas and
+  the S3 access logs and inventory used to meter each app's S3 use.
+Parameters:
+  EnableRole:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['false', 'true']
+  NoncurrentVersionDays:
+    Type: Number
+    Default: 30
+    MinValue: 1
+    Description: Days a replaced or deleted replica object stays restorable.
+  AccessLogDays:
+    Type: Number
+    Default: 90
+    MinValue: 1
+Conditions:
+  Published: !Equals [!Ref EnableRole, 'true']
+Resources:
+  # Log bucket: S3 server access logs and inventory reports. Guests have no
+  # access; the Drop server reads it to meter usage per app prefix.
+  Logs:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub 'pocketcontext-drop-ax41-logs-${AWS::AccountId}'
+      OwnershipControls:
+        Rules: [{ObjectOwnership: BucketOwnerEnforced}]
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireAccessLogs
+            Status: Enabled
+            Prefix: access-logs/
+            ExpirationInDays: !Ref AccessLogDays
+          - Id: ExpireInventory
+            Status: Enabled
+            Prefix: inventory/
+            ExpirationInDays: 30
+          - Id: AbortUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload: {DaysAfterInitiation: 1}
+  LogsPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref Logs
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ServerAccessLogs
+            Effect: Allow
+            Principal: {Service: logging.s3.amazonaws.com}
+            Action: s3:PutObject
+            Resource: !Sub '${Logs.Arn}/access-logs/*'
+            Condition:
+              StringEquals: {aws:SourceAccount: !Ref AWS::AccountId}
+              ArnLike: {aws:SourceArn: !Sub 'arn:${AWS::Partition}:s3:::pocketcontext-drop-ax41-replicas-${AWS::AccountId}'}
+          - Sid: Inventory
+            Effect: Allow
+            Principal: {Service: s3.amazonaws.com}
+            Action: s3:PutObject
+            Resource: !Sub '${Logs.Arn}/inventory/*'
+            Condition:
+              StringEquals: {aws:SourceAccount: !Ref AWS::AccountId, s3:x-amz-acl: bucket-owner-full-control}
+              ArnLike: {aws:SourceArn: !Sub 'arn:${AWS::Partition}:s3:::pocketcontext-drop-ax41-replicas-${AWS::AccountId}'}
+          - Sid: TLSOnly
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource: [!GetAtt Logs.Arn, !Sub '${Logs.Arn}/*']
+            Condition: {Bool: {aws:SecureTransport: 'false'}}
+  Replica:
+    Type: AWS::S3::Bucket
+    DependsOn: LogsPolicy
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub 'pocketcontext-drop-ax41-replicas-${AWS::AccountId}'
+      # Versioning keeps history a tenant cannot erase: the shared role may
+      # DeleteObject (a delete marker) but never DeleteObjectVersion.
+      VersioningConfiguration: {Status: Enabled}
+      OwnershipControls:
+        Rules: [{ObjectOwnership: BucketOwnerEnforced}]
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+      LifecycleConfiguration:
+        Rules:
+          - Id: BoundHistory
+            Status: Enabled
+            NoncurrentVersionExpiration: {NoncurrentDays: !Ref NoncurrentVersionDays}
+            ExpiredObjectDeleteMarker: true
+            AbortIncompleteMultipartUpload: {DaysAfterInitiation: 1}
+      LoggingConfiguration:
+        DestinationBucketName: !Ref Logs
+        LogFilePrefix: access-logs/
+        TargetObjectKeyFormat:
+          PartitionedPrefix: {PartitionDateSource: EventTime}
+      InventoryConfigurations:
+        - Id: daily-all-versions
+          Enabled: true
+          ScheduleFrequency: Daily
+          IncludedObjectVersions: All
+          OptionalFields: [Size, LastModifiedDate, StorageClass, IsMultipartUploaded]
+          Destination:
+            BucketArn: !GetAtt Logs.Arn
+            Format: CSV
+            Prefix: inventory
+  ReplicaPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref Replica
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: TLSOnly
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource: [!GetAtt Replica.Arn, !Sub '${Replica.Arn}/*']
+            Condition: {Bool: {aws:SecureTransport: 'false'}}
+  Issuer:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub 'pocketcontext-drop-ax41-issuer-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: false
+        RestrictPublicBuckets: false
+  DiscoveryPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref Issuer
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: '*'
+            Action: s3:GetObject
+            Resource:
+              - !Sub '${Issuer.Arn}/.well-known/openid-configuration'
+              - !Sub '${Issuer.Arn}/keys.json'
+  Provider:
+    Condition: Published
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: !Sub 'https://${Issuer.RegionalDomainName}'
+      ClientIdList: [sts.amazonaws.com]
+  Role:
+    Condition: Published
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: pocketcontext-drop-ax41-workloads
+      AssumeRolePolicyDocument: !Sub |
+        {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Federated":"${Provider}"},"Action":["sts:AssumeRoleWithWebIdentity","sts:TagSession"],"Condition":{"StringEquals":{"${Issuer.RegionalDomainName}:aud":"sts.amazonaws.com"},"StringLike":{"${Issuer.RegionalDomainName}:sub":"d-*","aws:RequestTag/app_id":"d-*"},"ForAllValues:StringEquals":{"aws:TagKeys":["app_id"]}}}]}
+      Policies:
+        - PolicyName: ReplicaPrefix
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt Replica.Arn
+                Condition:
+                  StringLike:
+                    s3:prefix: '${aws:PrincipalTag/app_id}/*'
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:DeleteObject, s3:AbortMultipartUpload, s3:ListMultipartUploadParts]
+                Resource: !Sub '${Replica.Arn}/${!aws:PrincipalTag/app_id}/*'
+Outputs:
+  ReplicaBucket: {Value: !Ref Replica}
+  LogsBucket: {Value: !Ref Logs}
+  IssuerBucket: {Value: !Ref Issuer}
+  IssuerURL: {Value: !Sub 'https://${Issuer.RegionalDomainName}'}
+  SharedRole: {Condition: Published, Value: !GetAtt Role.Arn}
