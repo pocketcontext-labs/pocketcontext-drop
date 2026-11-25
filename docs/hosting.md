@@ -39,6 +39,10 @@ The service reads these variables from its environment (never from the project):
 | `DROP_APP_DOMAIN` | optional: the domain of app hostnames (`<slug>.<DROP_APP_DOMAIN>`, for example `bigconfig.space`), set on each app at creation; without it new apps get no hostname |
 | `DROP_RELEASE_MAX_BYTES` | optional: a lower release cap in bytes (1048576 up to the default and maximum, 94371840 = 90 MiB) |
 | `DROP_AWS_REGION`, `DROP_S3_BUCKET`, `DROP_SSM_PREFIX` | where releases (S3) and secrets (SSM) live, through the default AWS credential chain ([aws.md](aws.md)); `--fake-aws DIR` replaces them with a local directory for testing, only with a loopback `--hosted-http-address` |
+| `DROP_CREW_REPLICA_BUCKET` | the replica bucket of managed Crew apps (each app under `<app id>/`); also the bucket whose per-app request-metrics filters metering manages |
+| `DROP_USAGE_LOG_BUCKET` | optional: the bucket the replica bucket delivers its S3 server access logs and inventory to; turns [usage metering](#usage-metering) on |
+| `DROP_USAGE_LOG_PREFIX` | with `DROP_USAGE_LOG_BUCKET`: the access-log partition root, ending with `/`, before `YYYY/MM/DD/` (`access-logs/ACCOUNT/REGION/REPLICA_BUCKET/`) |
+| `DROP_USAGE_INVENTORY_PREFIX` | optional: the inventory configuration's folder, ending with `/` (`inventory/REPLICA_BUCKET/CONFIGURATION_ID/`); without it stored bytes are not metered |
 
 Keep the password in a root-owned environment file read by the service manager. The settings change only the server's memory; they are never saved into the database.
 
@@ -88,6 +92,33 @@ Behind an AWS Application Load Balancer, listen on `0.0.0.0:8100`, use `--hosted
 4. Sign in as the owner in a browser with the emailed code; the Users link appears.
 5. On the host, `drop --db /var/lib/drop/project/drop.db invite list` answers `{"invites": [], …}` (run as the service user, so it finds the server's private socket).
 6. A release upload passes the proxy: create a test app, then `drop op release.upload_link '{"app":"SLUG"}'` and `curl -fT ./hello URL` with a linux/amd64 executable (build `tests/fixtures/hello`) answers 200 with the release; an 80 MiB executable must pass as well.
+
+## Usage metering
+
+With `DROP_USAGE_LOG_BUCKET` and `DROP_USAGE_LOG_PREFIX` set, `drop serve` runs the usage collector a minute after it starts and then every 15 minutes; `drop usage collect` (as the owner on the server host, through the private socket) runs it once. Each run:
+
+1. lists the access-log objects of the last three UTC days (`<DROP_USAGE_LOG_PREFIX>YYYY/MM/DD/`; S3 delivers logs late and out of order, which is why the cursor is the set of processed keys), reads each object not yet processed with a strict parser (malformed lines are counted and skipped) and adds its records to `app_usage_hourly` together with the object's cursor row in one transaction, so a crash or restart never counts an object twice. Only keys whose first segment is a Drop app id count; requests S3 refused (401, 403) count only as denied. An object S3 delivers more than two days late is not read;
+2. reads the newest inventory report under `DROP_USAGE_INVENTORY_PREFIX` once into `app_usage_daily`;
+3. reconciles the replica bucket's per-app request-metrics filters (CloudWatch `AWS/S3` request metrics, filter id = app id), when `DROP_CREW_REPLICA_BUCKET` is set;
+4. checks every app's month against its limits ([Operations](ops.md#usage)): soft alerts are events; a hard limit also stops the app once.
+
+The server reads only the log bucket (`s3:ListBucket`, `s3:GetObject`) and changes only the replica bucket's metrics configurations (`s3:PutMetricsConfiguration`, which also authorizes their deletion, `s3:GetMetricsConfiguration`, `s3:ListBucketMetricsConfigurations`); it never reads replica objects. It stores counts only: no requester, address or request id from a log reaches the database or the server log. In a test, `--fake-aws DIR` reads logs from `DIR/usage/logs/<key>` and keeps filters in `DIR/usage/metrics/` (still with the variables above).
+
+### drop-ax41
+
+The stack `drop-ax41-workloads` (`deploy/drop-ax41/workload-identity.yml`) delivers the replica bucket's partitioned access logs and a daily all-versions CSV inventory to the log bucket, and `access-drop-ax41` (`access.yml`) gives the server's IAM user the metering policy. Add to the server's environment (`/etc/drop/server.env`, beside `DROP_CREW_REPLICA_BUCKET=pocketcontext-drop-ax41-replicas-224391044680`):
+
+```sh
+DROP_USAGE_LOG_BUCKET=pocketcontext-drop-ax41-logs-224391044680
+DROP_USAGE_LOG_PREFIX=access-logs/224391044680/eu-north-1/pocketcontext-drop-ax41-replicas-224391044680/
+DROP_USAGE_INVENTORY_PREFIX=inventory/pocketcontext-drop-ax41-replicas-224391044680/daily-all-versions/
+```
+
+`DROP_AWS_REGION=eu-north-1` (in `/etc/drop/aws.env`) is the region of both buckets. Restart the server, then check:
+
+1. The server log says `usage metering on`.
+2. `drop --db /var/lib/drop/project/drop.db usage collect` answers `objects_listed` > 0 and `errors: []` (an `AccessDenied` error names the missing permission). `filters_created` counts the Crew apps that had no filter yet; `aws s3api list-bucket-metrics-configurations --bucket pocketcontext-drop-ax41-replicas-224391044680` lists one per Crew app.
+3. `drop ... usage show SLUG` shows the app's last hours. The first inventory appears the day after the configuration was created.
 
 ## Remote MCP
 

@@ -4,6 +4,8 @@ Drop stores accounts with roles (`users`), `invites`, `apps`, the names of their
 
 `1820000200_apps.js` replaced the unreleased placeholder `1810000100_apps.js` (an owner, a name and a slug) before any database had shipped. Migration `1820001300_secret_cleanup.js` adds the private SQLite table `drop_secret_deletions` for outstanding SSM deletions and removes the shared object store’s deduplication flag from historical upload events. The queue holds parameter names only, and Drop exposes it through neither the collection API nor the SQL reader. Back up the project before upgrading. To roll back, restore the pre-upgrade backup and account for external parameter changes made since the backup.
 
+Migration `1820001700_usage.js` (0.3.0) adds S3 usage metering: the collections `app_usage_hourly` and `app_usage_daily` ([Usage](#usage)), the apps fields `usage_limits` and `replica_sync_seconds`, and three private SQLite tables of the collector (`drop_usage_log_objects`, `drop_usage_state`, `drop_usage_alerts`). Existing apps keep the default limits and no sync interval (their Crew guest keeps its own default). Back up the project before upgrading; rolling back needs the backup.
+
 Migration `1820001400_app_http_port.js` lowers the minimum guest HTTP port to 1. It preserves existing app settings and deployment numbers. Back up the control database before upgrading so it can be restored if you roll back to 0.1.0.
 
 ## The account
@@ -79,6 +81,8 @@ A partial unique index allows one open invite per address (`email_lower` where `
 | `current_release` | relation to `releases` | the release the app runs, set by `release.deploy` or an upload link with `activate` (added by `1820000300_releases.js`); empty before the first deploy |
 | `archived`, `archived_at` | bool, date | set by `app.archive`, cleared by `app.restore` |
 | `first_placed_at` | date | set by the first `placement.set` (added by `1820001100_placements.js`): from then on the disk cannot change |
+| `usage_limits` | json, at most 1 KiB | an admin's overrides of the app's monthly soft limits, `{requests_a, requests_b, bytes_out, stored_bytes}` (zero or absent keeps the default); written by `usage.set_limits` (added by `1820001700_usage.js`) |
+| `replica_sync_seconds` | number 0-300 | a Crew app's Litestream sync interval, handed to the guest as `DROP_REPLICA_SYNC_INTERVAL`; new Crew apps get 10, 0 leaves the guest's default; written by `app.set` (`replica_sync_interval`) |
 | `created`, `updated` | autodate | |
 
 Unique indexes on `slug` and `nib_app_id`, and an index on `(owner, created)`. List and view rules: `@request.auth.collectionName = 'users' && @request.auth.suspended = false && (@request.auth.role = 'admin' || owner = @request.auth.id)`; create, update and delete are closed (superusers only). The value rules are `internal/appspec`, shared with the node's renderer; the migration repeats the ranges and patterns as a second check. Quota: an account has at most `app_quota` non-archived apps (admins are exempt).
@@ -105,6 +109,15 @@ What the node needs to run a release (M7 and M9) is `sha256`, `s3_key` and `size
 
 `pb_migrations/1820001200_node_reports.js` creates `node_reports`, the last phase each node reported for each app placed on it: `node`, `app`, `nib_app_id` (unique with `node`), `deployment_id`, `phase` (`pending`, `staging`, `staging_failed`, `secret_failed`, `deploying`, `starting`, `running`, `sleeping`, `unhealthy`, `stopped`, `failed`, `unknown`), `message` (at most 2000), `restart_count`, `last_exit_code` with `has_exit_code`, `converged_at`, optional `last_hook` (event, outcome, time and duration), `observed_at` (when the phase was first reported). A row is rewritten only when something in it changes. List and view: admins, and the app's owner; writes closed. The `status` operation reads it.
 
+## Usage
+
+`pb_migrations/1820001700_usage.js` creates two collections written only by the usage collector (`internal/dropserver/usage.go`, [Hosting](hosting.md#usage-metering)). List and view rules as `node_reports` (admins, and the app's owner); writes closed. Neither is a public record route: the reader and MCP read them with `usage.get`.
+
+- `app_usage_hourly`, one row per app, UTC hour and source: `app`, `hour` (`2026-11-25T14:00:00Z`), `source` (`s3log`), `class_a` (PUT, COPY, POST, LIST and the multipart create, part and complete requests), `class_b` (GET, HEAD and every other request), `deletes`, `bytes_in` (the object size of successful uploads), `bytes_out` (bytes sent), `status_4xx`, `status_5xx`, `denied` (requests S3 refused with 401 or 403: counted only here and in `status_4xx`, never in the classes, bytes or limits, because the key alone does not prove who sent them), `created`, `updated`. A unique index on `(app, hour, source)`.
+- `app_usage_daily`, one row per app and inventory day: `app`, `day` (`YYYY-MM-DD`), `current_bytes`, `noncurrent_bytes`, `objects` (current versions that are not delete markers), `versions` (all versions that are not delete markers), `created`, `updated`. A unique index on `(app, day)`; a report replaces its day's rows.
+
+The private tables (no collection API, no SQL reader): `drop_usage_log_objects` (the access-log objects already counted, with when and how many lines; the collector's cursor, pruned after 10 days), `drop_usage_state` (the last inventory manifest read) and `drop_usage_alerts` (one row per app, month, limit and level already raised). They hold object keys, counts and app ids only: never a requester, address or request id from a log.
+
 ## Upload links
 
 `pb_migrations/1820000500_upload_links.js` creates `upload_links`, private to the server (every rule closed, never a public route or an SQL table): `app` (relation to `apps`), `token_hash` (the SHA-256 of the 32-character token, hidden; the token itself is shown once and never stored), `created_by` (relation to `users`), `note`, `activate` (deploy on upload), `expires_at` (15 minutes after creation), `used_at` and `release` (set by the one successful upload) and `created`. A unique index on `token_hash` and an index on `expires_at`. Unused links are deleted a day after they expire (hourly); used links stay with their release. See [Operations](ops.md#releases).
@@ -121,6 +134,8 @@ What the node needs to run a release (M7 and M9) is `sha256`, `s3_key` and `size
 | `events` | `id`, `actor`, `actor_node`, `app`, `subject_user`, `action`, `detail`, `created` |
 | `placements` | `id`, `app`, `node`, `generation`, `created_by`, `created`, `updated` |
 | `node_reports` | `id`, `node`, `app`, `nib_app_id`, `deployment_id`, `phase`, `message`, `restart_count`, `last_exit_code`, `has_exit_code`, `converged_at`, `observed_at` |
+| `app_usage_hourly` | `id`, `app`, `hour`, `source`, `class_a`, `class_b`, `deletes`, `bytes_in`, `bytes_out`, `status_4xx`, `status_5xx`, `denied`, `created`, `updated` |
+| `app_usage_daily` | `id`, `app`, `day`, `current_bytes`, `noncurrent_bytes`, `objects`, `versions`, `created`, `updated` |
 
 `POST /api/context/query {"sql": "SELECT ..."}` (`drop sql`) runs one read-only `SELECT` and returns `{columns, rows, truncated}`; `GET /api/context/schema` (`drop schema`) lists the readable tables, columns and search indexes with `"permissionModel": "shared"`. Both require a `users` token. The vendored SQL reader (`internal/pocketcontext/sqlread`) reads the live working database through read-only connections and authorizes every statement with an SQLite authorizer: only listed columns of listed tables, an allowlist of functions, no writes, `PRAGMA`, `ATTACH`, `sqlite_schema`, `dbstat`, `pragma_*` table-valued functions, FTS shadow tables or auth collections. Results are bounded (`maxRows` 500, `maxBytes` 1 MiB, `timeoutMs` 2000); `truncated` says a limit was hit. The column allowlist is the only read restriction and SQL reads whole tables, whoever owns the rows, so these reads stay on the loopback server (the owner's local key) and are never public routes; list only what the owner may read and never secrets.
 

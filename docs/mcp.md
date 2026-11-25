@@ -19,6 +19,7 @@ There are two MCP servers, one per role, with the same two tools and different e
 | `app` | user | `app.get` | one app (`app`) with its secret names |
 | `releases` | user | `release.list` | an app's releases (`app`); not available until releases exist |
 | `secrets` | user | `secret.list` | an app's secrets (`app`): `name`, `length`, `updated`, `set_via` only |
+| `usage` | user | `usage.get` | an app's S3 usage (`app`): the last 24 hours by hour, the month to date against its soft and hard limits, stored bytes and an estimated cost |
 | `status` | user | `status` | an app's runtime status (`app`): phase, message, deployment, restarts; the node's name for admins |
 | `events` | user | `event.list` | events of the caller's apps or of one app (`app`); `all` (admins) every event |
 | `users` | admin | `user.list` | every account |

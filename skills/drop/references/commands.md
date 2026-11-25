@@ -97,6 +97,12 @@ drop user set USER_ID|EMAIL [--role user|admin] [--quota N] [--suspend | --unsus
 - An account has `id`, `email`, `role`, `app_quota`, `suspended`, `owner`, `signed_in`, `invited_by`, `created`. `user list` prints `{"users", "has_more"}`; `user set` prints `{"user"}`. Suspending ends the account's sessions at once. Nobody changes their own role or suspension, and the owner is always an unsuspended admin (HTTP 403, exit 1).
 - These commands need an admin. Against a hosted server on this machine they act as its owner through its private socket.
 
+## usage
+
+- `usage show APP` prints `{app, month, hourly, month_to_date, stored, limits, estimate, exceeded, metered}`: the last 24 hours by UTC hour, the month to date (Class A, Class B and DELETE requests, bytes in and out, 4xx, 5xx and denied requests), the latest stored bytes, each limit (`requests_a`, `requests_b`, `bytes_out`, `stored`) with its `value`, `soft`, `hard` and `level`, and an estimated cost in USD (an estimate, not a bill). Your own apps; admins any.
+- `usage limits APP [--requests-a N] [--requests-b N] [--bytes-out BYTES] [--stored-bytes BYTES] [--reset]` (admins) overrides an app's monthly soft limits; hard limits are ten times these.
+- `usage collect` (admins) reads new S3 usage logs now; the server also does it every 15 minutes.
+
 ## op
 
 ```sh

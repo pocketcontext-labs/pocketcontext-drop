@@ -24,7 +24,7 @@ Use this skill when the user asks to create, configure, start, stop, list, find 
 
 When this assistant has Drop's MCP connector (a hosted Drop at `https://HOST/mcp`, added by the user and approved in their browser; you cannot approve it for them), it has exactly two tools, acting with the account that approved the connection:
 
-- `drop_read {what, app?, all?, limit?, offset?}` reads: start with `what: "me"` (the account and its role), then `apps`, `app` (with `app`, an id or slug), `releases`, `secrets`, `status` (an app's runtime phase), `events`; admins also `users`, `invites` and `nodes`. `all: true` gives admins everyone's apps or events. A `what` marked "not available yet" answers `not_available`: say so rather than retrying.
+- `drop_read {what, app?, all?, limit?, offset?}` reads: start with `what: "me"` (the account and its role), then `apps`, `app` (with `app`, an id or slug), `releases`, `secrets`, `status` (an app's runtime phase), `usage` (an app's S3 usage against its monthly limits, with an estimated cost), `events`; admins also `users`, `invites` and `nodes`. `all: true` gives admins everyone's apps or events. A `what` marked "not available yet" answers `not_available`: say so rather than retrying.
 - `drop_write {op, input, idempotency_key?}` calls one of Drop's operations, listed with their inputs in the tool's description (users: `app.create`, `app.set`, `app.start`, `app.stop`, `release.upload_link`, `release.deploy`, `secret.set`, `secret.delete`; admins also `invite.create`, `invite.revoke`, `user.set`, `node.create`, `node.rotate_secret`, `node.set_state`, `placement.set`, `placement.clear`). The result is `{op, result}`; reuse the same `idempotency_key` when you retry a write whose result you did not see.
 
 The server checks the account's role and ownership on every call: another account's app answers `not_found`, an admin operation from a user `forbidden`. Do not try operations the tool does not list. Errors come back as `{"error": {status, code, message, field}}`: fix the input named by `field`, and stop on `forbidden`.
@@ -58,6 +58,8 @@ Each app runs one Linux executable, its current release, on a Drop node where an
 "{{BINARY}}" search "hello" --limit 10 --db "{{DB}}"
 "{{BINARY}}" sql "SELECT id, name, slug, desired_state, deployment_seq FROM apps ORDER BY created DESC LIMIT 20" --db "{{DB}}"
 ```
+
+`usage show APP` (MCP `what: "usage"`) shows an app's S3 usage, metered from its replica prefix: the last 24 hours, the month to date against its soft and hard limits and an estimated cost (an estimate, not a bill). Past a hard limit Drop stops the app once; tell the user, and that they can start it again or ask an admin to raise the limits (`usage limits APP ...`, admins). A Crew app's Litestream sync interval is `app set APP --replica-sync-interval 10s` (1s-300s; a new deployment).
 
 A user has at most their app quota of apps (default 3; admins have none): `app create` exits 4 with `quota_exceeded` when it is full, and archiving an app (`app archive`) frees a place. A change to what an app runs with (anything but its name, state and disk) starts a new deployment, which restarts the app; say so before changing a running app's settings. Nothing is ever deleted: archive instead.
 
