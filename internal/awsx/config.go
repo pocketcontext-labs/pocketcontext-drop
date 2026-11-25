@@ -57,6 +57,10 @@ type Stores struct {
 	Blobs     BlobStore
 	Secrets   SecretStore
 	SSMPrefix string
+	// Usage is the usage collector's store: set by the directory fake
+	// (DIR/usage); for AWS, serve opens it with OpenUsageAWS when metering
+	// is configured.
+	Usage UsageStore
 	// Fake is true for the in-memory and directory fakes; callers log it.
 	Fake bool
 	// Description names the backend for logs, without credentials.

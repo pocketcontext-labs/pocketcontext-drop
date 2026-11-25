@@ -88,9 +88,14 @@ func OpenFakeDir(dir string) (*Stores, error) {
 	if err != nil {
 		return nil, err
 	}
+	usage, err := NewDirUsageStore(filepath.Join(abs, "usage"))
+	if err != nil {
+		return nil, err
+	}
 	return &Stores{
 		Blobs:       blobs,
 		Secrets:     secrets,
+		Usage:       usage,
 		SSMPrefix:   DefaultSSMPrefix,
 		Fake:        true,
 		Description: "fake AWS in directory " + abs + " (testing only)",
