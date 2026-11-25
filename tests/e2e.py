@@ -298,8 +298,11 @@ def scenario(pc):
                      'events': ['action', 'actor', 'actor_node', 'app', 'created', 'detail', 'id', 'subject_user'],
                      'placements': sorted(['id', 'app', 'node', 'generation', 'created_by', 'created', 'updated']),
                      'node_reports': sorted(['id', 'node', 'app', 'nib_app_id', 'deployment_id', 'phase', 'message', 'restart_count',
-                                             'last_exit_code', 'has_exit_code', 'converged_at', 'observed_at'])},
-          f'the SQL schema exposes apps (no env or args), secret names, releases, events, placements and node reports (never nodes): {tables}')
+                                             'last_exit_code', 'has_exit_code', 'converged_at', 'observed_at']),
+                     'app_usage_hourly': sorted(['id', 'app', 'hour', 'source', 'class_a', 'class_b', 'deletes', 'bytes_in', 'bytes_out',
+                                                 'status_4xx', 'status_5xx', 'denied', 'created', 'updated']),
+                     'app_usage_daily': sorted(['id', 'app', 'day', 'current_bytes', 'noncurrent_bytes', 'objects', 'versions', 'created', 'updated'])},
+          f'the SQL schema exposes apps (no env or args), secret names, releases, events, placements, node reports and usage (never nodes): {tables}')
     check(schema['permissionModel'] == 'shared' and schema['search']['indexes'] == ['apps'] and 'isolation' not in schema['search']
           and 'snapshotLimits' not in schema, 'reads use the live database and a shared apps index')
 

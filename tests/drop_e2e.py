@@ -188,7 +188,8 @@ def scenario(binary, root):
     env = isolated_env(root / 'home')
     (root / 'home').mkdir()
     env.update({'DROP_OWNER_EMAIL': 'owner@example.test', 'DROP_SMTP_FROM': 'login@example.test', 'DROP_APP_DOMAIN': APP_DOMAIN,
-                'DROP_SMTP_HOST': '127.0.0.1', 'DROP_SMTP_PORT': '9', 'DROP_SMTP_USERNAME': 'synthetic', 'DROP_SMTP_PASSWORD': 'synthetic'})
+                'DROP_SMTP_HOST': '127.0.0.1', 'DROP_SMTP_PORT': '9', 'DROP_SMTP_USERNAME': 'synthetic', 'DROP_SMTP_PASSWORD': 'synthetic',
+                'DROP_USAGE_LOG_BUCKET': 'logs-example', 'DROP_USAGE_LOG_PREFIX': 'access-logs/111122223333/eu-north-1/replicas-example/'})
     server_root = root / 'server'
     server_root.mkdir()
     server = Server(binary, server_root, env)
@@ -263,6 +264,30 @@ def scenario(binary, root):
         wait_for('the new deployment in desired.json', lambda: read_json(node.desired)['instances'][0]['deploymentId'] == changed['app']['nib_app_id'] + '-dep-' + str(changed['app']['deployment_seq']), timeout=30)
         check(time.time() - started < 4.5, f'the change arrived through realtime before the 5 s ticker ({time.time() - started:.1f} s)')
         check(read_json(node.desired)['instances'][0]['config']['resources']['memoryMib'] == 256, 'the new memory size is written')
+
+        # 4b. Usage: S3 access logs in the fake log bucket are metered per app;
+        # past the hard limit the app stops and desired.json follows.
+        server.owner('usage', 'limits', 'agent-app', '--requests-b', '2')
+        now = time.gmtime()
+        stamp = time.strftime('%d/%b/%Y:%H:%M:%S +0000', now)
+        line = (f'0000 replicas-example [{stamp}] 192.0.2.10 arn:aws:sts::111122223333:assumed-role/workloads/{app_id} SYNTHREQ '
+                f'REST.GET.OBJECT {app_id}/db "GET /{app_id}/db HTTP/1.1" 200 - 100 100 10 9 "-" "synthetic" - SYNTHHOST= '
+                'SigV4 TLS_AES_128_GCM_SHA256 AuthHeader replicas-example.s3.eu-north-1.amazonaws.com TLSv1.3 - -')
+        log_dir = server.fake_aws / 'usage' / 'logs' / 'access-logs/111122223333/eu-north-1/replicas-example' / time.strftime('%Y/%m/%d', now)
+        log_dir.mkdir(parents=True)
+        (log_dir / (time.strftime('%Y-%m-%d', now) + '-00-00-00-SYNTHETIC0001')).write_text((line + '\n') * 25 + 'malformed\n', encoding='utf-8')
+        collected = server.owner('usage', 'collect')
+        check(collected['objects_processed'] == 1 and collected['malformed'] == 1 and collected['stopped'] == [app['id']],
+              f'drop usage collect meters the log and stops the app past its hard limit: {collected}')
+        again = server.owner('usage', 'collect')
+        check(again['objects_processed'] == 0 and again['stopped'] == [], 'a second run counts nothing twice')
+        shown = server.owner('usage', 'show', 'agent-app')
+        check(shown['month_to_date']['class_b'] == 25 and sorted(e['level'] for e in shown['exceeded']) == ['hard', 'soft'],
+              f'drop usage show reports the month and the exceeded limits: {shown["month_to_date"]}')
+        wait_for('the usage stop in desired.json', lambda: read_json(node.desired)['instances'][0]['desiredState'] == 'stopped', timeout=30)
+        check(True, 'the hard-limit stop reaches desired.json')
+        server.owner('app', 'start', 'agent-app')
+        wait_for('the restart in desired.json', lambda: read_json(node.desired)['instances'][0]['desiredState'] != 'stopped', timeout=30)
 
         # 5. Server down: no write, the agent keeps retrying.
         node.write_reported([], accepted=node.revision())
