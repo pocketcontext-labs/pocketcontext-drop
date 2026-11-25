@@ -454,3 +454,62 @@ section > h3 {
 .phase-unhealthy {
   color: var(--danger);
 }
+.usage h3 {
+  margin: 20px 0 8px;
+  font-size: 1rem;
+}
+.limits,
+.exceeded {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 12px;
+  display: grid;
+  gap: 12px;
+}
+.limit-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+.meter {
+  position: relative;
+  height: 10px;
+  margin: 4px 0;
+  border-radius: 5px;
+  background: var(--accent-soft);
+  overflow: hidden;
+}
+.meter-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent);
+}
+.limit-hard .meter-fill {
+  background: var(--danger);
+}
+.meter-soft {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--text);
+}
+.table-scroll {
+  overflow-x: auto;
+}
+.usage-hours {
+  border-collapse: collapse;
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+.usage-hours th,
+.usage-hours td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+  white-space: nowrap;
+}
+.usage-hours th:first-child {
+  text-align: left;
+}

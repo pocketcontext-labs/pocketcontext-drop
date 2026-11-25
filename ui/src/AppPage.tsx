@@ -20,6 +20,7 @@ import {
 } from "./dropApi";
 import { message } from "./errors";
 import Releases from "./Releases";
+import UsagePanel from "./Usage";
 import { appHash, viewHashes, type AppTab } from "./routes";
 
 const tabs: { tab: AppTab; label: string }[] = [
@@ -27,6 +28,7 @@ const tabs: { tab: AppTab; label: string }[] = [
   { tab: "releases", label: "Releases" },
   { tab: "settings", label: "Settings" },
   { tab: "env", label: "Env & secrets" },
+  { tab: "usage", label: "Usage" },
 ];
 
 /** An environment or secret name (internal/appspec). */
@@ -256,6 +258,7 @@ function Settings({
   const [name, setName] = useState(app.name);
   const [state, setState] = useState<DesiredState>(app.desired_state);
   const [emailEnabled, setEmailEnabled] = useState(Boolean(app.sign_in_email_enabled));
+  const [syncInterval, setSyncInterval] = useState(app.replica_sync_interval ?? "");
   const [executable, setExecutable] = useState(app.executable_name);
   const [args, setArgs] = useState(app.args.join("\n"));
   const [health, setHealth] = useState<HealthKind>(app.health_kind);
@@ -275,7 +278,7 @@ function Settings({
     event.preventDefault();
     setError("");
     setStatus("");
-    const change: AppSettings & { name?: string; sign_in_email_enabled?: boolean } = {};
+    const change: AppSettings & { name?: string; sign_in_email_enabled?: boolean; replica_sync_interval?: string } = {};
     try {
       const trimmed = validName(name);
       if (trimmed !== app.name) change.name = trimmed;
@@ -286,6 +289,8 @@ function Settings({
     if (state !== app.desired_state) change.desired_state = state;
     if (app.kind === "crew" && emailEnabled !== Boolean(app.sign_in_email_enabled))
       change.sign_in_email_enabled = emailEnabled;
+    if (app.kind === "crew" && syncInterval.trim() !== "" && syncInterval.trim() !== (app.replica_sync_interval ?? ""))
+      change.replica_sync_interval = syncInterval.trim();
     if (executable.trim() !== app.executable_name)
       change.executable_name = executable.trim();
     const list = args.split("\n").filter((line) => line !== "");
@@ -396,6 +401,20 @@ function Settings({
           <label>
             <input type="checkbox" checked={emailEnabled} onChange={(event) => setEmailEnabled(event.target.checked)} />
             Deliver sign-in codes to {app.crew_owner_email}
+          </label>
+        )}
+        {app.kind === "crew" && (
+          <label>
+            Replica sync interval (1s to 300s)
+            <input
+              name="replica_sync_interval"
+              value={syncInterval}
+              placeholder="10s"
+              maxLength={8}
+              autoCapitalize="none"
+              spellCheck={false}
+              onChange={(event) => setSyncInterval(event.target.value)}
+            />
           </label>
         )}
         <label>
@@ -694,7 +713,7 @@ function Secrets({
   );
 }
 
-/** `#/apps/<id>`: one app with its Overview, Settings, Env & secrets and Releases tabs. */
+/** `#/apps/<id>`: one app with its Overview, Releases, Settings, Env & secrets and Usage tabs. */
 export default function AppPage({ id, tab }: { id: string; tab: AppTab }) {
   const [app, setApp] = useState<App | null>(null);
   const [secrets, setSecrets] = useState<Secret[]>([]);
@@ -780,6 +799,7 @@ export default function AppPage({ id, tab }: { id: string; tab: AppTab }) {
             <Settings key={`${app.id}-${version}`} app={app} onChange={setApp} />
           )}
           {tab === "releases" && <Releases app={app} onChange={() => void load()} />}
+          {tab === "usage" && <UsagePanel app={app} />}
           {tab === "env" && (
             <>
               <EnvVars app={app} secrets={secrets} onChange={changed} />

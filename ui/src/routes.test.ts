@@ -31,6 +31,7 @@ describe("routes", () => {
     expect(appRouteFromHash("#/apps/app000000000001")).toEqual({ id: "app000000000001", tab: "overview" });
     expect(appRouteFromHash("#/apps/app000000000001/settings")).toEqual({ id: "app000000000001", tab: "settings" });
     expect(appRouteFromHash("#/apps/app000000000001/releases")).toEqual({ id: "app000000000001", tab: "releases" });
+    expect(appRouteFromHash("#/apps/app000000000001/usage")).toEqual({ id: "app000000000001", tab: "usage" });
     expect(appRouteFromHash("#/apps/app000000000001/other")).toBeNull();
     expect(appRouteFromHash("#/apps/new")).toBeNull();
     expect(appHash("app000000000001", "env")).toBe("#/apps/app000000000001/env");

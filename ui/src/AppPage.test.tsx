@@ -215,3 +215,49 @@ it("uploads a release through a one-time link with progress and deploys another"
   expect(await screen.findByText(`Deployed bbbbbbbbbbbb: new deployment d-${id}-dep-3.`)).toBeInTheDocument();
   expect(deploy).toHaveBeenCalledWith(id, older.id);
 });
+
+const counts = { class_a: 1200, class_b: 30000, deletes: 40, bytes_in: 1048576, bytes_out: 3 * 2 ** 30, status_4xx: 2, status_5xx: 0, denied: 1 };
+const usage = {
+  app: id, month: "2026-11", metered: true,
+  hourly: [{ hour: "2026-11-25T14:00:00Z", ...counts }],
+  month_to_date: counts,
+  stored: { day: "2026-11-25", current_bytes: 2 ** 20, noncurrent_bytes: 0, objects: 3, versions: 3 },
+  limits: [
+    { metric: "requests_a" as const, label: "Class A and DELETE requests", value: 1240, soft: 100000, hard: 1000000, level: "ok" as const },
+    { metric: "requests_b" as const, label: "Class B requests", value: 30000, soft: 1000000, hard: 10000000, level: "ok" as const },
+    { metric: "bytes_out" as const, label: "Bytes sent", value: 3 * 2 ** 30, soft: 2 * 2 ** 30, hard: 20 * 2 ** 30, level: "soft" as const },
+    { metric: "stored" as const, label: "Stored bytes", value: 2 ** 20, soft: 2 ** 30, hard: 10 * 2 ** 30, level: "ok" as const },
+  ],
+  limits_override: {},
+  estimate: { class_a_usd: 0.006, class_b_usd: 0.012, egress_usd: 0.27, storage_usd: 0, total_usd: 0.288 },
+  estimate_note: "Estimated S3 cost. An estimate, not a bill.",
+  exceeded: [{ metric: "bytes_out", level: "soft", stopped: false, message: "Bytes sent reached 3.00 GB in 2026-11, past the soft limit of 2.00 GB.", created: "2026-11-25 14:30:00.000Z" }],
+};
+
+it("shows an app's usage against its limits, with an estimate, and no limit form for users", async () => {
+  history.replaceState(null, "", `/#/apps/${id}/usage`);
+  vi.spyOn(dropApi, "getApp").mockResolvedValue({ app, secrets: [] });
+  const get = vi.spyOn(dropApi, "getUsage").mockResolvedValue(usage);
+  render(<App />);
+  expect(await screen.findByRole("meter", { name: "Bytes sent" })).toBeInTheDocument();
+  expect(get).toHaveBeenCalledWith(id);
+  expect(screen.getByText("Past the soft limit")).toBeInTheDocument();
+  expect(screen.getByText(/past the soft limit of 2.00 GB/)).toBeInTheDocument();
+  expect(screen.getByText("$0.2880")).toBeInTheDocument();
+  expect(screen.getByText("An estimate, not a bill.", { exact: false })).toBeInTheDocument();
+  expect(screen.getByRole("table")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Save limits" })).not.toBeInTheDocument();
+});
+
+it("lets an admin override an app's soft limits", async () => {
+  history.replaceState(null, "", `/#/apps/${id}/usage`);
+  vi.spyOn(dropApi, "me").mockResolvedValue({ ...member, role: "admin", admin: true });
+  vi.spyOn(dropApi, "getApp").mockResolvedValue({ app, secrets: [] });
+  vi.spyOn(dropApi, "getUsage").mockResolvedValue(usage);
+  const set = vi.spyOn(dropApi, "setUsageLimits").mockResolvedValue({});
+  render(<App />);
+  fireEvent.change(await screen.findByLabelText("Bytes sent (GB)"), { target: { value: "5" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save limits" }));
+  expect(await screen.findByText("Limits saved.")).toBeInTheDocument();
+  expect(set).toHaveBeenCalledWith(id, { requests_a: 100000, requests_b: 1000000, bytes_out: 5 * 2 ** 30, stored_bytes: 2 ** 30 });
+});

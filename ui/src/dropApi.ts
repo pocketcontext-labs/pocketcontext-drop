@@ -113,6 +113,8 @@ export interface App {
   archived_at: string;
   created: string;
   updated: string;
+  /** A Crew app's Litestream sync interval, such as "10s". */
+  replica_sync_interval?: string;
 }
 export interface Quota {
   used: number;
@@ -462,6 +464,62 @@ async function placeApp(
 ): Promise<{ moved: boolean; previous_node?: string }> {
   return op("placement.set", { app, node });
 }
+/** One app's S3 usage counts (internal/usage Counts). */
+export interface UsageCounts {
+  class_a: number;
+  class_b: number;
+  deletes: number;
+  bytes_in: number;
+  bytes_out: number;
+  status_4xx: number;
+  status_5xx: number;
+  denied: number;
+}
+export type UsageMetric = "requests_a" | "requests_b" | "bytes_out" | "stored";
+export interface UsageLimit {
+  metric: UsageMetric;
+  label: string;
+  value: number;
+  soft: number;
+  hard: number;
+  level: "ok" | "soft" | "hard";
+}
+/** The answer of usage.get. */
+export interface Usage {
+  app: string;
+  month: string;
+  hourly: (UsageCounts & { hour: string })[];
+  month_to_date: UsageCounts;
+  stored: {
+    day: string;
+    current_bytes: number;
+    noncurrent_bytes: number;
+    objects: number;
+    versions: number;
+  } | null;
+  limits: UsageLimit[];
+  limits_override: Record<string, number>;
+  estimate: {
+    class_a_usd: number;
+    class_b_usd: number;
+    egress_usd: number;
+    storage_usd: number;
+    total_usd: number;
+  };
+  estimate_note: string;
+  exceeded: { metric: string; level: string; stopped: boolean; message: string; created: string }[];
+  metered: boolean;
+}
+async function getUsage(app: string): Promise<Usage> {
+  return op("usage.get", { app });
+}
+async function setUsageLimits(
+  app: string,
+  limits: { requests_a?: number; requests_b?: number; bytes_out?: number; stored_bytes?: number; reset?: boolean },
+): Promise<unknown> {
+  return op("usage.set_limits", { app, ...limits });
+}
+
 async function clearPlacement(app: string): Promise<{ cleared_node: string }> {
   return op("placement.clear", { app });
 }
@@ -491,4 +549,6 @@ export const dropApi = {
   setNodeState,
   placeApp,
   clearPlacement,
+  getUsage,
+  setUsageLimits,
 };
