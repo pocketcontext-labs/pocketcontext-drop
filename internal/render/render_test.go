@@ -714,3 +714,48 @@ func TestCrewDeliveryFollowsAppliedInstance(t *testing.T) {
 		t.Fatal("tombstone retained mail")
 	}
 }
+
+// TestReplicaSyncInterval: a managed Crew app's sync interval reaches the
+// guest as DROP_REPLICA_SYNC_INTERVAL; out of range, or on an app that is not
+// managed Crew, the app is rejected alone.
+func TestReplicaSyncInterval(t *testing.T) {
+	in := loadInput(t, "crew-dev.input.json")
+	in.Apps[0].HTTPPort = 8080
+	in.Apps[0].Env = nil
+	in.Apps[0].Secrets = nil
+	in.Apps[0].HookPort = 8081
+	in.Apps[0].ManagedCrew = true
+	in.Apps[0].AWSRegion = "eu-north-1"
+	in.Apps[0].CrewReplicaBucket = "crew-example"
+	in.Apps[0].CrewOwnerEmail = "owner+crew@example.test"
+	envOf := func(in Input) (map[string]string, int) {
+		t.Helper()
+		out := mustRender(t, in)
+		var doc document
+		if err := json.Unmarshal(out.Document, &doc); err != nil {
+			t.Fatal(err)
+		}
+		if len(doc.Instances) != 1 {
+			return nil, len(out.Rejected)
+		}
+		return doc.Instances[0].Config.Command.Environment, len(out.Rejected)
+	}
+	if env, _ := envOf(in); env["DROP_REPLICA_SYNC_INTERVAL"] != "" {
+		t.Fatal("an unset interval reached the guest")
+	}
+	in.Apps[0].ReplicaSyncSeconds = 10
+	if env, _ := envOf(in); env["DROP_REPLICA_SYNC_INTERVAL"] != "10s" {
+		t.Fatalf("interval %q", env["DROP_REPLICA_SYNC_INTERVAL"])
+	}
+	for _, bad := range []int{-1, 301} {
+		in.Apps[0].ReplicaSyncSeconds = bad
+		if _, rejected := envOf(in); rejected != 1 {
+			t.Errorf("%d s accepted", bad)
+		}
+	}
+	in.Apps[0].ReplicaSyncSeconds = 10
+	in.Apps[0].ManagedCrew = false
+	if _, rejected := envOf(in); rejected != 1 {
+		t.Error("an interval on an app that is not managed Crew accepted")
+	}
+}

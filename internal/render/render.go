@@ -59,6 +59,10 @@ type App struct {
 	// CrewOwnerEmail is the immutable address Drop verified at creation.
 	CrewOwnerEmail     string `json:"crewOwnerEmail,omitempty"`
 	SignInEmailEnabled bool   `json:"signInEmailEnabled,omitzero"`
+	// ReplicaSyncSeconds is a managed Crew app's Litestream sync interval
+	// (1-300 s), handed to the guest as DROP_REPLICA_SYNC_INTERVAL; zero
+	// leaves the guest's own default.
+	ReplicaSyncSeconds int `json:"replicaSyncSeconds,omitzero"`
 	// DesiredState is running, on-request or stopped.
 	DesiredState string `json:"desiredState"`
 	// IdleTimeoutMs is the traffic-idle sleep timeout of an on-request app,
@@ -341,6 +345,9 @@ func renderEnvironment(app App) map[string]string {
 		env["AWS_REGION"] = app.AWSRegion
 		if app.CrewFreshEnrollment {
 			env["CREW_DROP_BOOTSTRAP"] = "1"
+		}
+		if app.ReplicaSyncSeconds != 0 {
+			env[appspec.EnvReplicaSyncInterval] = appspec.ReplicaSyncInterval(app.ReplicaSyncSeconds)
 		}
 	}
 	if mode := env["AWS_WORKLOAD_IDENTITY"]; mode == "1" || mode == "async" {

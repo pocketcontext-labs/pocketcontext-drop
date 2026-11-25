@@ -146,6 +146,9 @@ func validateApp(app App, lim Limits) *AppError {
 	if app.ManagedCrew && !crewRegion.MatchString(app.AWSRegion) {
 		return fail("awsRegion", "must be an AWS region name")
 	}
+	if !appspec.ValidReplicaSyncSeconds(app.ReplicaSyncSeconds) || (app.ReplicaSyncSeconds != 0 && !app.ManagedCrew) {
+		return fail("replicaSyncSeconds", "must be zero, or %d–%d on a managed Crew app", appspec.MinReplicaSyncSeconds, appspec.MaxReplicaSyncSeconds)
+	}
 	if field, reason := appspec.CheckArgs(app.Args); field != "" {
 		return fail(field, "%s", reason)
 	}

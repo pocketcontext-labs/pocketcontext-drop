@@ -194,3 +194,20 @@ func CheckHealth(kind, path string) (field, reason string) {
 	}
 	return "", ""
 }
+
+// The Litestream sync interval of a managed Crew app, in whole seconds,
+// handed to the guest as DROP_REPLICA_SYNC_INTERVAL (a Go duration such as
+// "10s"). Zero means unset: the guest keeps its own default.
+const (
+	MinReplicaSyncSeconds, MaxReplicaSyncSeconds, DefaultReplicaSyncSeconds = 1, 300, 10
+	// EnvReplicaSyncInterval is the guest variable that carries it.
+	EnvReplicaSyncInterval = "DROP_REPLICA_SYNC_INTERVAL"
+)
+
+// ValidReplicaSyncSeconds accepts zero (unset) or 1-300 seconds.
+func ValidReplicaSyncSeconds(n int) bool {
+	return n == 0 || (n >= MinReplicaSyncSeconds && n <= MaxReplicaSyncSeconds)
+}
+
+// ReplicaSyncInterval is the guest's form of a sync interval: "<n>s".
+func ReplicaSyncInterval(seconds int) string { return strconv.Itoa(seconds) + "s" }

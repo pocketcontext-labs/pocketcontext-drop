@@ -202,10 +202,12 @@ class FakeAgent:
             need(APP_ID.match(r['appId']) and r['code'] and r['message'] and r['appId'] not in ids, f'rejected entry {r}')
         for a in d['apps']:
             extra = set(a) - APP_KEYS
-            need(extra <= {'crewOwnerEmail', 'signInEmailEnabled', 'managedCrew', 'crewFreshEnrollment', 'crewReplicaBucket', 'awsRegion', 'hookPort'} and set(a) >= APP_KEYS - {'idleTimeoutMs'}, f'app keys {sorted(a)}')
+            need(extra <= {'crewOwnerEmail', 'signInEmailEnabled', 'managedCrew', 'crewFreshEnrollment', 'crewReplicaBucket', 'awsRegion', 'hookPort', 'replicaSyncSeconds'} and set(a) >= APP_KEYS - {'idleTimeoutMs'}, f'app keys {sorted(a)}')
             if 'hookPort' in a:
                 need(type(a['hookPort']) is int and 1 <= a['hookPort'] <= 65535 and a['hookPort'] != a['httpPort'], 'private hooks port')
-            if extra - {'hookPort'}:
+            if 'replicaSyncSeconds' in a:
+                need(type(a['replicaSyncSeconds']) is int and 1 <= a['replicaSyncSeconds'] <= 300 and a.get('managedCrew') is True, 'Crew replica sync interval')
+            if extra - {'hookPort', 'replicaSyncSeconds'}:
                 need(isinstance(a.get('crewOwnerEmail'), str) and '@' in a['crewOwnerEmail'], 'Crew owner email')
                 need('signInEmailEnabled' not in a or a['signInEmailEnabled'] is True, 'enabled Crew binding')
             if a.get('managedCrew'):
