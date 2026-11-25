@@ -1,0 +1,19 @@
+{
+  "Apps": {
+    "d-aaaaaaaaaaaaaaa": {
+      "current_bytes": 1048576,
+      "noncurrent_bytes": 524288,
+      "objects": 1,
+      "versions": 2
+    },
+    "d-bbbbbbbbbbbbbbb": {
+      "current_bytes": 5246976,
+      "noncurrent_bytes": 7000,
+      "objects": 2,
+      "versions": 4
+    }
+  },
+  "Rows": 10,
+  "Unattributed": 1,
+  "Malformed": 2
+}

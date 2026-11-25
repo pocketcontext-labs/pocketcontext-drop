@@ -1,0 +1,13 @@
+{
+  "sourceBucket" : "replicas-example",
+  "destinationBucket" : "arn:aws:s3:::logs-example",
+  "version" : "2016-11-30",
+  "creationTimestamp" : "1795564800000",
+  "fileFormat" : "CSV",
+  "fileSchema" : "Bucket, Key, VersionId, IsLatest, IsDeleteMarker, Size, LastModifiedDate, StorageClass, IsMultipartUploaded",
+  "files" : [ {
+    "key" : "inventory/replicas-example/daily-all-versions/data/00000000-0000-4000-8000-000000000001.csv.gz",
+    "size" : 412,
+    "MD5checksum" : "00000000000000000000000000000000"
+  } ]
+}

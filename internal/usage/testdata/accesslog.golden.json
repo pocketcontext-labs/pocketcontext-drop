@@ -1,0 +1,44 @@
+{
+  "hours": [
+    {
+      "App": "d-aaaaaaaaaaaaaaa",
+      "Hour": "2026-11-25T14:00:00Z",
+      "class_a": 3,
+      "class_b": 2,
+      "deletes": 1,
+      "bytes_in": 1048576,
+      "bytes_out": 525360,
+      "status_4xx": 0,
+      "status_5xx": 1,
+      "denied": 0
+    },
+    {
+      "App": "d-aaaaaaaaaaaaaaa",
+      "Hour": "2026-11-25T15:00:00Z",
+      "class_a": 0,
+      "class_b": 2,
+      "deletes": 0,
+      "bytes_in": 0,
+      "bytes_out": 2000,
+      "status_4xx": 0,
+      "status_5xx": 0,
+      "denied": 0
+    },
+    {
+      "App": "d-bbbbbbbbbbbbbbb",
+      "Hour": "2026-11-25T14:00:00Z",
+      "class_a": 5,
+      "class_b": 4,
+      "deletes": 2,
+      "bytes_in": 5246976,
+      "bytes_out": 1304,
+      "status_4xx": 3,
+      "status_5xx": 0,
+      "denied": 2
+    }
+  ],
+  "ignored": 2,
+  "lines": 33,
+  "malformed": 6,
+  "unattributed": 4
+}
