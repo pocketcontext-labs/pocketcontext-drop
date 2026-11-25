@@ -33,6 +33,9 @@ export const OPS = [
   "node.set_state",
   "placement.set",
   "placement.clear",
+  "usage.get",
+  "usage.set_limits",
+  "usage.collect",
 ] as const;
 export type Op = (typeof OPS)[number];
 

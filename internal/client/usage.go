@@ -79,6 +79,10 @@ Accounts and nodes (admins; Drop is invite-only, and no invite email is sent):
   node rotate-secret NODE            replace a node's password (shown once)
   node set-state NODE active|draining|disabled
   place APP NODE | place APP --clear put an app on a node, or take it off
+  usage show APP                     an app's S3 usage, limits and estimated cost
+  usage limits APP [--requests-a N] [--requests-b N] [--bytes-out B] [--stored-bytes B] [--reset]
+                                     override an app's monthly soft limits
+  usage collect                      read new S3 usage logs now (also every 15 minutes)
   op NAME [INPUT_JSON|-] [--idempotency-key KEY]
                                      call any operation (docs/ops.md)
   On a hosted server of this machine these act as the owner through the
@@ -107,7 +111,7 @@ forward of the same port; --url URL or DROP_URL):
                        computer)
   skill --url URL [--agent A] [--dir DIR]
                        install the agent skill for the remote server
-  App, secret, release, account, node, place and op commands work with --url. URL must be http://127.0.0.1:PORT or
+  App, secret, release, account, node, place, usage and op commands work with --url. URL must be http://127.0.0.1:PORT or
   http://localhost:PORT. Remote mode never creates a database or starts a
   server; serve, start, ensure-running, stop, flush, recover, init, password
   and login-code are not available with --url.

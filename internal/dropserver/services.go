@@ -38,7 +38,19 @@ type Services struct {
 	// hostname.
 	AppDomain                    string
 	CrewReplicaBucket, AWSRegion string
+	// Usage reads the replica bucket's access logs and inventory and manages
+	// its per-app request-metrics filters (usage.go); nil, or a UsageConfig
+	// that is not Enabled, turns metering off.
+	Usage       awsx.UsageStore
+	UsageConfig awsx.UsageConfig
 }
+
+// metering reports whether the usage collector runs on this server.
+func (s Services) metering() bool { return s.Usage != nil && s.UsageConfig.Enabled() }
+
+// metricsFilters reports whether the server manages per-app request-metrics
+// filters: only with metering on and a replica bucket.
+func (s Services) metricsFilters() bool { return s.metering() && s.UsageConfig.ReplicaBucket != "" }
 
 const servicesStoreKey = "dropServices"
 

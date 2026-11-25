@@ -93,14 +93,14 @@ func TestParseLineStrict(t *testing.T) {
 	}
 	for _, bad := range []string{
 		"",
-		strings.Replace(good, " 200 ", "  200 ", 1),       // empty field
-		" " + good,                                        // leading space
-		good + " ",                                        // trailing space
-		strings.Replace(good, `"-" -`, `"-"-`, 1),         // no space after a quote
-		strings.Replace(good, "[25/Nov", "25/Nov", 1),     // no bracket
-		strings.Replace(good, "REST.GET.OBJECT", "-", 1),  // no operation
-		strings.Replace(good, " 200 ", " 999 ", 1),        // bad status
-		strings.Replace(good, " 5 5 ", " 5 x ", 1),        // bad size
+		strings.Replace(good, " 200 ", "  200 ", 1), // empty field
+		" " + good, // leading space
+		good + " ", // trailing space
+		strings.Replace(good, `"-" -`, `"-"-`, 1),          // no space after a quote
+		strings.Replace(good, "[25/Nov", "25/Nov", 1),      // no bracket
+		strings.Replace(good, "REST.GET.OBJECT", "-", 1),   // no operation
+		strings.Replace(good, " 200 ", " 999 ", 1),         // bad status
+		strings.Replace(good, " 5 5 ", " 5 x ", 1),         // bad size
 		strings.Replace(good, "-0000]", "+0000]", 1) + `"`, // stray quote
 	} {
 		if _, err := ParseLine(bad); err == nil {

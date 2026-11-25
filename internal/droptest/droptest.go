@@ -63,6 +63,16 @@ type Options struct {
 	Releases        awsx.BlobWriter
 	NoReleases      bool
 	ReleaseMaxBytes int64
+	// Usage turns usage metering on with an in-memory store (Hosted.Usage)
+	// and UsageConfig.
+	Usage bool
+}
+
+// UsageConfig is the synthetic metering configuration of Options.Usage.
+var UsageConfig = awsx.UsageConfig{
+	Region: "eu-north-1", LogBucket: "logs-example", ReplicaBucket: "crew-replica-fixture",
+	LogPrefix:       "access-logs/111122223333/eu-north-1/crew-replica-fixture/",
+	InventoryPrefix: "inventory/crew-replica-fixture/daily-all-versions/",
 }
 
 // Hosted is one synthetic hosted Drop instance.
@@ -77,8 +87,10 @@ type Hosted struct {
 	// Releases is the in-memory release store (nil with Options.Releases or
 	// NoReleases).
 	Releases *awsx.MemBlobStore
-	mail     chan Mail
-	client   atomic.Int64
+	// Usage is the in-memory usage store with Options.Usage.
+	Usage  *awsx.MemUsageStore
+	mail   chan Mail
+	client atomic.Int64
 }
 
 var codeSubject = regexp.MustCompile(`^(\d{6}) is your Drop sign-in code$`)
@@ -138,6 +150,10 @@ func NewHosted(t *testing.T, opts Options) *Hosted {
 		services.Releases = h.Releases
 	}
 	services.ReleaseMaxBytes = opts.ReleaseMaxBytes
+	if opts.Usage {
+		h.Usage = awsx.NewMemUsageStore()
+		services.Usage, services.UsageConfig = h.Usage, UsageConfig
+	}
 	dropserver.SetServices(app, services)
 	// A late priority captures the email after core rendered the code email;
 	// not calling Next means nothing is ever sent.

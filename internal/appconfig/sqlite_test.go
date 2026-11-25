@@ -132,6 +132,10 @@ func TestSQLReaderDeniesSQLiteInternals(t *testing.T) {
 		CREATE TABLE placements(id TEXT PRIMARY KEY, app TEXT, node TEXT, generation INTEGER, created_by TEXT, created TEXT, updated TEXT);
 		CREATE TABLE node_reports(id TEXT PRIMARY KEY, node TEXT, app TEXT, nib_app_id TEXT, deployment_id TEXT, phase TEXT, message TEXT,
 			restart_count INTEGER, last_exit_code INTEGER, has_exit_code BOOLEAN, converged_at TEXT, observed_at TEXT);
+		CREATE TABLE app_usage_hourly(id TEXT PRIMARY KEY, app TEXT, hour TEXT, source TEXT, class_a INTEGER, class_b INTEGER, deletes INTEGER,
+			bytes_in INTEGER, bytes_out INTEGER, status_4xx INTEGER, status_5xx INTEGER, denied INTEGER, created TEXT, updated TEXT);
+		CREATE TABLE app_usage_daily(id TEXT PRIMARY KEY, app TEXT, day TEXT, current_bytes INTEGER, noncurrent_bytes INTEGER, objects INTEGER,
+			versions INTEGER, created TEXT, updated TEXT);
 		CREATE VIRTUAL TABLE apps_fts USING fts5(name);
 		INSERT INTO users VALUES ('account00000001','account@example.localhost','hash-a','key-a');
 		INSERT INTO apps(id, owner, name, slug, env, created, updated) VALUES ('record000000001','account00000001','Hello','hello','{}','2026-01-01','2026-01-01'),

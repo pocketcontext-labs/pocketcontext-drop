@@ -78,6 +78,11 @@ type Spec struct {
 	// such operation, users those of RoleUser). Only mutating operations take
 	// it; reads reach MCP through drop_read's own table (internal/client).
 	MCP bool
+	// Standalone marks a mutating operation that does slow outside work (the
+	// usage collector reads S3): it runs outside the framework's transaction,
+	// makes its own atomic writes and writes its own event; an idempotency
+	// key is ignored.
+	Standalone bool
 }
 
 var opName = regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`)
@@ -142,12 +147,18 @@ var specs = []Spec{
 		Summary: "Place an app (any account's) on an active node, or move it to another one; its disk size is fixed from the first placement. A moved app stops on the old node, whose copy of its data stays there."},
 	{Name: "placement.clear", Role: RoleAdmin, MCP: true, Input: &PlacementClearInput{},
 		Summary: "Remove an app's placement: its node stops it and keeps its data."},
+	{Name: "usage.get", Role: RoleUser, Read: true, Input: &UsageGetInput{},
+		Summary: "An app's S3 usage from the replica bucket's logs: the last 24 hours by hour, the month to date against its soft and hard limits, the latest stored bytes and an estimated cost (an estimate, not a bill)."},
+	{Name: "usage.set_limits", Role: RoleAdmin, Input: &UsageSetLimitsInput{},
+		Summary: "Override an app's monthly soft usage limits (requests_a, requests_b, bytes_out, stored_bytes; hard limits are ten times these); reset:true returns to the server defaults."},
+	{Name: "usage.collect", Role: RoleAdmin, Standalone: true, Input: &UsageCollectInput{},
+		Summary: "Run the usage collector once: read new S3 access logs and the latest inventory, update usage, check limits."},
 }
 
 func init() {
 	seen := map[string]bool{}
 	for _, s := range specs {
-		if !opName.MatchString(s.Name) || seen[s.Name] || (s.Role != RoleUser && s.Role != RoleAdmin) || s.Input == nil || s.Summary == "" || (s.Read && (s.SecretInput || s.MCP)) {
+		if !opName.MatchString(s.Name) || seen[s.Name] || (s.Role != RoleUser && s.Role != RoleAdmin) || s.Input == nil || s.Summary == "" || (s.Read && (s.SecretInput || s.MCP || s.Standalone)) || (s.Standalone && (s.SecretInput || s.MCP || s.OnceResult)) {
 			panic(fmt.Sprintf("dropapi: invalid operation spec %q", s.Name))
 		}
 		seen[s.Name] = true
@@ -230,4 +241,5 @@ const (
 	CodeSecretsUnavailable    = "secrets_unavailable"
 	CodeSecretStoreFailed     = "secret_store_failed"
 	CodeInternal              = "internal"
+	CodeUsageCollectFailed    = "usage_collect_failed"
 )

@@ -35,6 +35,7 @@ import (
 var instanceFields = []string{
 	"start_state", "idle_timeout_ms", "vcpu", "memory_mib", "http_port", "hook_port",
 	"executable_name", "args", "env", "health_kind", "health_path", "sign_in_email_enabled", "crew_enrollment",
+	"replica_sync_seconds",
 }
 
 // instanceConfigChanged reports whether a loaded app record's instance

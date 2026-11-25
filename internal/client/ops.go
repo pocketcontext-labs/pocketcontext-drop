@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,7 +21,7 @@ import (
 // forwarded server.
 
 // opCommands are the commands that call operations.
-var opCommands = map[string]bool{"invite": true, "user": true, "op": true, "app": true, "secret": true, "release": true, "node": true, "place": true}
+var opCommands = map[string]bool{"invite": true, "user": true, "op": true, "app": true, "secret": true, "release": true, "node": true, "place": true, "usage": true}
 
 // newOpsClient signs in to the project's server as its owner: through the
 // private socket when a hosted server runs (hosted mode has no loopback TCP
@@ -114,6 +115,8 @@ func runOps(c *Client, command string, a *args) (any, error) {
 		return runNode(c, sub, a)
 	case "place":
 		return runPlace(c, a)
+	case "usage":
+		return runUsage(c, sub, a)
 	}
 	switch command + " " + sub {
 	case "invite create":
@@ -312,7 +315,7 @@ func runApp(c *Client, sub string, a *args) (any, error) {
 		fields["name"], fields["slug"] = strings.TrimSpace(string(name)), a.flags["slug"]
 		return typedOp[dropapi.AppCreateInput](c, "app.create", fields)
 	case "set":
-		usage := "app set APP [--name NAME] [--sign-in-email enabled|disabled] [--finish-enrollment] " + appSettingsUsage
+		usage := "app set APP [--name NAME] [--sign-in-email enabled|disabled] [--finish-enrollment] [--replica-sync-interval 10s] " + appSettingsUsage
 		if err := a.need(2, usage); err != nil {
 			return nil, err
 		}
@@ -331,6 +334,9 @@ func runApp(c *Client, sub string, a *args) (any, error) {
 		}
 		if a.bools["finish-enrollment"] {
 			fields["finish_enrollment"] = true
+		}
+		if a.has("replica-sync-interval") {
+			fields["replica_sync_interval"] = a.flags["replica-sync-interval"]
 		}
 		if a.has("sign-in-email") {
 			switch a.flags["sign-in-email"] {
@@ -461,4 +467,39 @@ func runPlace(c *Client, a *args) (any, error) {
 		return nil, err
 	}
 	return c.Op("placement.set", dropapi.PlacementSetInput{App: a.pos[0], Node: a.pos[1]}, "")
+}
+
+// runUsage runs `drop usage`: an app's S3 usage, an admin's limit overrides
+// and a one-off collector run.
+func runUsage(c *Client, sub string, a *args) (any, error) {
+	usage := "usage show APP | usage limits APP [--requests-a N] [--requests-b N] [--bytes-out BYTES] [--stored-bytes BYTES] [--reset] | usage collect"
+	switch sub {
+	case "show":
+		if err := a.need(2, "usage show APP"); err != nil {
+			return nil, err
+		}
+		return c.Op("usage.get", dropapi.UsageGetInput{App: a.pos[1]}, "")
+	case "limits":
+		if err := a.need(2, "usage limits APP [--requests-a N] [--requests-b N] [--bytes-out BYTES] [--stored-bytes BYTES] [--reset]"); err != nil {
+			return nil, err
+		}
+		in := dropapi.UsageSetLimitsInput{App: a.pos[1], Reset: a.bools["reset"]}
+		for flag, into := range map[string]**int64{"requests-a": &in.RequestsA, "requests-b": &in.RequestsB, "bytes-out": &in.BytesOut, "stored-bytes": &in.StoredBytes} {
+			if !a.has(flag) {
+				continue
+			}
+			n, err := strconv.ParseInt(a.flags[flag], 10, 64)
+			if err != nil {
+				return nil, fail(2, "--%s must be a whole number", flag)
+			}
+			*into = &n
+		}
+		return c.Op("usage.set_limits", in, "")
+	case "collect":
+		if err := a.need(1, "usage collect"); err != nil {
+			return nil, err
+		}
+		return c.Op("usage.collect", dropapi.UsageCollectInput{}, "")
+	}
+	return nil, fail(2, "usage: drop %s", usage)
 }

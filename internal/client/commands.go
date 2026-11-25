@@ -206,7 +206,7 @@ parsed:
 		"schema":         {nil, nil},
 		"sql":            {nil, nil},
 		"query":          {nil, nil},
-		"app":            {{"kind", "sign-in-email", "slug", "name", "mode", "idle-timeout", "vcpu", "memory", "disk", "port", "hook-port", "executable", "args-json", "health", "health-path", "limit"}, {"all", "archived", "finish-enrollment"}},
+		"app":            {{"kind", "sign-in-email", "slug", "name", "mode", "idle-timeout", "vcpu", "memory", "disk", "port", "hook-port", "executable", "args-json", "health", "health-path", "limit", "replica-sync-interval"}, {"all", "archived", "finish-enrollment"}},
 		"secret":         {nil, nil},
 		"release":        {{"note", "limit"}, {"activate"}},
 		"search":         {{"limit", "offset", "generation"}, nil},
@@ -218,6 +218,7 @@ parsed:
 		"op":             {{"idempotency-key"}, nil},
 		"node":           {{"host-id", "ec2-instance-id", "private-ip", "limit"}, nil},
 		"place":          {nil, {"clear"}},
+		"usage":          {{"requests-a", "requests-b", "bytes-out", "stored-bytes"}, {"reset"}},
 		"agent":          {agentValueFlags, nil},
 	}
 	s, known := spec[command]
@@ -443,7 +444,7 @@ func runData(c *Client, command string, a *args, pretty bool) error {
 	var data any
 	var err error
 	switch command {
-	case "invite", "user", "op", "app", "secret", "release", "node", "place":
+	case "invite", "user", "op", "app", "secret", "release", "node", "place", "usage":
 		data, err = runOps(c, command, a)
 	case "whoami":
 		me, err := c.Must("POST", "/api/collections/users/auth-refresh", nil)

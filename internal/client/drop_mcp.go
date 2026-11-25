@@ -46,6 +46,7 @@ var dropReads = []dropRead{
 	{"releases", "release.list", dropapi.RoleUser, "an app's releases (app)"},
 	{"secrets", "secret.list", dropapi.RoleUser, "an app's secrets (app): name, length, updated and set_via (mcp or ui); never values"},
 	{"status", "status", dropapi.RoleUser, "an app's runtime status (app)"},
+	{"usage", "usage.get", dropapi.RoleUser, "an app's S3 usage (app): last 24 hours by hour, month to date against its soft and hard limits, stored bytes and an estimated cost"},
 	{"events", "event.list", dropapi.RoleUser, "events (who changed what), newest first, of your apps or of one app (app); all:true (admins) lists every event"},
 	{"users", "user.list", dropapi.RoleAdmin, "every account with role, quota and suspension"},
 	{"invites", "invite.list", dropapi.RoleAdmin, "invites and their state (open, used, revoked, expired)"},
@@ -219,7 +220,7 @@ func readSchema(role dropapi.Role) map[string]any {
 		"type": "object", "additionalProperties": false, "required": []string{"what"},
 		"properties": map[string]any{
 			"what":   map[string]any{"type": "string", "enum": whats, "description": "What to read; see the list in the description."},
-			"app":    map[string]any{"type": "string", "description": "An app's id or slug (app, releases, secrets, status, events)."},
+			"app":    map[string]any{"type": "string", "description": "An app's id or slug (app, releases, secrets, status, usage, events)."},
 			"all":    map[string]any{"type": "boolean", "description": "Admins: everyone's apps or every event."},
 			"limit":  map[string]any{"type": "integer", "minimum": 1, "maximum": dropapi.MaxListLimit, "description": "Page size of a list (default 100)."},
 			"offset": map[string]any{"type": "integer", "minimum": 0, "description": "Skip this many list entries; follow has_more."},

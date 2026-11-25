@@ -48,7 +48,8 @@ type Ctx struct {
 	Request         *http.Request
 	Spec            dropapi.Spec
 	event           *Event
-	deleteParameter string // parameter queued for cleanup after commit
+	deleteParameter string               // parameter queued for cleanup after commit
+	metricsFilter   *metricsFilterAction // per-app metrics filter to apply after commit
 }
 
 // Event is the events row an operation writes. Action defaults to the
@@ -174,7 +175,9 @@ func serveOp(re *core.RequestEvent, keys *sync.Mutex) error {
 	if raw[0] != '{' || decodeStrict(raw, input) != nil {
 		return writeError(re, &dropapi.Error{Status: http.StatusBadRequest, Code: dropapi.CodeInvalidInput, Message: "The input does not match the operation.", Data: map[string]any{"op": req.Op}})
 	}
-	if spec.Read {
+	// A standalone operation makes its own transactions and writes its own
+	// event (Spec.Standalone); like a read it ignores idempotency keys.
+	if spec.Read || spec.Standalone {
 		c, err := authorizeOp(re.App, re, spec)
 		if err != nil {
 			return writeError(re, err)
@@ -247,6 +250,9 @@ func serveOp(re *core.RequestEvent, keys *sync.Mutex) error {
 	}
 	if c.deleteParameter != "" {
 		_ = finishSecretDeletion(re.Request.Context(), re.App, c.deleteParameter) // queued for retry on failure
+	}
+	if c.metricsFilter != nil {
+		applyMetricsFilter(re.Request.Context(), re.App, c.Auth.Id, *c.metricsFilter) // best effort; the collector reconciles
 	}
 	return writeResult(re, encoded, replayed)
 }

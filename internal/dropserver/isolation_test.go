@@ -3,6 +3,7 @@ package dropserver_test
 import (
 	"bufio"
 	"encoding/json"
+	"ganigeorgiev.com/pocketbase/pocketbase/core"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -49,6 +50,13 @@ import (
 //	             secrets, status, events, upload links, deploys); admin ops
 //	             refused for users; node tokens are not OAuth grants
 //	             tools/list per role                                          TestMCPToolsByRole, TestMCPAdminOpAsUserForbidden
+//	Usage        app_usage_hourly, app_usage_daily: own apps (admins all),    TestIsolationMatrix, TestRealtimeIsolation
+//	             not public routes; usage.get B's app 404 for A;
+//	             usage.set_limits and usage.collect 403 for users;           TestIsolationMatrix
+//	             apps.usage_limits and replica_sync_interval only via ops     TestUsageCollectEndToEnd, TestReplicaSyncIntervalSetting
+//	             (usage_test.go); events app.usage_exceeded and
+//	             app.metrics_filter follow the events rules; drop_read
+//	             what=usage                                                   TestMCPIsolation
 //	Secrets      a value reaches only the store: never records, answers,      TestSecretSentinel, TestMCPSecretSentinel,
 //	             logs, events, reports or desired documents                   TestDesiredDocument, internal/leakscan
 //	Browser      #/apps/<not yours> and #/admin/users as a non-admin show      TestTenantReader (tests, CI)
@@ -363,7 +371,9 @@ func TestIsolationMatrix(t *testing.T) {
 	tokens := map[string]string{"anonymous": "", "A": a, "B": b, "O": owner, "N1": t1, "N2": t2}
 
 	// The public route table: these collections are never public, whoever asks.
-	for _, c := range []string{"users", "releases", "app_secret_names", "upload_links", "nodes", "placements", "node_reports"} {
+	usageRows(t, h, appA)
+	usageRows(t, h, appB)
+	for _, c := range []string{"users", "releases", "app_secret_names", "upload_links", "nodes", "placements", "node_reports", "app_usage_hourly", "app_usage_daily"} {
 		for who, token := range tokens {
 			for _, path := range []string{"/api/collections/" + c + "/records", "/api/collections/" + c + "/records/" + appA} {
 				if w := h.Request("GET", path, token, ""); w.Code != 404 {
@@ -373,7 +383,7 @@ func TestIsolationMatrix(t *testing.T) {
 		}
 	}
 	// Record writes: refused for every token on every collection.
-	for _, c := range []string{"users", "invites", "apps", "releases", "app_secret_names", "upload_links", "nodes", "placements", "node_reports", "events"} {
+	for _, c := range []string{"users", "invites", "apps", "releases", "app_secret_names", "upload_links", "nodes", "placements", "node_reports", "events", "app_usage_hourly", "app_usage_daily"} {
 		for who, token := range tokens {
 			for _, m := range []struct{ method, path string }{
 				{"POST", "/api/collections/" + c + "/records"},
@@ -401,24 +411,29 @@ func TestIsolationMatrix(t *testing.T) {
 			"app_secret_names": {[]string{"A"}, []string{"B"}}, "node_reports": {[]string{"A"}, []string{"B", "N2"}},
 			"events": {[]string{"A"}, []string{"B", "N2"}}, "nodes": {nil, []string{"N1", "N2"}},
 			"placements": {nil, []string{"A", "B", "N1", "N2"}}, "invites": {nil, []string{"A", "B"}},
+			"app_usage_hourly": {[]string{"A"}, []string{"B"}}, "app_usage_daily": {[]string{"A"}, []string{"B"}},
 		},
 		"B": {
 			"apps": {[]string{"B"}, []string{"A"}}, "releases": {[]string{"B"}, []string{"A"}},
 			"node_reports": {[]string{"B"}, []string{"A", "N1"}}, "events": {[]string{"B"}, []string{"A", "N1"}},
+			"app_usage_hourly": {[]string{"B"}, []string{"A"}}, "app_usage_daily": {[]string{"B"}, []string{"A"}},
 		},
 		"N1": {
 			"nodes":      {nil, []string{"N1", "N2"}}, // the list is admins' only; N1 views its own record by id
 			"placements": {[]string{"A", "N1"}, []string{"B", "N2"}},
 			"apps":       {nil, []string{"A", "B"}}, "releases": {nil, []string{"A", "B"}}, "app_secret_names": {nil, []string{"A", "B"}},
 			"node_reports": {nil, []string{"A", "B"}}, "events": {nil, []string{"A", "B"}}, "invites": {nil, []string{"A", "B"}},
+			"app_usage_hourly": {nil, []string{"A", "B"}}, "app_usage_daily": {nil, []string{"A", "B"}},
 		},
 		"anonymous": {
 			"apps": {nil, []string{"A", "B"}}, "events": {nil, []string{"A", "B"}}, "nodes": {nil, []string{"N1", "N2"}},
 			"node_reports": {nil, []string{"A", "B"}}, "placements": {nil, []string{"A", "B"}},
+			"app_usage_hourly": {nil, []string{"A", "B"}}, "app_usage_daily": {nil, []string{"A", "B"}},
 		},
 		"O": {
 			"apps": {[]string{"A", "B"}, nil}, "nodes": {[]string{"N1", "N2"}, nil}, "placements": {[]string{"A", "B"}, nil},
 			"node_reports": {[]string{"A", "B"}, nil}, "events": {[]string{"A", "B"}, nil},
+			"app_usage_hourly": {[]string{"A", "B"}, nil}, "app_usage_daily": {[]string{"A", "B"}, nil},
 		},
 	}
 	for who, collections := range matrix {
@@ -470,7 +485,7 @@ func TestIsolationMatrix(t *testing.T) {
 	for _, ref := range []string{appB, "app-of-b"} {
 		for op, input := range map[string]map[string]any{
 			"release.list": {}, "release.upload_link": {}, "release.deploy": {"release": releaseB}, "status": {},
-			"event.list": {}, "app.get": {}, "secret.list": {},
+			"event.list": {}, "app.get": {}, "secret.list": {}, "usage.get": {},
 		} {
 			input["app"] = ref
 			wantError(t, h.Op(a, op, input), 404, "not_found")
@@ -483,6 +498,7 @@ func TestIsolationMatrix(t *testing.T) {
 		"node.list": nil, "node.create": {"name": "mine", "host_id": "h-1"}, "node.rotate_secret": {"node": n1},
 		"node.set_state": {"node": n1, "state": "disabled"}, "placement.set": {"app": appA, "node": n2},
 		"placement.clear": {"app": appA}, "user.list": nil, "invite.list": nil,
+		"usage.set_limits": {"app": appA, "requests_a": 1}, "usage.collect": nil,
 	} {
 		wantError(t, h.Op(a, op, input), 403, "forbidden")
 	}
@@ -499,6 +515,29 @@ func TestIsolationMatrix(t *testing.T) {
 	}
 	if seqOf(t, h, n1) < 1 || appRecord(t, h, appB).GetString("current_release") != releaseB {
 		t.Error("B's app changed")
+	}
+}
+
+// usageRows writes one hourly and one daily usage row of an app, as the
+// usage collector does.
+func usageRows(t *testing.T, h *droptest.Hosted, app string) {
+	t.Helper()
+	for name, fields := range map[string]map[string]any{
+		"app_usage_hourly": {"hour": "2026-11-25T14:00:00Z", "source": "s3log", "class_b": 3},
+		"app_usage_daily":  {"day": "2026-11-25", "current_bytes": 10},
+	} {
+		c, err := h.App.FindCachedCollectionByNameOrId(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := core.NewRecord(c)
+		r.Set("app", app)
+		for k, v := range fields {
+			r.Set(k, v)
+		}
+		if err := h.App.Save(r); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -623,7 +662,7 @@ func TestRealtimeIsolation(t *testing.T) {
 	_, a := h.User("a@example.test", "user")
 	n1, _, t1 := h.Node("node-one", hostA)
 	n2, _, t2 := h.Node("node-two", hostB)
-	everything := []string{"apps", "releases", "app_secret_names", "node_reports", "events", "nodes", "placements", "invites", "users"}
+	everything := []string{"apps", "releases", "app_secret_names", "node_reports", "events", "nodes", "placements", "invites", "users", "app_usage_hourly", "app_usage_daily"}
 
 	admin := openRealtime(t, base)
 	admin.subscribe(t, base, owner, "apps")
@@ -649,12 +688,16 @@ func TestRealtimeIsolation(t *testing.T) {
 		t.Fatalf("N2 report: %d %v", status, out)
 	}
 	h.MustOp(owner, "invite.create", map[string]any{"email": "c@example.test"})
+	usageRows(t, h, appB)
 
 	// A's own activity, then a placement on N1: the positive controls that
 	// prove each stream is live before the absences are checked.
 	appA := deployedApp(t, h, a, "app-of-a", 1)
 	h.MustOp(owner, "placement.set", map[string]any{"app": appA, "node": n1})
+	usageRows(t, h, appA)
 	clientA.waitFor(t, "apps", appA)
+	clientA.waitFor(t, "app_usage_hourly", appA)
+	clientA.waitFor(t, "app_usage_daily", appA)
 	node1.waitFor(t, "placements", n1)
 	node1.waitFor(t, "nodes/"+n1, n1)
 	admin.waitFor(t, "apps", appB)

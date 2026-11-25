@@ -37,6 +37,9 @@ type App struct {
 	CrewOwnerEmail      string `json:"crew_owner_email,omitempty"`
 	SignInEmailEnabled  bool   `json:"sign_in_email_enabled"`
 	CrewFreshEnrollment bool   `json:"crew_fresh_enrollment,omitempty"`
+	// ReplicaSyncInterval is a Crew app's Litestream sync interval ("10s");
+	// empty on ordinary apps and on Crew apps that keep the guest's default.
+	ReplicaSyncInterval string `json:"replica_sync_interval,omitempty"`
 
 	ID             string            `json:"id"`
 	Name           string            `json:"name"`
@@ -159,6 +162,10 @@ type AppSetInput struct {
 
 	FinishEnrollment   bool  `json:"finish_enrollment,omitempty"`
 	SignInEmailEnabled *bool `json:"sign_in_email_enabled,omitempty"`
+	// ReplicaSyncInterval is a Crew app's Litestream sync interval, a Go
+	// duration of whole seconds from "1s" to "300s" (default "10s"), handed
+	// to the guest as DROP_REPLICA_SYNC_INTERVAL.
+	ReplicaSyncInterval *string `json:"replica_sync_interval,omitempty"`
 }
 
 // AppResult is a created or changed app.

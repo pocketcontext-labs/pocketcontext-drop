@@ -78,6 +78,33 @@
       "has_exit_code",
       "converged_at",
       "observed_at"
+    ],
+    "app_usage_hourly": [
+      "id",
+      "app",
+      "hour",
+      "source",
+      "class_a",
+      "class_b",
+      "deletes",
+      "bytes_in",
+      "bytes_out",
+      "status_4xx",
+      "status_5xx",
+      "denied",
+      "created",
+      "updated"
+    ],
+    "app_usage_daily": [
+      "id",
+      "app",
+      "day",
+      "current_bytes",
+      "noncurrent_bytes",
+      "objects",
+      "versions",
+      "created",
+      "updated"
     ]
   },
   "timeoutMs": 2000,

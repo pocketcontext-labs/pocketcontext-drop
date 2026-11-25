@@ -46,6 +46,7 @@ func Hooks() appserver.Hooks {
 			var workers sync.WaitGroup
 			workers.Go(func() { runSecretCleanup(ctx, app) })
 			workers.Go(func() { runUploadLinkPruning(ctx, app) })
+			workers.Go(func() { runUsageCollector(ctx, app) })
 			runOpKeyPruning(ctx, app)
 			workers.Wait()
 		},

@@ -37,11 +37,31 @@ func serveServices(a *args, hosted bool, listenAddr string, getenv func(string) 
 		}
 		s.ReleaseMaxBytes = n
 	}
+	usageCfg, err := awsx.UsageConfigFromEnv(getenv, s.AWSRegion, s.CrewReplicaBucket)
+	if err != nil {
+		return s, fail(2, "%v", err)
+	}
 	stores, err := openServeStores(a, hosted, listenAddr)
 	if err != nil || stores == nil {
+		if err == nil && usageCfg.Enabled() {
+			log.Printf("drop: usage metering needs hosted mode or --fake-aws; it is off")
+		}
 		return s, err
 	}
 	s.Secrets, s.SSMPrefix, s.Releases = stores.Secrets, stores.SSMPrefix, stores.Blobs
+	if usageCfg.Enabled() {
+		s.UsageConfig = usageCfg
+		if stores.Fake {
+			s.Usage = stores.Usage
+		} else {
+			store, err := awsx.OpenUsageAWS(context.Background(), usageCfg)
+			if err != nil {
+				return s, fail(2, "%v", err)
+			}
+			s.Usage = store
+		}
+		log.Printf("drop: usage metering on (log bucket %s, prefix %s)", usageCfg.LogBucket, usageCfg.LogPrefix)
+	}
 	return s, nil
 }
 

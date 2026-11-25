@@ -116,9 +116,14 @@ func (c *Ctx) appOut(r *core.Record, emails map[string]string) dropapi.App {
 	if crewOwnerEmail != "" {
 		kind = "crew"
 	}
+	syncInterval := ""
+	if n := r.GetInt("replica_sync_seconds"); n > 0 && r.GetString("crew_enrollment") != "" {
+		syncInterval = appspec.ReplicaSyncInterval(n)
+	}
 	return dropapi.App{
 		CrewFreshEnrollment: r.GetString("crew_enrollment") == "fresh", Kind: kind, CrewOwnerEmail: crewOwnerEmail, SignInEmailEnabled: r.GetBool("sign_in_email_enabled"),
-		ID: r.Id, Name: r.GetString("name"), Slug: r.GetString("slug"), Owner: owner, OwnerEmail: email,
+		ReplicaSyncInterval: syncInterval,
+		ID:                  r.Id, Name: r.GetString("name"), Slug: r.GetString("slug"), Owner: owner, OwnerEmail: email,
 		NibAppID: r.GetString("nib_app_id"), VolumeID: r.GetString("volume_id"), Hostname: r.GetString("hostname"),
 		DesiredState: r.GetString("desired_state"), IdleTimeoutMs: r.GetInt("idle_timeout_ms"),
 		VCPU: r.GetInt("vcpu"), MemoryMiB: r.GetInt("memory_mib"), DiskMiB: r.GetInt("disk_mib"),
@@ -394,6 +399,7 @@ func appCreate(c *Ctx, in *dropapi.AppCreateInput) (any, error) {
 		app.Set("crew_owner_email", email)
 		app.Set("crew_enrollment", "fresh")
 		app.Set("sign_in_email_enabled", true)
+		app.Set("replica_sync_seconds", appspec.DefaultReplicaSyncSeconds)
 	default:
 		return nil, Invalid("kind", "App kind must be ordinary or crew.")
 	}
@@ -410,6 +416,7 @@ func appCreate(c *Ctx, in *dropapi.AppCreateInput) (any, error) {
 	if err := c.App.Save(app); err != nil {
 		return nil, err
 	}
+	c.planMetricsFilter(app)
 	c.Event(Event{App: app.Id, Detail: map[string]any{"name": name, "slug": in.Slug}})
 	return dropapi.AppResult{App: c.appOut(app, nil)}, nil
 }
@@ -434,6 +441,18 @@ func appSet(c *Ctx, in *dropapi.AppSetInput) (any, error) {
 		}
 		app.Set("sign_in_email_enabled", *in.SignInEmailEnabled)
 		changed = append(changed, "sign_in_email_enabled")
+	}
+	if in.ReplicaSyncInterval != nil {
+		if !s.crew {
+			return nil, Invalid("replica_sync_interval", "The replica sync interval is a setting of Crew apps.")
+		}
+		d, err := time.ParseDuration(strings.TrimSpace(*in.ReplicaSyncInterval))
+		seconds := int(d / time.Second)
+		if err != nil || d%time.Second != 0 || seconds < appspec.MinReplicaSyncSeconds || seconds > appspec.MaxReplicaSyncSeconds {
+			return nil, Invalid("replica_sync_interval", fmt.Sprintf("The replica sync interval is whole seconds from %ds to %ds, such as \"10s\".", appspec.MinReplicaSyncSeconds, appspec.MaxReplicaSyncSeconds))
+		}
+		app.Set("replica_sync_seconds", seconds)
+		changed = append(changed, "replica_sync_interval")
 	}
 	if in.Name != nil {
 		name, err := cleanName(*in.Name)
@@ -560,13 +579,24 @@ func setState(c *Ctx, ref string, start bool) (any, error) {
 	state := appspec.StateStopped
 	if start {
 		state = app.GetString("start_state")
+		app.Set("desired_state", state)
+		err = c.App.Save(app)
+	} else {
+		err = stopApp(c.App, app)
 	}
-	app.Set("desired_state", state)
-	if err := c.App.Save(app); err != nil {
+	if err != nil {
 		return nil, err
 	}
 	c.Event(Event{App: app.Id, Detail: map[string]any{"desired_state": state}})
 	return dropapi.AppResult{App: c.appOut(app, nil)}, nil
+}
+
+// stopApp is the stop path: the desired state becomes stopped (app.start
+// returns to start_state) and nothing else changes. The caller's transaction
+// bumps the node's desired_seq (syncDesiredSeqs). The usage limits use it too.
+func stopApp(tx core.App, app *core.Record) error {
+	app.Set("desired_state", appspec.StateStopped)
+	return tx.Save(app)
 }
 
 func appStart(c *Ctx, in *dropapi.AppStartInput) (any, error) { return setState(c, in.App, true) }
@@ -582,6 +612,7 @@ func appArchive(c *Ctx, in *dropapi.AppArchiveInput) (any, error) {
 	if err := c.App.Save(app); err != nil {
 		return nil, err
 	}
+	c.planMetricsFilter(app)
 	c.Event(Event{App: app.Id, Detail: map[string]any{"slug": app.GetString("slug")}})
 	return dropapi.AppResult{App: c.appOut(app, nil)}, nil
 }
@@ -605,6 +636,7 @@ func appRestore(c *Ctx, in *dropapi.AppRestoreInput) (any, error) {
 	if err := c.App.Save(app); err != nil {
 		return nil, err
 	}
+	c.planMetricsFilter(app)
 	c.Event(Event{App: app.Id, Detail: map[string]any{"slug": app.GetString("slug")}})
 	return dropapi.AppResult{App: c.appOut(app, nil)}, nil
 }

@@ -35,7 +35,7 @@ import (
 var (
 	ticketUserWrites  = []string{"app.create", "app.set", "app.start", "app.stop", "release.upload_link", "release.deploy", "secret.set", "secret.delete"}
 	ticketAdminWrites = []string{"invite.create", "invite.revoke", "user.set", "node.create", "node.rotate_secret", "node.set_state", "placement.set", "placement.clear"}
-	ticketUserReads   = []string{"me", "apps", "app", "releases", "secrets", "status", "events"}
+	ticketUserReads   = []string{"me", "apps", "app", "releases", "secrets", "status", "usage", "events"} // usage: owner decision 6 of S3 metering (Phase 1)
 	ticketAdminReads  = []string{"users", "invites", "nodes"}
 )
 
@@ -453,7 +453,7 @@ func TestMCPIsolation(t *testing.T) {
 
 	// Every read and write on B's app, by id and by slug: 404 for A.
 	for _, ref := range []string{appB, "app-of-b"} {
-		for _, what := range []string{"app", "secrets", "events"} {
+		for _, what := range []string{"app", "secrets", "events", "usage"} {
 			wantToolError(t, callTool(t, h, a, "drop_read", map[string]any{"what": what, "app": ref}), 404, "not_found")
 		}
 		for op, input := range map[string]map[string]any{
@@ -463,6 +463,13 @@ func TestMCPIsolation(t *testing.T) {
 			input["app"] = ref
 			wantToolError(t, callTool(t, h, a, "drop_write", map[string]any{"op": op, "input": input}), 404, "not_found")
 		}
+	}
+	// Usage: A reads its own; admins read A's.
+	if got := mustTool(t, h, a, "drop_read", map[string]any{"what": "usage", "app": "app-of-a"}); dig(got, "app") != appA {
+		t.Errorf("own usage %v", got)
+	}
+	if got := mustTool(t, h, o, "drop_read", map[string]any{"what": "usage", "app": "app-of-a"}); dig(got, "app") != appA {
+		t.Errorf("admin usage read %v", got)
 	}
 	// Admins read A's app and secret names but change only their own.
 	if got := mustTool(t, h, o, "drop_read", map[string]any{"what": "app", "app": "app-of-a"}); dig(got, "app", "id") != appA {
