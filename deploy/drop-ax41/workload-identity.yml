@@ -16,6 +16,12 @@ Parameters:
     Type: Number
     Default: 90
     MinValue: 1
+  NodeSourceIps:
+    Type: CommaDelimitedList
+    Default: '65.108.129.44/32,2a01:4f9:6b:18af::/64'
+    Description: >-
+      Public egress of every NibRunner node (guests are NATed to it). Tokens and
+      sessions copied out of a node are refused anywhere else. Add each new node.
 Conditions:
   Published: !Equals [!Ref EnableRole, 'true']
 Resources:
@@ -169,8 +175,10 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       RoleName: pocketcontext-drop-ax41-workloads
-      AssumeRolePolicyDocument: !Sub |
-        {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Federated":"${Provider}"},"Action":["sts:AssumeRoleWithWebIdentity","sts:TagSession"],"Condition":{"StringEquals":{"${Issuer.RegionalDomainName}:aud":"sts.amazonaws.com"},"StringLike":{"${Issuer.RegionalDomainName}:sub":"d-*","aws:RequestTag/app_id":"d-*"},"ForAllValues:StringEquals":{"aws:TagKeys":["app_id"]}}}]}
+      AssumeRolePolicyDocument: !Sub
+        - |
+          {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Federated":"${Provider}"},"Action":["sts:AssumeRoleWithWebIdentity","sts:TagSession"],"Condition":{"StringEquals":{"${Issuer.RegionalDomainName}:aud":"sts.amazonaws.com"},"StringLike":{"${Issuer.RegionalDomainName}:sub":"d-*","aws:RequestTag/app_id":"d-*"},"ForAllValues:StringEquals":{"aws:TagKeys":["app_id"]},"IpAddress":{"aws:SourceIp":["${Ips}"]}}}]}
+        - Ips: !Join ['","', !Ref NodeSourceIps]
       Policies:
         - PolicyName: ReplicaPrefix
           PolicyDocument:
@@ -182,9 +190,14 @@ Resources:
                 Condition:
                   StringLike:
                     s3:prefix: '${aws:PrincipalTag/app_id}/*'
+                  IpAddress:
+                    aws:SourceIp: !Ref NodeSourceIps
               - Effect: Allow
                 Action: [s3:GetObject, s3:PutObject, s3:DeleteObject, s3:AbortMultipartUpload, s3:ListMultipartUploadParts]
                 Resource: !Sub '${Replica.Arn}/${!aws:PrincipalTag/app_id}/*'
+                Condition:
+                  IpAddress:
+                    aws:SourceIp: !Ref NodeSourceIps
 Outputs:
   ReplicaBucket: {Value: !Ref Replica}
   LogsBucket: {Value: !Ref Logs}
