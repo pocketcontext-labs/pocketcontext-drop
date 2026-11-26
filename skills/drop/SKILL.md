@@ -61,7 +61,7 @@ Each app runs one Linux executable, its current release, on a Drop node where an
 
 `usage show APP` (MCP `what: "usage"`) shows an app's S3 usage, metered from its replica prefix: the last 24 hours, the month to date against its soft and hard limits and an estimated cost (an estimate, not a bill). Past a hard limit Drop stops the app once; tell the user, and that they can start it again or ask an admin to raise the limits (`usage limits APP ...`, admins). A Crew app's Litestream sync interval is `app set APP --replica-sync-interval 10s` (1s-300s; a new deployment).
 
-A user has at most their app quota of apps (default 3): `app create` exits 4 with `quota_exceeded` when it is full, and archiving an app (`app archive`) frees a place. A change to what an app runs with (anything but its name, state and disk) starts a new deployment, which restarts the app; say so before changing a running app's settings. Nothing is ever deleted: archive instead.
+Each account can retain 10 GiB of app volumes, including archived apps. Creating or resizing a volume beyond the allowance returns `quota_exceeded`. A change to what an app runs with (anything but its name, state and disk) starts a new deployment, which restarts the app; say so before changing a running app's settings. Archive keeps the app’s data. Permanent deletion in the reader requires the app’s exact slug and removes its volume, platform S3 data, release records and secrets.
 
 **Secrets** are environment variables whose values live only in the secret store; Drop never shows a value again. Prefer that the user sets them in the reader (the app's Env & secrets tab). Set one yourself only when the user gives you the value for that purpose, and pass it on standard input, never on the command line: `printf '%s' "$VALUE" | "{{BINARY}}" secret set hello-app API_TOKEN --db "{{DB}}"`. Never print, log, store or repeat a secret value. Plain values (`app env`) are visible to the user and admins: never put a password or key there. `secret delete APP NAME` removes one.
 
@@ -76,7 +76,7 @@ Read through `app list`, `app show`, `secret list`, `search`, `sql`, `schema`, `
 Drop is invite-only, and every account has a role: `admin` or `user`. The owner (and the local project's one account) is an admin. Hosted users manage and deploy their own apps. Hosted admins, including the instance owner, manage accounts and infrastructure. Admin account operations include:
 
 ```sh
-"{{BINARY}}" invite create friend@example.com --role user --quota 3 --db "{{DB}}"
+"{{BINARY}}" invite create friend@example.com --role user --db "{{DB}}"
 "{{BINARY}}" invite list --state open --db "{{DB}}"
 "{{BINARY}}" invite revoke INVITE_ID --db "{{DB}}"
 "{{BINARY}}" user list --db "{{DB}}"

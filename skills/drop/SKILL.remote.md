@@ -61,7 +61,7 @@ Each app runs one Linux executable, its current release, on a Drop node where an
 "{{BINARY}}" sql "SELECT id, name, slug, desired_state, deployment_seq FROM apps ORDER BY created DESC LIMIT 20" --url "{{URL}}"
 ```
 
-A user has at most their app quota of apps (default 3): `app create` exits 4 with `quota_exceeded` when it is full, and archiving an app (`app archive`) frees a place. A change to what an app runs with (anything but its name, state and disk) starts a new deployment, which restarts the app; say so before changing a running app's settings. Nothing is ever deleted: archive instead.
+Each account can retain 10 GiB of app volumes, including archived apps. Creating or resizing a volume beyond the allowance returns `quota_exceeded`. A change to what an app runs with (anything but its name, state and disk) starts a new deployment, which restarts the app; say so before changing a running app's settings. Archive keeps the app’s data. Permanent deletion in the reader requires the app’s exact slug and removes its volume, platform S3 data, release records and secrets.
 
 **Secrets** are environment variables whose values live only in the secret store; Drop never shows a value again. Prefer that the user sets them in the reader (the app's Env & secrets tab). Set one yourself only when the user gives you the value for that purpose, and pass it on standard input, never on the command line: `printf '%s' "$VALUE" | "{{BINARY}}" secret set hello-app API_TOKEN --url "{{URL}}"`. Never print, log, store or repeat a secret value. Plain values (`app env`) are visible to the user and admins: never put a password or key there. `secret delete APP NAME` removes one.
 
@@ -76,7 +76,7 @@ Read through `app list`, `app show`, `secret list`, `search`, `sql`, `schema`, `
 Drop is invite-only, and every account has a role: `admin` or `user`. The owner (and the local project's one account) is an admin. Hosted users manage and deploy their own apps. Hosted admins, including the instance owner, manage accounts and infrastructure. Admin account operations include:
 
 ```sh
-"{{BINARY}}" invite create friend@example.com --role user --quota 3 --url "{{URL}}"
+"{{BINARY}}" invite create friend@example.com --role user --url "{{URL}}"
 "{{BINARY}}" invite list --state open --url "{{URL}}"
 "{{BINARY}}" invite revoke INVITE_ID --url "{{URL}}"
 "{{BINARY}}" user list --url "{{URL}}"

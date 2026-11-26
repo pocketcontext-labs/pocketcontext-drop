@@ -96,7 +96,7 @@ type AppListInput struct {
 	Offset   int  `json:"offset,omitempty"`
 }
 
-// Quota is the caller's app quota: Used non-archived apps of Limit. Admins
+// Quota is the caller's retained disk allowance in MiB. Local admins
 // are Unlimited.
 type Quota struct {
 	Used      int  `json:"used"`

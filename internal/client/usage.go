@@ -40,7 +40,7 @@ Setup and server:
                        install the agent skill with this computer's paths
 
 Apps (through Drop's operations; APP is an app's id or slug):
-  app list [--all] [--archived]      your apps and your app quota
+  app list [--all] [--archived]      your apps and retained-disk allowance
   app show APP                       one app and its secret names
   app create NAME|- --slug SLUG [--kind ordinary|crew] [--mode M] [--port N] [--executable NAME] ...
                                      create an app (counts against your quota)
