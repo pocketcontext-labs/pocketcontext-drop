@@ -8,11 +8,10 @@ import (
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
 )
 
-// The current guest scheduler allocates one or two whole CPUs. Expose only
-// multiples it can enforce exactly, with 256 MiB and 2 GiB per quarter CPU.
+// Each unit buys 256 MiB, 2 GiB of disk and one quarter of a core.
 func betaSizes(m dropapi.BetaManifest) []int {
 	sizes := []int{}
-	for _, n := range []int{4, 8} {
+	for n := 1; n <= 8; n++ {
 		if n >= m.Minimum.CPUQuarters && n*256 >= m.Minimum.MemoryMiB && n*2048 >= m.Minimum.DiskMiB {
 			sizes = append(sizes, n)
 		}
@@ -40,7 +39,7 @@ func betaPrepare(c *Ctx, in *dropapi.BetaPrepareInput) (any, error) {
 	if !slices.Contains(betaSizes(m), in.Multiplier) {
 		return nil, Invalid("multiplier", "Choose an available whole-number size for this release.")
 	}
-	cpu, mem, disk := in.Multiplier/4, in.Multiplier*256, in.Multiplier*2048
+	cpu, mem, disk := (in.Multiplier+3)/4, in.Multiplier*256, in.Multiplier*2048
 	if servicesOf(c.App).Releases == nil {
 		return nil, releasesUnavailable()
 	}
@@ -99,6 +98,9 @@ func betaPlacement(c *Ctx, a *core.Record) error {
 		if p != nil && p.GetString("node") != node.Id {
 			continue
 		}
+		if betaFractionalQuota(a) != 0 && jsonMap(node, "versions")["cpuQuarterQuota"] != true {
+			continue
+		}
 		cpu, mem := allocatable(node)
 		if node.GetString("host_state") != "ready" || node.GetString("state") != dropapi.NodeActive || !online(state, node, state.clock()) || cpu < 1 || mem < 1 {
 			continue
@@ -132,8 +134,8 @@ func betaDeploy(c *Ctx, in *dropapi.ReleaseDeployInput) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	size := a.GetInt("vcpu") * 4
-	if !slices.Contains(betaSizes(m), size) || a.GetInt("memory_mib") != size*256 || a.GetInt("disk_mib") != size*2048 {
+	size := a.GetInt("memory_mib") / 256
+	if !slices.Contains(betaSizes(m), size) || a.GetInt("vcpu") != (size+3)/4 || a.GetInt("memory_mib") != size*256 || a.GetInt("disk_mib") != size*2048 {
 		return nil, Conflict("invalid_size", "The app size is unavailable for this release.")
 	}
 	quota, err := c.quota()
@@ -183,4 +185,13 @@ func betaDeploy(c *Ctx, in *dropapi.ReleaseDeployInput) (any, error) {
 	}
 	c.Event(Event{App: a.Id, Detail: map[string]any{"sha256": digest, "release": r.Id, "deployment_seq": a.GetInt("deployment_seq")}})
 	return dropapi.ReleaseDeployResult{App: c.appOut(a, nil), Release: releaseOut(r, r.Id), DeploymentBumped: bumped, DeploymentID: deploymentID(a)}, nil
+}
+
+// Whole-core configurations can also run on older nodes.
+func betaFractionalQuota(a *core.Record) int {
+	units := a.GetInt("memory_mib") / 256
+	if a.GetString("beta_digest") != "" && units%4 != 0 {
+		return units
+	}
+	return 0
 }

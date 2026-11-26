@@ -54,7 +54,7 @@ A configured hook port becomes `config.hooks.port`. With zero, Drop omits the ho
 
 ## Vendored schema
 
-`internal/render/schema/desired.schema.json` is the byte-for-byte copy of the PocketContext NibRunner lifecycle hooks, sign-in email and host services contract at `crates/protocol/schema/desired.schema.json` (SHA-256 `c1eed54c97343390ea8dd46d72767001d0daeb001bfda44bdeeb8bb5a829b8c4`). This runner requires new writers to set volume `storage: null` for host storage. Drop accepts its own earlier files with the field absent and refuses custom storage backends. `ValidateSchema` is a focused JSON Schema
+`internal/render/schema/desired.schema.json` is the byte-for-byte copy of the PocketContext NibRunner lifecycle hooks, sign-in email and host services contract at `crates/protocol/schema/desired.schema.json` (SHA-256 `d320df49cbf83ab0977f4bd00c01a14fc04f418ec04ec87c92adcc0d85af2df5`). This runner requires new writers to set volume `storage: null` for host storage. Drop accepts its own earlier files with the field absent and refuses custom storage backends. `ValidateSchema` is a focused JSON Schema
 2020-12 evaluator for exactly the keywords that file uses; it refuses a schema
 with any other keyword, and runs the one lookahead pattern (guest paths) as
 hand-written code. To bump nibrunner: copy the new file, update the digest in

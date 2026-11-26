@@ -99,6 +99,9 @@ func sanitizeVersions(raw json.RawMessage) map[string]any {
 		return nil
 	}
 	out := map[string]any{}
+	if v["cpuQuarterQuota"] == true {
+		out["cpuQuarterQuota"] = true
+	}
 	for _, k := range []string{"agent", "firecracker", "guestImage", "zerofs"} {
 		if s, ok := v[k].(string); ok {
 			out[k] = cut(s, 128)

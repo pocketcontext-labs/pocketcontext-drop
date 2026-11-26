@@ -103,8 +103,9 @@ type Release struct {
 
 // Resources are the microVM's size.
 type Resources struct {
-	VCPU      int `json:"vcpu"`      // 1–2
-	MemoryMib int `json:"memoryMib"` // 128–4096
+	CPUQuarters int `json:"cpuQuarters,omitempty"`
+	VCPU        int `json:"vcpu"`      // 1–2
+	MemoryMib   int `json:"memoryMib"` // 128–4096
 }
 
 // HealthCheck is tcp, or http with a Path. Timings are Drop's fixed defaults.
@@ -130,6 +131,7 @@ type Secret struct {
 
 // Limits are the node-local bounds of the validation.
 type Limits struct {
+	CPUQuarterQuota bool `json:"cpuQuarterQuota,omitempty"`
 	// AllowedHostSuffix, for example ".bigconfig.space"; every hostname must
 	// end with it.
 	AllowedHostSuffix string `json:"allowedHostSuffix"`
@@ -398,7 +400,7 @@ func renderInstance(app App) instance {
 				WorkingDirectory: appDir,
 				Environment:      renderEnvironment(app),
 			},
-			Resources:     resources{VCPUCount: app.Resources.VCPU, MemoryMib: app.Resources.MemoryMib},
+			Resources:     resources{CPUQuarters: app.Resources.CPUQuarters, VCPUCount: app.Resources.VCPU, MemoryMib: app.Resources.MemoryMib},
 			HealthCheck:   hc,
 			RestartPolicy: restart,
 		},

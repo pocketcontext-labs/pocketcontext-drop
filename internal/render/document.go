@@ -95,8 +95,9 @@ type command struct {
 }
 
 type resources struct {
-	VCPUCount int `json:"vcpuCount"`
-	MemoryMib int `json:"memoryMib"`
+	CPUQuarters int `json:"cpuQuarters,omitempty"`
+	VCPUCount   int `json:"vcpuCount"`
+	MemoryMib   int `json:"memoryMib"`
 }
 
 type healthCheck struct {

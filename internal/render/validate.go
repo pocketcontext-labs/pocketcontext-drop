@@ -159,6 +159,9 @@ func validateApp(app App, lim Limits) *AppError {
 	if r.VCPU < minVCPU || r.VCPU > maxVCPU || (lim.AllocatableVCPU > 0 && r.VCPU > lim.AllocatableVCPU) {
 		return fail("resources.vcpu", "must be %d–%d and within the node's allocatable", minVCPU, maxVCPU)
 	}
+	if q := r.CPUQuarters; q != 0 && (!lim.CPUQuarterQuota || q < 1 || q > r.VCPU*4 || q <= (r.VCPU-1)*4) {
+		return fail("resources.cpuQuarters", "requires host quota support and a matching guest CPU count")
+	}
 	if r.MemoryMib < minMemoryMib || r.MemoryMib > maxMemoryMib || (lim.AllocatableMemoryMib > 0 && r.MemoryMib > lim.AllocatableMemoryMib) {
 		return fail("resources.memoryMib", "must be %d–%d and within the node's allocatable", minMemoryMib, maxMemoryMib)
 	}

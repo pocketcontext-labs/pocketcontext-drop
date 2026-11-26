@@ -60,7 +60,7 @@ func buildDesired(app core.App, node *core.Record) (*dropapi.Desired, error) {
 	}
 	slices.SortFunc(apps, func(a, b dropapi.DesiredApp) int { return strings.Compare(a.AppID, b.AppID) })
 
-	limits := render.Limits{AllowedHostSuffix: fallbackHostSuffix, SSMPrefix: services.SSMPrefix}
+	limits := render.Limits{CPUQuarterQuota: jsonMap(node, "versions")["cpuQuarterQuota"] == true, AllowedHostSuffix: fallbackHostSuffix, SSMPrefix: services.SSMPrefix}
 	if ValidAppDomain(services.AppDomain) {
 		limits.AllowedHostSuffix = "." + services.AppDomain
 	}
@@ -125,7 +125,7 @@ func desiredApp(app core.App, record *core.Record, services Services) (dropapi.D
 		HTTPPort:       record.GetInt("http_port"),
 		HookPort:       record.GetInt("hook_port"),
 		Args:           appArgs(record),
-		Resources:      render.Resources{VCPU: record.GetInt("vcpu"), MemoryMib: record.GetInt("memory_mib")},
+		Resources:      render.Resources{CPUQuarters: betaFractionalQuota(record), VCPU: record.GetInt("vcpu"), MemoryMib: record.GetInt("memory_mib")},
 		HealthCheck:    render.HealthCheck{Kind: record.GetString("health_kind"), Path: record.GetString("health_path")},
 		Hostnames:      []render.Hostname{},
 		Env:            appEnv(record),

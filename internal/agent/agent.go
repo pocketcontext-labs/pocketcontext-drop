@@ -168,7 +168,8 @@ func New(cfg Config, secret, version string, stores Stores, logf func(string, ..
 
 func (a *Agent) limits(rep *nibReported) render.Limits {
 	vcpu, mem := rep.allocatable()
-	return render.Limits{AllowedHostSuffix: a.cfg.AllowedHostSuffix, SSMPrefix: a.cfg.SSMPrefix, AllocatableVCPU: vcpu, AllocatableMemoryMib: mem}
+	quarters := rep != nil && sanitizeVersions(rep.Versions)["cpuQuarterQuota"] == true
+	return render.Limits{CPUQuarterQuota: quarters, AllowedHostSuffix: a.cfg.AllowedHostSuffix, SSMPrefix: a.cfg.SSMPrefix, AllocatableVCPU: vcpu, AllocatableMemoryMib: mem}
 }
 
 // Run starts the agent and blocks until ctx ends (nil) or a Refusal stops it.

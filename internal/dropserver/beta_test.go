@@ -39,19 +39,19 @@ func TestBetaProbeLeasesAndDeployment(t *testing.T) {
 	if r := h.MustOp(admin, "beta.claim", ref); r["cached"] != true {
 		t.Fatal(r)
 	}
-	if r := h.MustOp(alice, "beta.inspect", ref); r["name"] != "PocketContext Crew" || len(r["multipliers"].([]any)) != 2 {
+	if r := h.MustOp(alice, "beta.inspect", ref); r["name"] != "PocketContext Crew" || len(r["multipliers"].([]any)) != 5 {
 		t.Fatal(r)
 	}
 	for _, bad := range []any{1, 3, 12, 4.5} {
 		wantError(t, h.Op(alice, "beta.prepare", map[string]any{"sha256": digest, "multiplier": bad}), 400, dropapi.CodeInvalidInput)
 	}
-	args := map[string]any{"sha256": digest, "multiplier": 4}
+	args := map[string]any{"sha256": digest, "multiplier": 5}
 	prepared := h.Op(alice, "beta.prepare", args, "prepare-1")
 	if prepared.Status != 200 {
 		t.Fatal(prepared.Raw)
 	}
 	a := appOf(t, prepared.Result)
-	if a["beta_managed"] != true || num(a["vcpu"]) != 1 || num(a["memory_mib"]) != 1024 || num(a["disk_mib"]) != 8192 {
+	if a["beta_managed"] != true || num(a["vcpu"]) != 2 || num(a["memory_mib"]) != 1280 || num(a["disk_mib"]) != 10240 {
 		t.Fatal(a)
 	}
 	app := a["id"].(string)
@@ -73,6 +73,12 @@ func TestBetaProbeLeasesAndDeployment(t *testing.T) {
 	node := h.MustOp(admin, "node.create", map[string]any{"name": "beta-node", "host_id": hostA})
 	_, token := h.NodeLogin("beta-node", node["password"].(string))
 	if code, r := report(t, h, token, reportOf(hostA)); code != http.StatusOK {
+		t.Fatal(code, r)
+	}
+	wantError(t, h.Op(alice, "beta.deploy", deploy), 409, "beta_no_capacity")
+	ready := reportOf(hostA)
+	ready["nibrunner"].(map[string]any)["versions"].(map[string]any)["cpuQuarterQuota"] = true
+	if code, r := report(t, h, token, ready); code != http.StatusOK {
 		t.Fatal(code, r)
 	}
 	if r := h.MustOp(alice, "beta.deploy", deploy); r["deployment_bumped"] != true {
