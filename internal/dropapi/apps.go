@@ -33,6 +33,7 @@ const (
 // the instance configuration changes (see docs/ops.md). Env holds plain values
 // only: secrets are listed by name with secret.list and never returned.
 type App struct {
+	BetaManaged         bool   `json:"beta_managed,omitempty"`
 	Kind                string `json:"kind"`
 	CrewOwnerEmail      string `json:"crew_owner_email,omitempty"`
 	SignInEmailEnabled  bool   `json:"sign_in_email_enabled"`

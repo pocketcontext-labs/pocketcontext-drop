@@ -219,6 +219,9 @@ func (u *uploader) serve(re *core.RequestEvent) error {
 	if err != nil {
 		return writeError(re, err)
 	}
+	if err := checkBetaUpload(re.App, app, sha, link.GetBool("activate")); err != nil {
+		return writeError(re, err)
+	}
 	key, err := awsx.ReleaseKey(sha)
 	if err != nil {
 		return writeError(re, err)
@@ -252,6 +255,9 @@ func (u *uploader) serve(re *core.RequestEvent) error {
 		}
 		if app.GetBool("archived") {
 			return Conflict(dropapi.CodeAppArchived, "This app is archived. Restore it first.")
+		}
+		if err := checkBetaUpload(tx, app, sha, link.GetBool("activate")); err != nil {
+			return err
 		}
 		release, created, err := findOrCreateRelease(tx, app, sha, key, size, link.GetString("note"), creator.Id)
 		if err != nil {

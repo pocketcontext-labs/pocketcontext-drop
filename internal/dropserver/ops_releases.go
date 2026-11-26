@@ -108,6 +108,9 @@ func releaseUploadLink(c *Ctx, in *dropapi.ReleaseUploadLinkInput) (any, error) 
 	if err != nil {
 		return nil, err
 	}
+	if app.GetString("beta_digest") != "" && in.Activate {
+		return nil, Forbidden("Deploy this app through Drop Beta after upload.")
+	}
 	note, err := cleanNote(in.Note)
 	if err != nil {
 		return nil, err
@@ -147,6 +150,9 @@ func releaseDeploy(c *Ctx, in *dropapi.ReleaseDeployInput) (any, error) {
 	app, err := c.writableApp(in.App)
 	if err != nil {
 		return nil, err
+	}
+	if app.GetString("beta_digest") != "" {
+		return nil, Forbidden("Deploy this app through Drop Beta.")
 	}
 	ref := strings.TrimSpace(in.Release)
 	if !recordID.MatchString(ref) {

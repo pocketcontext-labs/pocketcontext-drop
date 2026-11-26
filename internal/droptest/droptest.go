@@ -50,7 +50,8 @@ type Mail struct {
 
 // Options select optional parts of the hosted server.
 type Options struct {
-	ReaderDir string // optional built UI for browser tests
+	ReaderDir string   // optional built UI for browser tests
+	BetaNodes []string // nodes explicitly eligible for Beta placements
 	// MCPHandler builds the MCP adapter around the unfiltered router; nil
 	// leaves /mcp and OAuth off.
 	MCPHandler func(api http.Handler) http.Handler
@@ -132,7 +133,7 @@ func NewHosted(t *testing.T, opts Options) *Hosted {
 		t.Fatal(err)
 	}
 	h := &Hosted{T: t, App: app, mail: make(chan Mail, 64)}
-	services := dropserver.Services{AppDomain: AppDomain, CrewReplicaBucket: "crew-replica-fixture", AWSRegion: "eu-north-1"}
+	services := dropserver.Services{BetaNodes: opts.BetaNodes, AppDomain: AppDomain, CrewReplicaBucket: "crew-replica-fixture", AWSRegion: "eu-north-1"}
 	switch {
 	case opts.NoSecrets:
 	case opts.Secrets != nil:

@@ -29,6 +29,28 @@ func InvalidateNodeTokens(app core.App) error {
 		if _, err := tx.DB().NewQuery("DELETE FROM upload_links WHERE used_at = ''").Execute(); err != nil {
 			return err
 		}
+		// An old snapshot can predate a release revocation. Require the
+		// operator to reconfirm admissions before resuming restored Beta apps.
+		if _, err := tx.DB().NewQuery("UPDATE drop_beta_catalog SET approved=0").Execute(); err != nil {
+			return err
+		}
+		if _, err := tx.DB().NewQuery("DELETE FROM drop_beta_probes WHERE state='running'").Execute(); err != nil {
+			return err
+		}
+		apps, err := tx.FindRecordsByFilter("apps", "beta_digest != '' && desired_state != 'stopped'", "", 0, 0)
+		if err != nil {
+			return err
+		}
+		for _, a := range apps {
+			if err := stopApp(tx, a); err != nil {
+				return err
+			}
+		}
+		if len(apps) > 0 {
+			if err := syncDesiredSeqs(tx); err != nil {
+				return err
+			}
+		}
 		// The restored queue describes SSM at backup time. A name may since
 		// have been recreated. An operator reconciles these entries using the
 		// backup and current store, without replaying an old destructive intent.

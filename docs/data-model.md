@@ -176,3 +176,9 @@ To add a collection:
 7. **Reader, skill and tests.** Show the collection in `ui/src`, document the commands in `skills/drop`, and cover the rules (anonymous and invalid-token requests are refused, the account reads and writes), the SQL policy (unlisted columns and writes are refused) and search in `tests/e2e.py`, in `internal/appconfig/sqlite_test.go` if the table needs SQLite features, and in the browser tests.
 
 Then run `make ui build test names identity e2e`.
+
+## Beta catalog and inspected releases
+
+Migration `1820002000_beta.js` adds the private tables `drop_beta_catalog` (digest and current approval) and `drop_beta_probes` (digest and probe contract primary key, state, short-lived attempt and expiry, validated manifest). They are absent from the SQL reader, PocketBase collection API and realtime. Approval and inspection are checked independently on each new deployment. `apps.beta_digest` is a hidden, immutable-through-operations pin set by `beta.prepare`. Earlier apps have an empty pin. Their release operations stay compatible. The account-facing API exposes a `beta_managed` flag for managed apps.
+
+Hosted restore clears all Beta approvals and pending probe leases and stops restored Beta apps. Reconcile the approved release catalog against current trusted release digests before reapproving and resuming any affected app.

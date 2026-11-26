@@ -194,3 +194,23 @@ Each successful mutating operation writes one `events` row in its transaction: `
 5. **Events outside operations.** Routes that are not operations (uploads, the agent) call `dropserver.WriteEvent(app, dropserver.EventRecord{…})` themselves.
 6. **Clients.** Add the name to `OPS` in `ui/src/dropApi.ts` (`TestReaderKnowsEveryOperation` compares the lists), a CLI command if people need one (`internal/client`, building the request with `dropapi.Build`), and the operation to this page, [MCP](mcp.md) and the skill. A write for assistants sets `MCP: true` (`TestMCPWriteOpsFollowTicket` lists the operations decision 11 expects there); a new read for assistants gets a row in `dropReads` (`internal/client/drop_mcp.go`), never a new tool.
 7. **Tests.** Cover the role (a user calling an admin operation gets 403), ownership (another account's record is 404), validation, the event and isolation with the `internal/droptest` helpers (`h.User`, `h.Invite`, `h.Op`, `h.MustOp`).
+
+## Beta release admission and deployment
+
+Only a Drop admin may admit a digest obtained from an independently approved PocketContext release. All Beta operations use the existing authenticated operation route. Approval is separate from the guest's self-description. A completed probe certifies the manifest format and supported features of those exact bytes, not authorship.
+
+| Operation | Input | Result |
+|---|---|---|
+| `beta.approve` (admin) | `{sha256}` | Admits the lowercase SHA-256 for probing. |
+| `beta.claim` (admin) | `{sha256}` | Returns `attempt` and `expires_at` for a five-minute inspection lease, or `{cached:true,state}` after completed inspection. An overlapping claim returns `probe_busy`. |
+| `beta.complete` (admin) | `{sha256,attempt,outcome,manifest?}` | Records `success` with a validated manifest, `invalid` for a definitively incompatible binary, or `retry` after a temporary failure. Expiration or revocation fences earlier attempts. |
+| `beta.revoke` (admin) | `{sha256}` | Revokes the admission and stops its Beta apps in the same transaction. Reapproval does not automatically restart them. |
+| `beta.inspect` | `{sha256}` | Returns product name, version and `multipliers`. Only an approved, inspected release qualifies. |
+| `beta.prepare` | `{sha256,multiplier}` | Creates one quota-counted managed app. Reuse the same operation idempotency key when retrying a request with an uncertain result. |
+| `beta.deploy` | `{app,release}` | Validates the app's recorded digest, current approval, inspection, size and quota. Places the app on an eligible node and starts the selected release in one transaction. |
+
+Crew is the first supported runtime. Its manifest requires HTTP 8080, TCP health checks, hooks on 8081 for suspend, resume and terminate, persistent volume and replica storage, a verified owner address and managed sign-in email. Each Beta size unit allocates 256 MiB, one quarter vCPU and 2 GiB. The current runtime allocates whole vCPUs, so the picker exposes 4× and 8× filtered by the release's minimums. Normal users cannot override a managed app's runtime settings.
+
+After preparation, request an ordinary `release.upload_link` with `activate:false`. A Beta upload must hash to that app's pinned digest, checked before object storage and again when committing its release. Use `beta.deploy` after the upload returns its release ID. If capacity is unavailable, reuse the existing app and release. A retry never moves an already placed volume. Retrying a failed reported deployment of the current release advances its deployment number once. For the current phase, poll `status`; the optional `verify_url:true` asks Drop to check the advertised HTTPS endpoint and report `url_ready`.
+
+The first catalog admission or a configured Beta node list makes direct `app.create` an admin-only workflow. Existing operator-managed apps keep their release operations. Catalog and probe records stay out of account queries and the public route table.

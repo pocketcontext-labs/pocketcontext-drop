@@ -36,6 +36,7 @@ type Services struct {
 	// AppDomain is the domain under which apps get their hostname,
 	// <slug>.<AppDomain> (DROP_APP_DOMAIN); empty leaves new apps without a
 	// hostname.
+	BetaNodes                    []string
 	AppDomain                    string
 	CrewReplicaBucket, AWSRegion string
 	// Usage reads the replica bucket's access logs and inventory and manages

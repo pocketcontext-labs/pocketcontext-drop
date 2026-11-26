@@ -121,6 +121,7 @@ func (c *Ctx) appOut(r *core.Record, emails map[string]string) dropapi.App {
 		syncInterval = appspec.ReplicaSyncInterval(n)
 	}
 	return dropapi.App{
+		BetaManaged:         r.GetString("beta_digest") != "",
 		CrewFreshEnrollment: r.GetString("crew_enrollment") == "fresh", Kind: kind, CrewOwnerEmail: crewOwnerEmail, SignInEmailEnabled: r.GetBool("sign_in_email_enabled"),
 		ReplicaSyncInterval: syncInterval,
 		ID:                  r.Id, Name: r.GetString("name"), Slug: r.GetString("slug"), Owner: owner, OwnerEmail: email,
@@ -326,6 +327,17 @@ func cleanName(name string) (string, error) {
 }
 
 func appCreate(c *Ctx, in *dropapi.AppCreateInput) (any, error) {
+	// Once self-service is configured, only beta.prepare may create apps for
+	// normal users. Existing, explicitly placed apps keep the operator workflow.
+	if !c.Admin && c.Spec.Name == "app.create" {
+		var enabled bool
+		if err := c.App.DB().NewQuery("SELECT EXISTS(SELECT 1 FROM drop_beta_catalog)").Row(&enabled); err != nil {
+			return nil, err
+		}
+		if enabled || len(servicesOf(c.App).BetaNodes) > 0 {
+			return nil, Forbidden("Create a deployment through Drop Beta.")
+		}
+	}
 	name, err := cleanName(in.Name)
 	if err != nil {
 		return nil, err
@@ -425,6 +437,12 @@ func appSet(c *Ctx, in *dropapi.AppSetInput) (any, error) {
 	app, err := c.writableApp(in.App)
 	if err != nil {
 		return nil, err
+	}
+	if app.GetString("beta_digest") != "" {
+		// Only the enrollment transition is also needed by the managed runtime.
+		if *in != (dropapi.AppSetInput{App: in.App, FinishEnrollment: true}) {
+			return nil, Forbidden("Drop manages the settings for this Beta deployment.")
+		}
 	}
 	s := settingsOf(app)
 	var changed []string
@@ -578,6 +596,11 @@ func setState(c *Ctx, ref string, start bool) (any, error) {
 	}
 	state := appspec.StateStopped
 	if start {
+		if digest := app.GetString("beta_digest"); digest != "" {
+			if _, err := betaRelease(c.App, digest); err != nil {
+				return nil, err
+			}
+		}
 		state = app.GetString("start_state")
 		app.Set("desired_state", state)
 		err = c.App.Save(app)
@@ -621,6 +644,11 @@ func appRestore(c *Ctx, in *dropapi.AppRestoreInput) (any, error) {
 	app, err := c.findApp(in.App, true)
 	if err != nil {
 		return nil, err
+	}
+	if digest := app.GetString("beta_digest"); digest != "" {
+		if _, err := betaRelease(c.App, digest); err != nil {
+			return nil, err
+		}
 	}
 	if !app.GetBool("archived") {
 		return nil, Conflict(dropapi.CodeAppNotArchived, "This app is not archived.")

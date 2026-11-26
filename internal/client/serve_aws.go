@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/awsx"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
@@ -24,6 +25,15 @@ const EnvReleaseMaxBytes = "DROP_RELEASE_MAX_BYTES"
 // (DROP_APP_DOMAIN, optional).
 func serveServices(a *args, hosted bool, listenAddr string, getenv func(string) string) (dropserver.Services, error) {
 	s := dropserver.Services{CrewReplicaBucket: getenv("DROP_CREW_REPLICA_BUCKET"), AWSRegion: getenv(awsx.EnvRegion)}
+	if names := getenv("DROP_BETA_NODES"); names != "" {
+		for _, name := range strings.Split(names, ",") {
+			name = strings.TrimSpace(name)
+			if !dropapi.NodeNamePattern.MatchString(name) {
+				return s, fail(2, "DROP_BETA_NODES requires comma-separated node names")
+			}
+			s.BetaNodes = append(s.BetaNodes, name)
+		}
+	}
 	if domain := getenv(EnvAppDomain); domain != "" {
 		if !dropserver.ValidAppDomain(domain) {
 			return s, fail(2, "%s must be a lower-case domain name such as apps.example.com", EnvAppDomain)

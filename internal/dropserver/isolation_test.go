@@ -35,6 +35,8 @@ import (
 //	             release, status and upload-link op; admins read, never write
 //	             user, invite, node and placement ops: 403 for users          TestUserAndInviteIsolation, TestIsolationMatrix
 //	             node tokens on /api/drop/op and /api/drop/me: 403            TestNodeIsolation
+//	Beta         admission and probe completion require admin, uploads and   TestBetaProbeLeasesAndDeployment
+//	             deployment scoped to approved bytes and app owner; legacy APIs blocked
 //	Upload       a link is scoped to one app by its token; A cannot mint one  TestIsolationMatrix, TestUploadLink* (releases_test.go)
 //	             for B's app; per-address limiter                             TestUploadRateLimit (releases_test.go)
 //	Agent routes anonymous 401, users' tokens (owner included) 403            TestNodeIsolation
