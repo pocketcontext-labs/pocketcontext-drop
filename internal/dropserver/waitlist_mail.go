@@ -51,8 +51,11 @@ func waitMessage(app core.App, j waitJob) (*mailer.Message, error) {
 		email = w.Email
 		switch j.Kind {
 		case "code":
-			if w.Verified != "" || w.Requested != j.Generation || time.Now().Unix()-j.Generation >= 600 {
+			if w.Attempts >= 5 || w.Requested != j.Generation || time.Now().Unix()-j.Generation >= 600 {
 				return nil, nil
+			}
+			if admitted, err := waitlistSignInAddress(app, w.Email); err != nil || admitted {
+				return nil, err
 			}
 			proof, err := waitProof(app, "code", w.ID, j.Generation)
 			if err != nil {

@@ -165,3 +165,72 @@ func TestWaitlistWorkerRetriesCommittedMail(t *testing.T) {
 		t.Fatal("incorrect welcome invitation")
 	}
 }
+
+func TestUnifiedEntryKeepsAdmissionPrivate(t *testing.T) {
+	h := droptest.NewHosted(t, droptest.Options{})
+	h.Invite("invited@example.test", "user")
+	h.User("existing@example.test", "user")
+	var generic string
+	for _, email := range []string{"unknown@example.test", "invited@example.test", "existing@example.test"} {
+		r := h.Request("POST", "/api/drop/waitlist/request", "", fmt.Sprintf(`{"email":%q,"terms_version":"2026-11-26-waitlist"}`, email))
+		if r.Code != 202 {
+			t.Fatal(r.Code, r.Body)
+		}
+		if generic == "" {
+			generic = r.Body.String()
+		} else if generic != r.Body.String() {
+			t.Fatal("admission leaked in public response")
+		}
+		reject := h.Request("POST", "/api/drop/waitlist/verify", "", fmt.Sprintf(`{"email":%q,"code":"xxxxxx"}`, email))
+		if reject.Code != 400 || !strings.Contains(reject.Body.String(), "invalid_input") {
+			t.Fatal(reject.Body)
+		}
+		id := h.RequestOTP(email)
+		if email == "unknown@example.test" {
+			h.NoMail()
+			continue
+		}
+		m := h.Mail()
+		if m.Email != email {
+			t.Fatal("unexpected sign-in recipient")
+		}
+		if h.RedeemCode(id, m.Code).Record["email"] != email {
+			t.Fatal("sign-in failed")
+		}
+	}
+	var count int
+	if err := h.App.DB().NewQuery("SELECT count(*) FROM drop_waitlist_mail WHERE kind='code'").Row(&count); err != nil || count != 1 {
+		t.Fatal("only unknown address should receive a waitlist code", count, err)
+	}
+}
+func TestReturningWaitlistMemberRetainsVerificationDate(t *testing.T) {
+	h := droptest.NewHosted(t, droptest.Options{})
+	const joined = "2026-01-01T00:00:00Z"
+	const address = "returning@example.test"
+	const id = "returning000001"
+	_, err := h.App.DB().NewQuery("INSERT INTO drop_waitlist(id,email,terms,requested,verified_at) VALUES({:id},{:email},'2026-11-26-waitlist',0,{:joined})").Bind(dbx.Params{"id": id, "email": address, "joined": joined}).Execute()
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := h.Request("POST", "/api/drop/waitlist/request", "", fmt.Sprintf(`{"email":%q,"terms_version":"2026-11-26-waitlist"}`, address))
+	if r.Code != 202 {
+		t.Fatal(r.Body)
+	}
+	var key []byte
+	var gen int64
+	if err := h.App.DB().NewQuery("SELECT generation,secret FROM drop_waitlist_mail,drop_waitlist_key WHERE kind='code'").Row(&gen, &key); err != nil {
+		t.Fatal(err)
+	}
+	m := hmac.New(sha256.New, key)
+	fmt.Fprintf(m, "code:%s:%d", id, gen)
+	body := fmt.Sprintf(`{"email":%q,"code":"%06d"}`, address, binary.BigEndian.Uint64(m.Sum(nil))%1000000)
+	for _, want := range []int{200, 400} {
+		if r := h.Request("POST", "/api/drop/waitlist/verify", "", body); r.Code != want {
+			t.Fatal(r.Code, r.Body)
+		}
+	}
+	var actual string
+	if err := h.App.DB().NewQuery("SELECT verified_at FROM drop_waitlist").Row(&actual); err != nil || actual != joined {
+		t.Fatal(actual, err)
+	}
+}

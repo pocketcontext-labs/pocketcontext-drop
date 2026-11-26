@@ -34,6 +34,9 @@ func InvalidateNodeTokens(app core.App) error {
 		if err := waitExec(tx, "DELETE FROM drop_waitlist WHERE verified_at=''", nil); err != nil {
 			return err
 		}
+		if err := waitExec(tx, "UPDATE drop_waitlist SET attempts=5", nil); err != nil {
+			return err
+		}
 		if err := waitExec(tx, "UPDATE drop_waitlist_mail SET state='cancelled' WHERE state='queued'", nil); err != nil {
 			return err
 		}

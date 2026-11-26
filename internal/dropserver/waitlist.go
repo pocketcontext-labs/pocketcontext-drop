@@ -107,6 +107,17 @@ func registerWaitlist(e *core.ServeEvent) {
 	}
 }
 
+// Eligible sign-ins receive Core's ordinary OTP. Both public request routes
+// keep their normal response even when they have no mail to send.
+func waitlistSignInAddress(app core.App, email string) (bool, error) {
+	var account bool
+	if err := app.DB().NewQuery("SELECT EXISTS(SELECT 1 FROM users WHERE email={:email} COLLATE NOCASE)").Bind(dbx.Params{"email": email}).Row(&account); err != nil || account {
+		return account, err
+	}
+	invite, err := openInvite(app, email)
+	return invite != nil, err
+}
+
 func waitRequest(app core.App, in waitPublic) error {
 	if in.Terms != waitTerms {
 		return Conflict("terms_required", "Read and accept the current Beta terms.")
@@ -121,7 +132,7 @@ func waitRequest(app core.App, in waitPublic) error {
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	if entry.Verified != "" || entry.Requested > now-60 {
+	if entry.Requested > now-60 {
 		return nil
 	}
 	var count int
@@ -139,12 +150,8 @@ func waitRequest(app core.App, in waitPublic) error {
 			return nil
 		}
 	}
-	var account bool
-	if err := app.DB().NewQuery("SELECT EXISTS(SELECT 1 FROM users WHERE email={:email} COLLATE NOCASE)").Bind(dbx.Params{"email": email}).Row(&account); err != nil {
+	if admitted, err := waitlistSignInAddress(app, email); err != nil || admitted {
 		return err
-	}
-	if account {
-		return nil
 	}
 	if entry.ID == "" {
 		entry.ID = core.GenerateDefaultRandomId()
@@ -170,7 +177,11 @@ func waitVerify(app core.App, in waitPublic) (error, error) {
 	if err != nil {
 		return nil, err
 	}
-	if row.Verified != "" || row.Attempts >= 5 || row.Requested <= time.Now().Unix()-600 {
+	// A previously verified member can reconfirm with a fresh challenge
+	// without losing their original place. Codes issued before that first
+	// verification are spent, including those issued by an older Drop.
+	joined, _ := time.Parse(time.RFC3339Nano, row.Verified)
+	if row.Requested <= joined.Unix() || row.Attempts >= 5 || row.Requested <= time.Now().Unix()-600 {
 		return invalid, nil
 	}
 	if row.Terms != waitTerms {
@@ -183,7 +194,12 @@ func waitVerify(app core.App, in waitPublic) (error, error) {
 	if !hmac.Equal([]byte(code), []byte(in.Code)) {
 		return invalid, waitExec(app, "UPDATE drop_waitlist SET attempts=attempts+1 WHERE id={:id}", dbx.Params{"id": row.ID})
 	}
-	return nil, waitExec(app, "UPDATE drop_waitlist SET verified_at={:now} WHERE id={:id}", dbx.Params{"id": row.ID, "now": time.Now().UTC().Format(time.RFC3339Nano)})
+	if admitted, err := waitlistSignInAddress(app, email); err != nil {
+		return nil, err
+	} else if admitted {
+		return invalid, nil
+	}
+	return nil, waitExec(app, "UPDATE drop_waitlist SET verified_at=CASE WHEN verified_at='' THEN {:now} ELSE verified_at END,attempts=5 WHERE id={:id}", dbx.Params{"id": row.ID, "now": time.Now().UTC().Format(time.RFC3339Nano)})
 }
 
 func waitLeave(app core.App, token string) error {
