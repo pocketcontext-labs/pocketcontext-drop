@@ -2,10 +2,12 @@ import { useEffect, useState, type FormEvent } from "react";
 import Brand from "./Brand";
 
 export const waitlistVersion = "2026-11-26-waitlist";
-const legalBase = "#/legal/" + waitlistVersion;
+export const legalBase = "#/legal/" + waitlistVersion;
 export const waitlistHash = "#/waitlist";
 
-async function submit(
+export class InvalidWaitlistCode extends Error {}
+
+export async function submitWaitlist(
   action: "request" | "verify" | "leave",
   payload: Record<string, string>,
 ) {
@@ -19,6 +21,13 @@ async function submit(
   if (reply.ok) return;
   if (reply.status === 429)
     throw new Error("Too many attempts. Please try again later.");
+  if (action === "verify" && reply.status === 400) {
+    const body = await reply.json().catch(() => null);
+    if (body?.code === "invalid_input" && body?.data?.field === "code")
+      throw new InvalidWaitlistCode(
+        "This code is incorrect or has expired. Check it or request a new code.",
+      );
+  }
   if (action === "verify" && [400, 409, 410].includes(reply.status))
     throw new Error(
       "This code is incorrect or has expired. Check it or request a new code.",
@@ -64,7 +73,7 @@ export default function Waitlist({ hash }: { hash: string }) {
     try {
       if (action === "request") {
         if (!accepted) return;
-        await submit(action, {
+        await submitWaitlist(action, {
           email: address.trim(),
           terms_version: waitlistVersion,
         });
@@ -72,7 +81,7 @@ export default function Waitlist({ hash }: { hash: string }) {
         setCode("");
         setStep("code");
       } else {
-        await submit(
+        await submitWaitlist(
           action,
           action === "leave" ? { token } : { email: address.trim(), code },
         );
@@ -127,10 +136,11 @@ export default function Waitlist({ hash }: { hash: string }) {
           </>
         ) : step === "code" ? (
           <>
-            <h1>Verify your email</h1>
+            <h1>Check your inbox</h1>
             <p>
-              Enter the six-digit code sent to <strong>{address.trim()}</strong>{" "}
-              to join the waitlist.
+              Copy the six-digit verification code sent to{" "}
+              <strong>{address.trim()}</strong>. Paste or enter it here to
+              finish joining the waitlist.
             </p>
             <form className="stack" onSubmit={onSubmit}>
               <label>
@@ -150,7 +160,7 @@ export default function Waitlist({ hash }: { hash: string }) {
                 />
               </label>
               <button className="primary" disabled={busy || code.length !== 6}>
-                Verify email
+                Verify and join the waitlist
               </button>
             </form>
             <div className="waitlist-actions">

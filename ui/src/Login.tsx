@@ -1,5 +1,11 @@
 import { useRef, useState, type ClipboardEvent, type FormEvent } from "react";
 import { api, type PublishedLegal } from "./api";
+import {
+  InvalidWaitlistCode,
+  legalBase,
+  submitWaitlist,
+  waitlistVersion,
+} from "./Waitlist";
 import Brand from "./Brand";
 import { BetaLegalLinks } from "./BetaLegal";
 import { message } from "./errors";
@@ -45,6 +51,9 @@ export default function Login({
   documents?: PublishedLegal;
 }) {
   const [accepted, setAccepted] = useState(false);
+  const [waitlist, setWaitlist] = useState(false);
+  const [joined, setJoined] = useState(false);
+  const consent = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [sentTo, setSentTo] = useState("");
@@ -67,13 +76,20 @@ export default function Login({
   };
   const email = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (betaEnrollment && documents && !accepted) return;
+    if (betaEnrollment && documents && !accepted && !waitlist) return;
     const form = new FormData(event.currentTarget);
-    const value = String(form.get("email"));
+    const value = String(form.get("email")).trim();
     const hash = location.hash;
     setAddress(value);
     void run(async () => {
-      const id = await api.requestEmailLogin(value);
+      const [id] = await Promise.all([
+        api.requestEmailLogin(value),
+        waitlist &&
+          submitWaitlist("request", {
+            email: value,
+            terms_version: waitlistVersion,
+          }),
+      ]);
       const target = loginReturnHash(hash);
       if (target) rememberLoginReturn(target);
       // Asking again from a spent link's #/login view keeps the original target.
@@ -92,11 +108,35 @@ export default function Login({
     redeeming.current = true;
     void run(async () => {
       try {
+        if (waitlist) {
+          try {
+            await submitWaitlist("verify", { email: sentTo, code: value });
+            clearLoginReturn();
+            setJoined(true);
+            return;
+          } catch (error) {
+            if (!(error instanceof InvalidWaitlistCode)) throw error;
+          }
+        }
         if (accepted && documents)
           await api.loginEmailCode(otpId, value, documents.termsVersion);
         else await api.loginEmailCode(otpId, value);
       } catch (e) {
         setCode("");
+        const failure = e as { status?: number; response?: { code?: string } };
+        if (
+          failure?.status === 428 &&
+          failure.response?.code === "terms_required"
+        ) {
+          newCode();
+          throw new Error(
+            "To activate your invitation, accept the Beta Terms of Service and request a fresh sign-in code.",
+          );
+        }
+        if (failure?.status === 400 || failure?.status === 401)
+          throw new Error(
+            "This code is incorrect or has expired. Check it or request a new code.",
+          );
         throw e;
       } finally {
         redeeming.current = false;
@@ -109,7 +149,7 @@ export default function Login({
   const enterCode = (value: string) => {
     const digits = codeDigits(value);
     setCode(digits);
-    if (digits.length === codeLength) redeem(digits);
+    if (!waitlist && digits.length === codeLength) redeem(digits);
   };
   const pasteCode = (event: ClipboardEvent<HTMLInputElement>) => {
     // maxLength would cut "123 456" before the spaces are stripped.
@@ -117,6 +157,7 @@ export default function Login({
     enterCode(event.clipboardData.getData("text"));
   };
   const newCode = () => {
+    setWaitlist(false);
     setAccepted(false);
     setSentTo("");
     setOtpId("");
@@ -128,7 +169,11 @@ export default function Login({
       if (!link) return;
       try {
         if (accepted && documents)
-          await api.loginEmail(link.otpId, link.password, documents.termsVersion);
+          await api.loginEmail(
+            link.otpId,
+            link.password,
+            documents.termsVersion,
+          );
         else await api.loginEmail(link.otpId, link.password);
       } catch (error) {
         const code = (error as { response?: { code?: string } })?.response
@@ -178,7 +223,24 @@ export default function Login({
     </p>
   ) : null;
   let body;
-  if (link) {
+  if (joined) {
+    body = (
+      <>
+        <h1 id="sign-in-title">You’re on the waitlist</h1>
+        <p>If a place opens for you, we’ll send an invitation to {sentTo}.</p>
+        <button
+          className="link"
+          onClick={() => {
+            setJoined(false);
+            setWaitlist(false);
+            newCode();
+          }}
+        >
+          Use a different email
+        </button>
+      </>
+    );
+  } else if (link) {
     body =
       link.otpId && !linkFailed ? (
         <>
@@ -213,13 +275,24 @@ export default function Login({
       <>
         <h1 id="sign-in-title">Check your inbox</h1>
         <p role="status">
-          If {sentTo} has a Drop account or an invitation, a sign-in code and
-          link are on their way. They work for 15 minutes.
+          {waitlist ? (
+            <>
+              Check <strong>{sentTo}</strong> for your six-digit verification
+              code.
+            </>
+          ) : (
+            <>
+              If {sentTo} has a Drop account or an invitation, a sign-in code
+              and link are on their way. They work for 15 minutes.
+            </>
+          )}
         </p>
         <p className="hint">
-          {isStandaloneApp()
-            ? "Enter the code from the email here. The link in the email opens your browser, not this app."
-            : "Enter the code from the email here, or open the link in it. Either one signs you in."}
+          {waitlist
+            ? "Copy the code from the email, then paste or enter it here to finish joining the waitlist. If you already have access, your sign-in code opens Drop."
+            : isStandaloneApp()
+              ? "Enter the code from the email here. The link in the email opens your browser, not this app."
+              : "Enter the code from the email here, or open the link in it. Either one signs you in."}
         </p>
         <form
           className="stack"
@@ -246,8 +319,11 @@ export default function Login({
               onPaste={pasteCode}
             />
           </label>
-          <button className="primary" disabled={busy}>
-            Sign in
+          <button
+            className="primary"
+            disabled={busy || (waitlist && code.length !== codeLength)}
+          >
+            {waitlist ? "Verify and join the waitlist" : "Sign in"}
           </button>
         </form>
         <button
@@ -256,8 +332,24 @@ export default function Login({
           disabled={busy}
           onClick={newCode}
         >
-          {error ? "Request a new sign-in code" : "Use a different email"}
+          {error
+            ? waitlist
+              ? "Request a new verification code"
+              : "Request a new sign-in code"
+            : "Use a different email"}
         </button>
+        {!waitlist && (
+          <button
+            className="link"
+            disabled={busy}
+            onClick={() => {
+              newCode();
+              requestAnimationFrame(() => consent.current?.focus());
+            }}
+          >
+            Join the waitlist with this email
+          </button>
+        )}
       </>
     );
   } else {
@@ -278,16 +370,43 @@ export default function Login({
             />
           </label>
           {legal}
+          <label className="check">
+            <input
+              ref={consent}
+              type="checkbox"
+              checked={waitlist}
+              disabled={busy}
+              onChange={(event) => setWaitlist(event.target.checked)}
+            />
+            <span>
+              Join the waitlist if I don’t have access. I accept the{" "}
+              <a href={legalBase + "/terms"} target="_blank" rel="noreferrer">
+                Waitlist Terms
+              </a>
+              .
+            </span>
+          </label>
+          <p className="hint">
+            The{" "}
+            <a href={legalBase + "/privacy"} target="_blank" rel="noreferrer">
+              Waitlist Privacy Notice
+            </a>{" "}
+            explains how Drop uses your email.
+          </p>
           <button
             className="primary"
             disabled={
-              busy || (betaEnrollment && documents && !accepted)
+              busy || (betaEnrollment && documents && !accepted && !waitlist)
             }
           >
-            Email me a sign-in code
+            {waitlist
+              ? "Email me a verification code"
+              : "Email me a sign-in code"}
           </button>
         </form>
-        <p className="hint">Drop is invite-only. <a href="#/waitlist">Join waitlist</a></p>
+        <p className="hint">
+          Drop is invite-only. <a href="#/waitlist">Join waitlist</a>
+        </p>
       </>
     );
   }

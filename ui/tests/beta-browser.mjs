@@ -66,6 +66,7 @@ try {
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
     let allowed = false;
+    const waitlistRequests = [];
     let firstDeployment = true;
     let deployed = false;
     let runtimeFailure = false;
@@ -85,12 +86,24 @@ try {
           "X-Drop-Privacy-URL": "https://privacy.example.test/beta",
         },
       });
+      if (path === "/api/drop/waitlist/request") {
+        assert.equal(request.postDataJSON().terms_version, "2026-11-26-waitlist");
+        waitlistRequests.push(request.postDataJSON().email);
+        return send({ ok: true }, 202);
+      }
+      if (path === "/api/drop/waitlist/verify") {
+        const { email, code } = request.postDataJSON();
+        return email === "uninvited@example.test" && code === "654321"
+          ? send({ ok: true })
+          : send({ code: "invalid_input", data: { field: "code" } }, 400);
+      }
       if (path.endsWith("/request-otp")) {
         allowed = request.postDataJSON().email === record.email;
         return send({ otpId: "testotp" });
       }
       if (path.endsWith("/auth-with-otp-code")) {
-        assert.equal(request.headers()["x-drop-accept-terms"], "test-1");
+        if (allowed && request.headers()["x-drop-accept-terms"] !== "test-1")
+          return send({ code: "terms_required", message: "Terms required" }, 428);
         return allowed
           ? send(auth)
           : send({ message: "Invalid sign-in code" }, 400);
@@ -258,18 +271,43 @@ try {
         .getByRole("button", { name: "Email me a sign-in code" })
         .isDisabled(),
     );
-    await page.getByRole("checkbox").check();
+    await page.getByRole("checkbox", { name: /Beta Terms of Service/ }).check();
     await page.getByRole("button", { name: "Email me a sign-in code" }).click();
     await page.getByLabel("Code from the email").fill("000000");
     await page.getByRole("alert").waitFor();
     assert.equal(operations.length, 0);
-    await page
-      .getByRole("button", { name: "Request a new sign-in code" })
-      .click();
+    assert.deepEqual(waitlistRequests, []);
+    await page.getByRole("button", { name: "Join the waitlist with this email" }).click();
+    assert.equal(await page.getByLabel("Email", { exact: true }).inputValue(), "uninvited@example.test");
+    const consent = page.getByRole("checkbox", { name: /Waitlist Terms/ });
+    assert.equal(await consent.isChecked(), false);
+    await consent.check();
+    await page.getByRole("button", { name: "Email me a verification code" }).click();
+    await page.getByText(/paste or enter it here to finish joining/).waitFor();
+    await page.getByLabel("Code from the email").fill("000000");
+    const verify = page.getByRole("button", { name: "Verify and join the waitlist" });
+    await verify.click();
+    await page.getByRole("alert").filter({ hasText: "incorrect or has expired" }).waitFor();
+    await page.getByRole("button", { name: "Request a new verification code" }).click();
+    await consent.check();
+    await page.getByRole("button", { name: "Email me a verification code" }).click();
+    await page.getByLabel("Code from the email").fill("654321");
+    await verify.click();
+    await page.getByRole("heading", { name: "You’re on the waitlist" }).waitFor();
+    assert.equal(operations.length, 0);
+    await page.getByRole("button", { name: "Use a different email" }).click();
     await page.getByLabel("Email", { exact: true }).fill(record.email);
-    await page.getByRole("checkbox").check();
-    await page.getByRole("button", { name: "Email me a sign-in code" }).click();
+    await consent.check();
+    await page.getByRole("button", { name: "Email me a verification code" }).click();
     await page.getByLabel("Code from the email").fill("123456");
+    await verify.click();
+    await page.getByRole("alert").filter({ hasText: "accept the Beta Terms of Service" }).waitFor();
+    assert.equal(await page.getByLabel("Email", { exact: true }).inputValue(), record.email);
+    await page.getByRole("checkbox", { name: /Beta Terms of Service/ }).check();
+    await consent.check();
+    await page.getByRole("button", { name: "Email me a verification code" }).click();
+    await page.getByLabel("Code from the email").fill("123456");
+    await verify.click();
     await page
       .getByRole("alert")
       .filter({ hasText: "not supported" })

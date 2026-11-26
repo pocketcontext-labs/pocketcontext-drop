@@ -72,12 +72,12 @@ export async function checkWaitlist(browser, origin, viewport) {
     await page.getByRole("checkbox").check();
     await page.getByRole("button", { name: "Send verification code" }).click();
     await page.getByLabel("Verification code").fill("101010");
-    await page.getByRole("button", { name: "Verify email" }).click();
+    await page.getByRole("button", { name: "Verify and join the waitlist" }).click();
     await page.getByRole("alert").filter({ hasText: "expired" }).waitFor();
     await page.getByRole("button", { name: "Resend code" }).click();
     await page.getByRole("status").filter({ hasText: "latest code" }).waitFor();
     await page.getByLabel("Verification code").fill("123456");
-    await page.getByRole("button", { name: "Verify email" }).click();
+    await page.getByRole("button", { name: "Verify and join the waitlist" }).click();
     await page
       .getByRole("heading", { name: "You’re on the waitlist" })
       .waitFor();
