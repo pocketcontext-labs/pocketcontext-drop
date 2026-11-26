@@ -1,0 +1,64 @@
+name: Drop Beta KVM acceptance
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  admitted-crew:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Build this Drop and install the browser
+        run: |
+          npm install --global pnpm@10.33.2
+          pnpm --dir ui install --frozen-lockfile
+          pnpm --dir ui build
+          make build
+          pnpm --dir ui exec playwright install --with-deps chromium
+          python3 -m venv "$RUNNER_TEMP/mail"
+          "$RUNNER_TEMP/mail/bin/pip" install aiosmtpd==1.4.6
+      - name: Fetch the released Crew binary and NibRunner inspector
+        run: |
+          set -eu
+          release="$RUNNER_TEMP/beta-releases"
+          mkdir -p "$release/nib"
+          curl --fail --silent --show-error --location --retry 3 \
+            https://github.com/pocketcontext-labs/pocketcontext-crew-drop/releases/download/v0.45.4-drop.4/pocketcontext-crew-drop-linux-amd64 -o "$release/crew"
+          cd "$release/nib"
+          base=https://github.com/pocketcontext-labs/pocketcontext-nibrunner/releases/download/v2026.11.18
+          for asset in nibrunnerd-linux-x64 manifest.json rootfs.ext4 vmlinux checksums.txt; do
+            curl --fail --silent --show-error --location --retry 3 "$base/$asset" -o "$asset"
+          done
+          sha256sum --check checksums.txt
+          chmod 0755 nibrunnerd-linux-x64
+      - name: Prepare the disposable KVM runner
+        run: |
+          set -eu
+          test -c /dev/kvm
+          if test "$(cat /sys/devices/system/cpu/smt/active)" = 1; then
+            echo forceoff | sudo tee /sys/devices/system/cpu/smt/control
+          fi
+          test "$(cat /sys/devices/system/cpu/smt/active)" = 0
+          if test -d /sys/kernel/mm/ksm; then
+            echo 2 | sudo tee /sys/kernel/mm/ksm/run
+            test "$(cat /sys/kernel/mm/ksm/pages_shared)" = 0
+          fi
+          sudo useradd --create-home --shell /usr/sbin/nologin nibrunner-jailer
+          # A normal account reserves a non-overlapping subordinate UID/GID range.
+          grep -q '^nibrunner-jailer:' /etc/subuid
+          grep -q '^nibrunner-jailer:' /etc/subgid
+      - name: Probe, restart Drop, reuse its cache and deploy as an invitee
+        run: |
+          "$RUNNER_TEMP/mail/bin/python" tests/beta_kvm.py \
+            --drop bin/drop --crew "$RUNNER_TEMP/beta-releases/crew" --nib-release "$RUNNER_TEMP/beta-releases/nib"

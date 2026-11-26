@@ -1,0 +1,97 @@
+// The browser talks to the real disposable Drop server. Only the public hostname
+// and TLS termination are provided by a temporary loopback reverse proxy.
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import { setTimeout as delay } from 'node:timers/promises';
+import path from 'node:path';
+import http from 'node:http';
+import https from 'node:https';
+import {once} from 'node:events';
+const { chromium } = createRequire(new URL('../ui/package.json', import.meta.url))('playwright');
+const [port, crew, directory] = process.argv.slice(2);
+const domain = 'drop.example.test';
+const proxy = https.createServer({
+  key: await readFile(path.join(directory, 'key.pem')),
+  cert: await readFile(path.join(directory, 'cert.pem')),
+}, (incoming, outgoing) => {
+  const headers = {...incoming.headers, host: domain};
+  if (headers.origin === origin) headers.origin = 'https://' + domain;
+  const upstream = http.request({
+    hostname: '127.0.0.1', port, path: incoming.url, method: incoming.method, headers,
+  }, reply => {
+    outgoing.writeHead(reply.statusCode, reply.headers);
+    reply.pipe(outgoing);
+  });
+  upstream.on('error', () => outgoing.destroy());
+  outgoing.on('close', () => upstream.destroy());
+  incoming.pipe(upstream);
+});
+proxy.listen(0, '127.0.0.1');
+await once(proxy, 'listening');
+const origin = 'https://' + domain + ':' + proxy.address().port;
+
+async function readCode(mailbox) {
+  for (let i = 0; i < 100; i++) {
+    try {
+      const code = await readFile(mailbox, 'utf8');
+      if (/^\d{6}$/.test(code)) return code;
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+    await delay(100);
+  }
+  throw new Error('The loopback SMTP fixture did not receive the invited account’s code.');
+}
+
+const browser = await chromium.launch({args:['--no-proxy-server', '--host-resolver-rules=MAP drop.example.test 127.0.0.1']});
+try {
+  for (const [name, width, height] of [['desktop', 1280, 800], ['mobile', 390, 844]]) {
+    const context = await browser.newContext({ignoreHTTPSErrors: true, viewport: {width, height}});
+    try {
+      const page = await context.newPage();
+      const uploads = [];
+      page.on('response', response => {
+        if (response.request().method() === 'PUT' && new URL(response.url()).pathname.startsWith('/api/drop/upload/')) {
+          uploads.push(response.status());
+        }
+      });
+      await page.goto(origin);
+      await page.getByText('Beta', {exact:true}).waitFor();
+      const legal = page.getByRole('link', {name:'Terms of Service', exact:true});
+      assert.equal(await legal.getAttribute('href'), 'https://' + domain + '/terms');
+      await page.locator('input[type=file]').setInputFiles(crew);
+      const email = name + '@example.test';
+      await page.getByLabel('Email', {exact:true}).fill(email);
+      await page.getByRole('checkbox').check();
+      await page.getByRole('button', {name:'Email me a sign-in code'}).click();
+      await page.getByLabel('Code from the email').fill(await readCode(path.join(directory, email)));
+      await page.getByLabel('App size').selectOption('4');
+      await page.getByText('1024 MB', {exact:true}).waitFor();
+      await page.getByText('1 vCPU', {exact:true}).waitFor();
+      await page.getByRole('button', {name:'Deploy app'}).click();
+      // No production node, workload role or SMTP delivery service is attached to this Drop.
+      await page.getByRole('alert').filter({hasText:'no space'}).waitFor({timeout: 45000});
+      assert.deepEqual(uploads, [200]);
+      await page.getByRole('button', {name:'Retry deployment'}).click();
+      await page.getByRole('alert').filter({hasText:'no space'}).waitFor();
+      await page.getByRole('link', {name:'Apps', exact:true}).click();
+      await page.getByText('Quota reached', {exact:true}).waitFor();
+      const apps = page.getByRole('list', {name:'Apps, newest first'});
+      assert.equal(await apps.getByRole('listitem').count(), 1);
+      await apps.getByRole('link').click();
+      await page.getByRole('heading', {name:'Resume deployment'}).waitFor();
+      await page.getByRole('button', {name:'Deploy app'}).click();
+      await page.getByRole('alert').filter({hasText:'no space'}).waitFor();
+      assert.deepEqual(uploads, [200]);
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      console.log(name + ': invited account signed in and uploaded released Crew, resumed after capacity rejection, retained one quota slot');
+    } finally {
+      await context.close();
+    }
+  }
+} finally {
+  await browser.close();
+  proxy.closeAllConnections();
+  proxy.close();
+}
