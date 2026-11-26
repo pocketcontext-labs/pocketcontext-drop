@@ -29,3 +29,7 @@
 2. Upgrade the node agents. Install the NibRunner release with the manifest probe on the inspection host and its matching guest image. Nodes offering fractional sizes must report support for quarter-core CPU quotas.
 3. Publish and configure the verified terms and privacy notice before admitting Beta customers. Set `DROP_BETA_NODES` to eligible nodes with tenant isolation, managed Crew storage and sign-in email configured. The operator-only drop-ax41 host is ineligible while SMT is active.
 4. Admit the independently verified Crew release digest and run the [release inspection](ops.md#beta-release-admission-and-deployment). Check an invited user's account activation, upload and HTTPS deployment on an eligible host.
+
+## From 0.5.0 to 0.5.1
+
+Back up the hosted project, replace the Drop executable with the verified release, and restart the services that use it. This patch uses the 0.5.0 database schema and NibRunner resource contract. Existing app allocations carry over. The new size selection applies when preparing a new Crew deployment.
