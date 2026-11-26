@@ -13,7 +13,7 @@ RuntimeDirectory=drop-control-litestream
 Environment=DROP_REPLICA_SOCKET=/run/drop-control-litestream/litestream.sock
 ExecStartPre=/usr/bin/test -s ${DROP_CONTROL_LIVE_DB}
 ExecStartPre=/usr/bin/curl --silent --fail --retry 15 --retry-connrefused --retry-delay 1 --output /dev/null http://127.0.0.1:8100/up
-ExecStart=/usr/local/bin/litestream replicate -config /etc/drop/control-litestream.yml
+ExecStart=/usr/local/bin/litestream replicate -config /usr/local/share/drop/control-litestream.yml
 Restart=on-failure
 RestartSec=5
 UMask=0077

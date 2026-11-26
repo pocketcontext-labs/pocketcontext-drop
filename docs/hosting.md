@@ -167,7 +167,7 @@ The manually dispatched **Drop Beta KVM acceptance** workflow runs on a disposab
 
 The optional host service in `deploy/drop-ax41/drop-control-litestream.service` runs Litestream 0.5.18 as the Drop service user. It follows PocketContext Core's private working database while Drop serves. The project database is periodically replaced by atomic snapshot and is unsuitable as the replication source.
 
-Deploy the updated `deploy/drop-ax41/access.yml` to the existing `access-drop-ax41` stack with its admin credentials and existing parameters. Its retained, encrypted and versioned control-plane bucket is separate from the app replica bucket. Only the server receives the new object permissions. Install the upstream Litestream 0.5.18 Linux amd64 executable as `/usr/local/bin/litestream` (executable SHA-256 `f2d452c1527be81f06d5f135655b81b0e8d9a338cb4c2825cf2243134bc2dbd6`). Install the shipped YAML as `/etc/drop/control-litestream.yml` and the unit under `/etc/systemd/system/`. Set the following in root-owned `/etc/drop/control-replica.env`, mode 0600, substituting the actual account and verified private working path for the running project.
+Deploy the updated `deploy/drop-ax41/access.yml` to the existing `access-drop-ax41` stack with its admin credentials and existing parameters. Its retained, encrypted and versioned control-plane bucket is separate from the app replica bucket. Only the server receives the new object permissions. Install the upstream Litestream 0.5.18 Linux amd64 executable as `/usr/local/bin/litestream` (executable SHA-256 `f2d452c1527be81f06d5f135655b81b0e8d9a338cb4c2825cf2243134bc2dbd6`). Install the shipped nonsecret YAML, readable by the Drop service user, as `/usr/local/share/drop/control-litestream.yml` and the unit under `/etc/systemd/system/`. Set the following in root-owned `/etc/drop/control-replica.env`, mode 0600, substituting the actual account and verified private working path for the running project.
 
 ```ini
 AWS_REGION=eu-north-1
@@ -183,7 +183,7 @@ umask 077
 scratch=$(mktemp -d)
 trap 'rm -rf -- "$scratch"' EXIT
 litestream sync -wait -socket "$DROP_REPLICA_SOCKET" "$DROP_CONTROL_LIVE_DB"
-litestream restore -config /etc/drop/control-litestream.yml -o "$scratch/drop.db" "$DROP_CONTROL_LIVE_DB"
+litestream restore -config /usr/local/share/drop/control-litestream.yml -o "$scratch/drop.db" "$DROP_CONTROL_LIVE_DB"
 python3 - "$scratch/drop.db" <<'PYTHON'
 import sqlite3
 import sys
