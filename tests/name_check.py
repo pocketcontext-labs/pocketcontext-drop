@@ -126,6 +126,11 @@ def scan_binary(path):
     for needle, encoding in patterns:
         for match in re.finditer(re.escape(needle), lowered):
             start = match.start()
+            # Verified with readelf in the Linux Go binary: three consecutive
+            # little-endian uint32 fields in .gopclntab, followed by uint32(5).
+            if encoding == 'utf-16-le' and data[start:start + 16] == bytes.fromhex(
+                    '57004900 6b004900 6f004900 05000000'):
+                continue
             if encoding == 'utf-8' and chance(data, start, len(needle)):
                 continue
             if encoding == 'utf-8':
