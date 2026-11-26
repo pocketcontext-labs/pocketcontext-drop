@@ -126,6 +126,9 @@ func bindAccounts(app core.App) {
 				return errors.New("an account needs an open invite")
 			}
 			invite = found
+			if err := markBetaEnrollment(e.App, e.Record); err != nil {
+				return err
+			}
 			e.Record.Set("role", invite.GetString("role"))
 			e.Record.Set("app_quota", invite.GetInt("app_quota"))
 			e.Record.Set("invited_by", invite.GetString("invited_by"))

@@ -152,7 +152,10 @@ func betaComplete(c *Ctx, in *dropapi.BetaCompleteInput) (any, error) {
 	case "success":
 		m, err := parseBetaManifest(in.Manifest)
 		if err != nil {
-			return nil, err
+			// A successful, bounded probe completed. Repeating it for the
+			// same bytes and contract cannot change an incompatible manifest.
+			state = "invalid"
+			break
 		}
 		manifest, err = json.Marshal(m)
 		if err != nil {

@@ -121,13 +121,13 @@ func TestBetaConcurrentInspectionAndNegativeCache(t *testing.T) {
 	}
 	wantError(t, second, 409, "probe_busy")
 	reply := map[string]any{"sha256": ref["sha256"], "attempt": first.Result["attempt"], "outcome": "success", "manifest": map[string]any{"schema": "other"}}
-	wantError(t, h.Op(admin, "beta.complete", reply), 400, dropapi.CodeInvalidInput)
 	reply["outcome"] = "retry"
 	delete(reply, "manifest")
 	h.MustOp(admin, "beta.complete", reply)
 	claim := h.MustOp(admin, "beta.claim", ref)
 	reply["attempt"] = claim["attempt"]
-	reply["outcome"] = "invalid"
+	reply["outcome"] = "success"
+	reply["manifest"] = map[string]any{"schema": "incompatible"}
 	h.MustOp(admin, "beta.complete", reply)
 	if r := h.MustOp(admin, "beta.claim", ref); r["cached"] != true || r["state"] != "invalid" {
 		t.Fatal(r)

@@ -25,6 +25,7 @@ const EnvReleaseMaxBytes = "DROP_RELEASE_MAX_BYTES"
 // (DROP_APP_DOMAIN, optional).
 func serveServices(a *args, hosted bool, listenAddr string, getenv func(string) string) (dropserver.Services, error) {
 	s := dropserver.Services{CrewReplicaBucket: getenv("DROP_CREW_REPLICA_BUCKET"), AWSRegion: getenv(awsx.EnvRegion)}
+	s.BetaLegal = dropserver.BetaLegal{TermsURL: getenv("DROP_TERMS_URL"), PrivacyURL: getenv("DROP_PRIVACY_URL"), TermsVersion: getenv("DROP_TERMS_VERSION")}
 	if names := getenv("DROP_BETA_NODES"); names != "" {
 		for _, name := range strings.Split(names, ",") {
 			name = strings.TrimSpace(name)

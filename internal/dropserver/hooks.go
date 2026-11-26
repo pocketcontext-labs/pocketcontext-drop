@@ -30,6 +30,7 @@ func Hooks() appserver.Hooks {
 			// The SQL and search reads (owner's local key only; never public).
 			server.RegisterDatabase(app, filepath.Join(ctx.AppDir, "server.json"), ctx.LivePath)
 			bindAccounts(app)
+			bindBetaTerms(app)
 			app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 				registerOpRoutes(e)
 				registerUploadRoute(e)
