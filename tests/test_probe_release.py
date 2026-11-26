@@ -17,7 +17,7 @@ class ProbeReleaseTest(unittest.TestCase):
         self.binary = Path(directory.name) / "guest"
         self.binary.write_bytes(b"known fixture")
         self.digest = hashlib.sha256(self.binary.read_bytes()).hexdigest()
-        self.op = Mock(side_effect=[{"attempt": "one"}, {}])
+        self.op = Mock(side_effect=[{"attempt": "one"}, {"state": "valid"}])
 
     def run_probe(self, probe):
         return inspect(self.binary, self.digest, self.op, probe)
@@ -46,6 +46,11 @@ class ProbeReleaseTest(unittest.TestCase):
         self.op.assert_called_with("beta.complete", {
             "sha256": self.digest, "attempt": "one", "outcome": "success", "manifest": {"app": "crew"},
         })
+
+    def test_platform_rejection_after_clean_exit_is_unsuccessful(self):
+        self.op.side_effect = [{"attempt": "one"}, {"state": "invalid"}]
+        with self.assertRaises(ValueError):
+            self.run_probe(Mock(return_value=subprocess.CompletedProcess([], 0, b'{"app":"other"}')))
 
     def test_incomplete_result_can_retry(self):
         with self.assertRaises(ValueError):

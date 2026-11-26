@@ -39,7 +39,9 @@ def inspect(binary, digest, op, probe):
             outcome = "success"
     except (OSError, subprocess.TimeoutExpired, ValueError):
         outcome = "retry"
-    op("beta.complete", {**completion, "outcome": outcome})
+    receipt = op("beta.complete", {**completion, "outcome": outcome})
+    if outcome == "success" and receipt.get("state") != "valid":
+        raise ValueError("The deployment platform rejected the inspected manifest.")
     if outcome != "success":
         raise ValueError(f"Release inspection ended with {outcome}.")
     return "Manifest cached."
