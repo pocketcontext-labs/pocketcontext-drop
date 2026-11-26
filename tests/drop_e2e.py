@@ -189,7 +189,7 @@ def scenario(binary, root):
     (root / 'home').mkdir()
     env.update({'DROP_OWNER_EMAIL': 'owner@example.test', 'DROP_SMTP_FROM': 'login@example.test', 'DROP_APP_DOMAIN': APP_DOMAIN,
                 'DROP_SMTP_HOST': '127.0.0.1', 'DROP_SMTP_PORT': '9', 'DROP_SMTP_USERNAME': 'synthetic', 'DROP_SMTP_PASSWORD': 'synthetic',
-                'DROP_USAGE_LOG_BUCKET': 'logs-example', 'DROP_USAGE_LOG_PREFIX': 'access-logs/111122223333/eu-north-1/replicas-example/'})
+                'DROP_CREW_REPLICA_BUCKET': 'replicas-example', 'DROP_USAGE_LOG_BUCKET': 'logs-example', 'DROP_USAGE_LOG_PREFIX': 'access-logs/111122223333/eu-north-1/replicas-example/'})
     server_root = root / 'server'
     server_root.mkdir()
     mailbox = hosted_mailbox(server_root, env)
@@ -311,7 +311,8 @@ def scenario(binary, root):
         check(code == 0, f'the agent stops cleanly on SIGTERM (exit {code})')
 
         # 6. Foreign entries: run and check refuse, write nothing.
-        foreign = json.loads(node.desired.read_text(encoding='utf-8'))
+        managed = node.desired.read_bytes()
+        foreign = json.loads(managed)
         foreign['instances'].append(dict(foreign['instances'][0], appId='canary', volumeId='canary-vol', deploymentId='canary-dep-1'))
         foreign['volumes'].append({'appId': 'canary', 'volumeId': 'canary-vol', 'sizeBytes': 1 << 28, 'desiredState': 'present'})
         node.desired.write_text(json.dumps(foreign), encoding='utf-8')
@@ -342,6 +343,25 @@ def scenario(binary, root):
                                 exclude=[server.fake_aws / 'secrets'])
         check(True, 'the leak scan finds no secret value or node password in state.json, artifacts, the server database, log or release store, or the agent output')
         check(list(node.work.iterdir()) == [], 'the agent never created a project in its working directory')
+
+        # Restore the test-owned document after the foreign-entry refusal.
+        node.desired.write_bytes(managed)
+        node.start()
+        prefix = server.fake_aws / 'blobs' / app_id
+        prefix.mkdir()
+        (prefix / 'attachment').write_bytes(b'synthetic')
+        release = server.fake_aws / 'blobs' / 'releases' / hello_sha
+        check(release.is_file(), 'release exists before deletion')
+        user.op('app.delete', app=app['id'], confirm_slug='agent-app')
+        wait_for('the explicit volume deletion', lambda: any(
+            v['volumeId'] == app['volume_id'] and v['desiredState'] == 'absent'
+            for v in read_json(node.desired)['volumes']))
+        check(prefix.is_dir() and release.is_file(), 'remote cleanup waits for NibRunner')
+        node.write_reported([], accepted=node.revision())
+        wait_for('replica and release removal', lambda: not prefix.exists() and not release.exists())
+        replacement = user.op('app.create', name='Replacement', slug='agent-app')['app']
+        check(replacement['id'] != app['id'], 'the slug is reusable with a new immutable app ID')
+        check(not any((server.fake_aws / 'secrets').rglob('name')), 'the deleted app has no SSM secret')
     finally:
         if node is not None:
             node.stop()
