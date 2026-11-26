@@ -284,7 +284,7 @@ select {
 }
 
 .add .row label,
-.apps li.user label {
+.account-controls label {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -295,13 +295,37 @@ select {
   align-items: flex-end;
 }
 
-.add .row input[type="number"],
-.apps li.user input[type="number"] {
+.add .row input[type="number"] {
   width: 88px;
 }
-.apps li.user {
-  flex-wrap: wrap;
+.account-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 6.5rem 5.5rem 8rem;
+  align-items: end;
   gap: 12px;
+}
+.account-controls p {
+  align-self: center;
+}
+.account-controls p span {
+  display: block;
+}
+.account-controls input,
+.account-controls select {
+  width: 100%;
+  min-width: 0;
+}
+@media (max-width: 640px) {
+  .account-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .account-controls p,
+  .account-controls button {
+    grid-column: 1 / -1;
+  }
+  .account-controls button {
+    justify-self: start;
+  }
 }
 .invite-link {
   margin-top: 12px;

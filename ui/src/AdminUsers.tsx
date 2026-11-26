@@ -206,7 +206,7 @@ function Users({
           // Nobody changes their own role or suspension, or the owner's.
           const locked = user.owner || user.id === me.id;
           return (
-            <li key={user.id} className="row user">
+            <li key={user.id} className="account-controls">
               <p>
                 <span>{user.email}</span>{" "}
                 <span className="quiet">

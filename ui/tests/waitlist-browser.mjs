@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { checkAccountRows } from "./account-rows.mjs";
 
 export async function checkWaitlist(browser, origin, viewport) {
   const redacted = "anonymous@example.test";
@@ -222,6 +223,7 @@ export async function checkWaitlist(browser, origin, viewport) {
         () => document.documentElement.scrollWidth <= innerWidth,
       ),
     );
+    await checkAccountRows(page, viewport, record);
     await page.goto(origin + "/#/deploy");
     await page.getByRole("heading", { name: "Not found" }).waitFor();
     assert.equal(
