@@ -1,6 +1,6 @@
 import { useRef, useState, type ClipboardEvent, type FormEvent } from "react";
 import { api, type PublishedLegal } from "./api";
-import {
+import Waitlist, {
   InvalidWaitlistCode,
   legalBase,
   submitWaitlist,
@@ -41,6 +41,7 @@ export default function Login({
   onComplete,
   initialEmail = "",
   betaEnrollment = false,
+  deployAccess = false,
   documents,
 }: {
   emailLink?: EmailLoginLink;
@@ -48,8 +49,10 @@ export default function Login({
   /** The address of an invite's sign-in URL. */
   initialEmail?: string;
   betaEnrollment?: boolean;
+  deployAccess?: boolean;
   documents?: PublishedLegal;
 }) {
+  const [access, setAccess] = useState<"unknown" | "admitted" | "uninvited" | "join">("unknown");
   const [accepted, setAccepted] = useState(false);
   const [waitlist, setWaitlist] = useState(false);
   const [joined, setJoined] = useState(false);
@@ -76,12 +79,23 @@ export default function Login({
   };
   const email = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (betaEnrollment && documents && !accepted && !waitlist) return;
+    if (betaEnrollment && documents && !accepted && !waitlist && (!deployAccess || access === "admitted")) return;
     const form = new FormData(event.currentTarget);
     const value = String(form.get("email")).trim();
     const hash = location.hash;
     setAddress(value);
     void run(async () => {
+      if (deployAccess && access === "unknown") {
+        const reply = await fetch("/api/drop/waitlist/request", {
+          method: "POST", credentials: "omit", redirect: "error",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: value, check_access: true }),
+        });
+        if (!reply.ok) throw new Error(reply.status === 429 ? "Too many attempts. Try again later." : "Could not check access. Try again.");
+        const result = await reply.json();
+        setAccess(result.admitted ? "admitted" : "uninvited");
+        if (!result.admitted || documents) return;
+      }
       const [id] = await Promise.all([
         api.requestEmailLogin(value),
         waitlist &&
@@ -158,6 +172,7 @@ export default function Login({
   };
   const newCode = () => {
     setWaitlist(false);
+    setAccess("unknown");
     setAccepted(false);
     setSentTo("");
     setOtpId("");
@@ -338,7 +353,7 @@ export default function Login({
               : "Request a new sign-in code"
             : "Use a different email"}
         </button>
-        {!waitlist && (
+        {!deployAccess && !waitlist && (
           <button
             className="link"
             disabled={busy}
@@ -352,10 +367,20 @@ export default function Login({
         )}
       </>
     );
+  } else if (deployAccess && access === "join") {
+    return <Waitlist hash="#/waitlist" initialEmail={address} onReturn={newCode} />;
+  } else if (deployAccess && access === "uninvited") {
+    body = <>
+      <h1 id="sign-in-title">Private beta, join the waitlist?</h1>
+      <p>{address} does not have access yet.</p>
+      <button className="primary" onClick={() => setAccess("join")}>Join the waitlist</button>
+      <button className="link" onClick={newCode}>No, use another email</button>
+    </>;
   } else {
     body = (
       <>
-        <h1 id="sign-in-title">Log in to Drop</h1>
+        <h1 id="sign-in-title">{deployAccess ? "Deploy your app" : "Log in to Drop"}</h1>
+        {deployAccess && access === "admitted" && <p role="status">This email has access. Verify it to continue deploying.</p>}
         <form className="stack" onSubmit={email}>
           <label>
             Email
@@ -366,10 +391,13 @@ export default function Login({
               type="email"
               autoComplete="email"
               maxLength={254}
+              key={address}
+              readOnly={busy || (deployAccess && access === "admitted")}
               defaultValue={address}
             />
           </label>
-          {legal}
+          {(!deployAccess || access === "admitted") && legal}
+          {!deployAccess && <>
           <label className="check">
             <input
               ref={consent}
@@ -393,13 +421,14 @@ export default function Login({
             </a>{" "}
             explains how Drop uses your email.
           </p>
+          </>}
           <button
             className="primary"
             disabled={
-              busy || (betaEnrollment && documents && !accepted && !waitlist)
+              busy || (betaEnrollment && documents && !accepted && !waitlist && (!deployAccess || access === "admitted"))
             }
           >
-            {waitlist
+            {deployAccess && access === "unknown" ? "Check access" : waitlist
               ? "Email me a verification code"
               : "Email me a sign-in code"}
           </button>

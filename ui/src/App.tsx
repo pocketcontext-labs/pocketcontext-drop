@@ -87,6 +87,7 @@ function SignInGate({
       <Login
         documents={options.legal}
         initialEmail={inviteEmailFromHash(hash)}
+        deployAccess={!!file}
         betaEnrollment={
           !!file || hash === viewHashes.deploy || !!inviteEmailFromHash(hash)
         }

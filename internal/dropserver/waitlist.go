@@ -31,10 +31,11 @@ type waitEntry struct {
 	Invite    string `db:"invite_id" json:"invite_id"`
 }
 type waitPublic struct {
-	Email string `json:"email"`
-	Terms string `json:"terms_version"`
-	Code  string `json:"code"`
-	Token string `json:"token"`
+	CheckAccess bool   `json:"check_access"`
+	Email       string `json:"email"`
+	Terms       string `json:"terms_version"`
+	Code        string `json:"code"`
+	Token       string `json:"token"`
 }
 
 func waitExec(app core.App, query string, params dbx.Params) error {
@@ -78,6 +79,19 @@ func registerWaitlist(e *core.ServeEvent) {
 			var in waitPublic
 			if err := re.BindBody(&in); err != nil {
 				return writeError(re, Invalid("request", "Enter valid request details."))
+			}
+			// The deploy flow discloses invitation status before collecting waitlist
+			// consent. This lookup neither queues mail nor creates a waitlist entry.
+			if action == "request" && in.CheckAccess {
+				email, err := canonicalEmail(in.Email)
+				if err != nil {
+					return writeError(re, err)
+				}
+				admitted, err := waitlistSignInAddress(re.App, email)
+				if err != nil {
+					return writeError(re, err)
+				}
+				return re.JSON(http.StatusOK, map[string]bool{"admitted": admitted})
 			}
 			var rejected error
 			err := re.App.RunInTransaction(func(tx core.App) error {

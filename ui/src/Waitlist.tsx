@@ -43,7 +43,7 @@ export function isWaitlistLeave(hash: string) {
   return /^#\/waitlist\/leave(?:\?|$)/.test(hash);
 }
 
-export default function Waitlist({ hash }: { hash: string }) {
+export default function Waitlist({ hash, initialEmail = "", onReturn }: { hash: string; initialEmail?: string; onReturn?: () => void }) {
   const leave = isWaitlistLeave(hash);
   const [token] = useState(() => {
     const values = new URLSearchParams(hash.split("?")[1]).getAll("token");
@@ -58,7 +58,7 @@ export default function Waitlist({ hash }: { hash: string }) {
       );
   }, [leave]);
   const [step, setStep] = useState<"email" | "code" | "done">("email");
-  const [address, setAddress] = useState("");
+  const [address, setAddress] = useState(initialEmail);
   const [code, setCode] = useState("");
   const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -116,6 +116,7 @@ export default function Waitlist({ hash }: { hash: string }) {
                 ? "Your waitlist entry has been removed."
                 : "If a place opens for you, we’ll send an invitation to your verified email."}
             </p>
+            {onReturn && <button className="link" onClick={onReturn}>Use a different email</button>}
           </>
         ) : leave ? (
           <>

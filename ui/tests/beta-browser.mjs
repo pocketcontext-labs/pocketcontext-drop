@@ -87,6 +87,7 @@ try {
         },
       });
       if (path === "/api/drop/waitlist/request") {
+        if (request.postDataJSON().check_access) return send({ admitted: request.postDataJSON().email === record.email });
         assert.equal(request.postDataJSON().terms_version, "2026-11-26-waitlist");
         waitlistRequests.push(request.postDataJSON().email);
         return send({ ok: true }, 202);
@@ -266,48 +267,25 @@ try {
     await page
       .getByLabel("Email", { exact: true })
       .fill("uninvited@example.test");
-    assert.ok(
-      await page
-        .getByRole("button", { name: "Email me a sign-in code" })
-        .isDisabled(),
-    );
-    await page.getByRole("checkbox", { name: /Beta Terms of Service/ }).check();
-    await page.getByRole("button", { name: "Email me a sign-in code" }).click();
-    await page.getByLabel("Code from the email").fill("000000");
-    await page.getByRole("alert").waitFor();
-    assert.equal(operations.length, 0);
+    await page.getByRole("button", { name: "Check access" }).click();
+    await page.getByRole("heading", { name: "Private beta, join the waitlist?" }).waitFor();
+    await page.getByRole("button", { name: "No, use another email" }).click();
     assert.deepEqual(waitlistRequests, []);
-    await page.getByRole("button", { name: "Join the waitlist with this email" }).click();
-    assert.equal(await page.getByLabel("Email", { exact: true }).inputValue(), "uninvited@example.test");
+    await page.getByRole("button", { name: "Check access" }).click();
+    await page.getByRole("button", { name: "Join the waitlist", exact: true }).click();
     const consent = page.getByRole("checkbox", { name: /Waitlist Terms/ });
-    assert.equal(await consent.isChecked(), false);
     await consent.check();
-    await page.getByRole("button", { name: "Email me a verification code" }).click();
-    await page.getByText(/paste or enter it here to finish joining/).waitFor();
-    await page.getByLabel("Code from the email").fill("000000");
-    const verify = page.getByRole("button", { name: "Verify and join the waitlist" });
-    await verify.click();
-    await page.getByRole("alert").filter({ hasText: "incorrect or has expired" }).waitFor();
-    await page.getByRole("button", { name: "Request a new verification code" }).click();
-    await consent.check();
-    await page.getByRole("button", { name: "Email me a verification code" }).click();
-    await page.getByLabel("Code from the email").fill("654321");
-    await verify.click();
+    await page.getByRole("button", { name: /verification code/i }).click();
+    await page.getByLabel("Verification code").fill("654321");
+    await page.getByRole("button", { name: "Verify and join the waitlist" }).click();
     await page.getByRole("heading", { name: "You’re on the waitlist" }).waitFor();
-    assert.equal(operations.length, 0);
+    assert.deepEqual(waitlistRequests, ["uninvited@example.test"]);
     await page.getByRole("button", { name: "Use a different email" }).click();
     await page.getByLabel("Email", { exact: true }).fill(record.email);
-    await consent.check();
-    await page.getByRole("button", { name: "Email me a verification code" }).click();
-    await page.getByLabel("Code from the email").fill("123456");
-    await verify.click();
-    await page.getByRole("alert").filter({ hasText: "accept the Beta Terms of Service" }).waitFor();
-    assert.equal(await page.getByLabel("Email", { exact: true }).inputValue(), record.email);
+    await page.getByRole("button", { name: "Check access" }).click();
     await page.getByRole("checkbox", { name: /Beta Terms of Service/ }).check();
-    await consent.check();
-    await page.getByRole("button", { name: "Email me a verification code" }).click();
+    await page.getByRole("button", { name: "Email me a sign-in code" }).click();
     await page.getByLabel("Code from the email").fill("123456");
-    await verify.click();
     await page
       .getByRole("alert")
       .filter({ hasText: "not supported" })

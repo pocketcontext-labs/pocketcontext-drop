@@ -170,6 +170,16 @@ func TestUnifiedEntryKeepsAdmissionPrivate(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	h.Invite("invited@example.test", "user")
 	h.User("existing@example.test", "user")
+	for _, email := range []string{"invited@example.test", "existing@example.test", "unknown@example.test"} {
+		r := h.Request("POST", "/api/drop/waitlist/request", "", fmt.Sprintf(`{"email":%q,"check_access":true}`, email))
+		if r.Code != 200 || !strings.Contains(r.Body.String(), fmt.Sprintf(`"admitted":%t`, email != "unknown@example.test")) {
+			t.Fatal(email, r.Body.String())
+		}
+	}
+	var pending int
+	if err := h.App.DB().NewQuery("SELECT count(*) FROM drop_waitlist").Row(&pending); err != nil || pending != 0 {
+		t.Fatal("access check stored an address", pending, err)
+	}
 	var generic string
 	for _, email := range []string{"unknown@example.test", "invited@example.test", "existing@example.test"} {
 		r := h.Request("POST", "/api/drop/waitlist/request", "", fmt.Sprintf(`{"email":%q,"terms_version":"2026-11-26-waitlist"}`, email))
