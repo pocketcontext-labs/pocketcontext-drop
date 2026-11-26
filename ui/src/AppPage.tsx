@@ -19,6 +19,7 @@ import {
   type Secret,
 } from "./dropApi";
 import { message } from "./errors";
+import AppAddress from "./AppAddress";
 import Releases from "./Releases";
 import BetaDeploy, { BetaStatus } from "./BetaDeploy";
 import UsagePanel from "./Usage";
@@ -170,10 +171,10 @@ function Overview({
           <dt>Sign-in recipient</dt><dd>{app.crew_owner_email}</dd>
           <dt>Email delivery</dt><dd>{app.sign_in_email_enabled ? "Enabled" : "Disabled"}. Delivery pauses while the app is stopped.</dd>
         </>}
-        <dt>Hostname</dt>
+        <dt>App URL</dt>
         <dd>
           {app.hostname ? (
-            <code>{app.hostname}</code>
+            <AppAddress hostname={app.hostname} />
           ) : (
             <span className="quiet">None on this server</span>
           )}
@@ -757,7 +758,7 @@ export default function AppPage({ id, tab }: { id: string; tab: AppTab }) {
   };
   if (app?.beta_managed && !app.archived && !app.current_release)
     return <BetaDeploy key={app.id} account={app.owner} initialFile={null} prepared={app} onComplete={() => void load()} />;
-  if (app?.beta_managed) return <BetaStatus id={app.id} name={app.name} release={app.current_release} />;
+  if (app?.beta_managed) return <BetaStatus id={app.id} name={app.name} release={app.current_release} hostname={app.hostname} />;
   if (missing)
     return (
       <section className="panel" aria-labelledby="not-found-title">

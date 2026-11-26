@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import Brand from "./Brand";
 import type { PublishedLegal } from "./api";
-import CopyButton from "./CopyButton";
+import AppAddress, { appURL } from "./AppAddress";
 import { BetaLegalLinks } from "./BetaLegal";
 import {
   dropApi,
@@ -181,21 +181,22 @@ function liveUrl(status?: AppStatus) {
     status?.url_ready !== true ||
     !status.deployment_id ||
     status.deployment_id !== status.reported_deployment_id ||
-    !["running", "sleeping"].includes(status.phase) ||
-    !/^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i.test(status.hostname)
+    !["running", "sleeping"].includes(status.phase)
   )
     return "";
-  return "https://" + status.hostname;
+  return appURL(status.hostname);
 }
 
 export function BetaStatus({
   id,
   name,
   release,
+  hostname,
 }: {
   id: string;
   name: string;
   release: string;
+  hostname: string;
 }) {
   const [status, setStatus] = useState<AppStatus>();
   const [error, setError] = useState("");
@@ -266,21 +267,13 @@ export function BetaStatus({
               ? "This app is archived."
               : (phases[phase ?? ""] ?? "Checking deployment…")}
       </p>
+      <AppAddress hostname={status?.hostname || hostname} />
       {url && (
-        <>
-          <p className="beta-url">{url}</p>
-          <div className="beta-actions">
-            <a
-              className="button primary"
-              href={url}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Open app
-            </a>
-            <CopyButton text={url} />
-          </div>
-        </>
+        <div className="beta-actions">
+          <a className="button primary" href={url} target="_blank" rel="noreferrer">
+            Open app
+          </a>
+        </div>
       )}
       {failed && release && (
         <button
@@ -320,6 +313,7 @@ export default function BetaDeploy({
   onComplete?: () => void;
 }) {
   const [file, setFile] = useState(initialFile);
+  const [hostname, setHostname] = useState(prepared?.hostname ?? "");
   const [product, setProduct] = useState<BetaRelease>();
   const [digest, setDigest] = useState("");
   const [size, setSize] = useState(0);
@@ -434,8 +428,11 @@ export default function BetaDeploy({
         }
       }
       setAction("Preparing deployment…");
-      if (!draft.app)
-        draft.app = (await dropApi.prepareBeta(digest, size, draft.key)).app.id;
+      if (!draft.app) {
+        const { app } = await dropApi.prepareBeta(digest, size, draft.key);
+        draft.app = app.id;
+        if (mounted.current) setHostname(app.hostname);
+      }
       if (!mounted.current) return;
       if (!draft.release && file) {
         setAction("Uploading binary…");
@@ -489,6 +486,7 @@ export default function BetaDeploy({
   return (
     <section className="panel beta-flow">
       <h1>{prepared ? "Resume deployment" : "Deploy your app"}</h1>
+      <AppAddress hostname={hostname} />
       {prepared && !file && !product && !error && (
         <p role="status">Checking your upload…</p>
       )}

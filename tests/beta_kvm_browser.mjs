@@ -82,6 +82,9 @@ try {
       await page.getByText('Quota reached', {exact:true}).waitFor();
       const apps = page.getByRole('list', {name:'Apps, newest first'});
       assert.equal(await apps.getByRole('listitem').count(), 1);
+      const address = apps.getByRole('link', {name:/^https:\/\//});
+      assert.equal(await address.innerText(), await address.getAttribute('href'));
+      await apps.getByRole('button', {name:'Copy app URL'}).waitFor();
       await apps.locator('a[href*="#/apps/"]').click();
       await page.getByRole('heading', {name:'Resume deployment'}).waitFor();
       await page.getByRole('button', {name:'Deploy app'}).click();

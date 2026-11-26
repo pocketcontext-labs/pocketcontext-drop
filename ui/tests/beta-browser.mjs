@@ -35,6 +35,7 @@ const app = {
   id: "app000000000001",
   beta_managed: true,
   name: "PocketContext Crew",
+  hostname: "crew.apps.example.test",
   current_release: "rel000000000001",
 };
 const record = {
@@ -56,7 +57,7 @@ try {
     { width: 1200, height: 800 },
     { width: 375, height: 812 },
   ]) {
-    const context = await browser.newContext({ viewport });
+    const context = await browser.newContext({ viewport, permissions: ["clipboard-read", "clipboard-write"] });
     const page = await context.newPage();
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
@@ -297,6 +298,11 @@ try {
     }
     await page.getByText("Checking the app address").waitFor();
     assert.equal(await page.getByRole("link", { name: "Open app" }).count(), 0);
+    const address = "https://crew.apps.example.test";
+    assert.equal(await page.getByRole("link", {name: address, exact: true}).getAttribute("href"), address);
+    await page.getByRole("button", {name: "Copy app URL"}).click();
+    await page.getByRole("button", {name: "Copied"}).waitFor();
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), address);
     httpsReady = true;
     const link = page.getByRole("link", { name: "Open app" });
     await link.waitFor();

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
+import AppAddress from "./AppAddress";
 import { dropApi, type App, type Quota } from "./dropApi";
 import { message } from "./errors";
 import { appHash, viewHashes } from "./routes";
@@ -113,11 +114,12 @@ export default function Apps({ beta = false }: { beta?: boolean }) {
               <p className="quiet">
                 {app.archived ? "Archived" : stateLabels[app.desired_state]}
                 {app.kind === "crew" && <> · Crew · {app.crew_owner_email}</>}
-                {app.hostname && <> · {app.hostname}</>} ·{" "}
+                {" · "}
                 <time dateTime={app.created.replace(" ", "T")}>
                   {formatDate(app.created)}
                 </time>
               </p>
+              <AppAddress hostname={app.hostname} />
             </li>
           ))}
         </ol>
