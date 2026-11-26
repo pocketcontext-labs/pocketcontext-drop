@@ -23,9 +23,16 @@ class ProbeReleaseTest(unittest.TestCase):
         return inspect(self.binary, self.digest, self.op, probe)
 
     def test_cache_hit_skips_runner(self):
-        self.op.side_effect = [{"cached": True}]
+        self.op.side_effect = [{"cached": True, "state": "valid"}]
         probe = Mock()
         self.run_probe(probe)
+        probe.assert_not_called()
+
+    def test_cached_rejection_is_unsuccessful(self):
+        self.op.side_effect = [{"cached": True, "state": "invalid"}]
+        probe = Mock()
+        with self.assertRaises(ValueError):
+            self.run_probe(probe)
         probe.assert_not_called()
 
     def test_modified_binary_does_not_claim(self):

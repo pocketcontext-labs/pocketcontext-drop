@@ -214,3 +214,12 @@ Crew is the first supported runtime. Its manifest requires HTTP 8080, TCP health
 After preparation, request an ordinary `release.upload_link` with `activate:false`. A Beta upload must hash to that app's pinned digest, checked before object storage and again when committing its release. Use `beta.deploy` after the upload returns its release ID. If capacity is unavailable, reuse the existing app and release. A retry never moves an already placed volume. Retrying a failed reported deployment of the current release advances its deployment number once. For the current phase, poll `status`; the optional `verify_url:true` asks Drop to check the advertised HTTPS endpoint and report `url_ready`.
 
 The first catalog admission or a configured Beta node list makes direct `app.create` an admin-only workflow. Existing operator-managed apps keep their release operations. Catalog and probe records stay out of account queries and the public route table.
+
+On a dedicated inspection host, take the SHA-256 from the approved PocketContext release checksum and admit it with `drop op beta.approve '{"sha256":"…"}'`. With the matching executable locally available, run:
+
+```sh
+python3 scripts/probe_release.py --db "$DROP_PROJECT" --config "$INSPECTION_CONFIG" \
+  --sha256 "$APPROVED_SHA256" ./pocketcontext-crew-drop-linux-amd64
+```
+
+The helper uses the Drop CLI's authenticated connection and requires NibRunner with the `probe-manifest` command. Use `--url` for an authenticated loopback forward instead of a local project. It checks the input digest before claiming a lease. A warm valid result skips the VM, a cached rejection fails, and an interrupted probe can be reclaimed after its lease expires. The guest receives no Drop credentials. A retry never approves a revoked release.

@@ -18,6 +18,8 @@ def inspect(binary, digest, op, probe):
             raise ValueError("File differs from the approved release digest.")
     claim = op("beta.claim", {"sha256": digest})
     if claim.get("cached") is True:
+        if claim.get("state") != "valid":
+            raise ValueError("This release has a cached manifest rejection.")
         return "Manifest already cached."
     attempt = claim["attempt"]
     completion = {"sha256": digest, "attempt": attempt}
@@ -28,7 +30,7 @@ def inspect(binary, digest, op, probe):
         elif result.returncode:
             outcome = "retry"
         else:
-            if len(result.stdout) > 65536:
+            if len(result.stdout) > 16 * 1024:
                 raise ValueError("Oversized probe response.")
             manifest = json.loads(result.stdout)
             if not isinstance(manifest, dict):
