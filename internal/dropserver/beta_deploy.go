@@ -178,7 +178,11 @@ func betaDeploy(c *Ctx, in *dropapi.ReleaseDeployInput) (any, error) {
 			bumped = true
 		}
 	}
-	if bumped {
+	restart := a.GetString("desired_state") == "stopped"
+	if restart {
+		a.Set("desired_state", a.GetString("start_state"))
+	}
+	if bumped || restart {
 		if err := c.App.Save(a); err != nil {
 			return nil, err
 		}

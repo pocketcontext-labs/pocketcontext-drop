@@ -96,6 +96,14 @@ func TestBetaProbeLeasesAndDeployment(t *testing.T) {
 	if appRecord(t, h, app).GetString("desired_state") != "stopped" {
 		t.Fatal("revocation did not stop app")
 	}
+	h.MustOp(admin, "beta.approve", ref)
+	if appRecord(t, h, app).GetString("desired_state") != "stopped" {
+		t.Fatal("approval restarted the app")
+	}
+	h.MustOp(alice, "beta.deploy", deploy)
+	if appRecord(t, h, app).GetString("desired_state") == "stopped" {
+		t.Fatal("explicit deployment did not restart approved app")
+	}
 }
 
 func TestBetaConcurrentInspectionAndNegativeCache(t *testing.T) {
