@@ -165,6 +165,7 @@ try {
   for (const name of ['src', 'index.html', 'package.json', 'vite.config.ts']) {
     await cp(path.join(root, 'ui', name), path.join(ui, name), { recursive: true });
   }
+  await cp(path.join(root, 'docs/legal'), path.join(ui, '../docs/legal'), { recursive: true });
   await symlink(path.join(root, 'ui/node_modules'), path.join(ui, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
   await cli(['init', '--port', String(port), '--password-stdin'], 'synthetic browser password\n');
   await cli(['stop']);
