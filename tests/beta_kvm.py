@@ -21,12 +21,17 @@ from drop_e2e import Server
 from e2e import APP_DOMAIN, free_port, HOSTED_DOMAIN, isolated_env
 
 REPO = Path(__file__).resolve().parents[1]
-CREW_SHA = 'edeb0740870ba881c005e6a309f444206c0c133e821f69b190bcc13563923b6a'
+CREW_RELEASES = {
+    '90b0cdf5b94c37baf1d1e472f833e9b2d0df98e0361b4132bc81ecfe380a29db': '0.45.4-drop.4',
+    'edeb0740870ba881c005e6a309f444206c0c133e821f69b190bcc13563923b6a': '0.45.4-drop.5',
+}
 
 
 def scenario(root, drop, crew, nib):
     with crew.open('rb') as source:
-        assert hashlib.file_digest(source, 'sha256').hexdigest() == CREW_SHA, 'unexpected Crew release digest'
+        crew_sha = hashlib.file_digest(source, 'sha256').hexdigest()
+    assert crew_sha in CREW_RELEASES, 'unexpected Crew release digest'
+    version = CREW_RELEASES[crew_sha]
     server_root = root / 'server'
     home = root / 'home'
     server_root.mkdir()
@@ -69,7 +74,7 @@ denied_egress_addresses_v6 = []
 ''')
 
     def inspect(runner):
-        result = subprocess.run([sys.executable, REPO / 'scripts/probe_release.py', crew, '--sha256', CREW_SHA,
+        result = subprocess.run([sys.executable, REPO / 'scripts/probe_release.py', crew, '--sha256', crew_sha,
                                  '--drop', drop, '--db', server.db, '--nibrunner', runner, '--config', config],
                                 env=env, stdout=subprocess.PIPE, text=True, check=True, timeout=160)
         return result.stdout.strip()
@@ -115,8 +120,8 @@ denied_egress_addresses_v6 = []
         server.stop()
         server.start(init=False)
         assert inspect(root / 'absent-nibrunner') == 'Manifest already cached.'
-        result = owner_op('beta.inspect', sha256=CREW_SHA)
-        assert result['name'] == 'PocketContext Crew' and result['version'] == '0.45.4-drop.5', result
+        result = owner_op('beta.inspect', sha256=crew_sha)
+        assert result['name'] == 'PocketContext Crew' and result['version'] == version, result
         assert result['multipliers'] == list(range(1, 9)) and result['suggested_multiplier'] == 4, result
         print('Released Crew manifest cached, inspector jail removed and cache reused after Drop restart.', flush=True)
         browser_command = ['node', REPO / 'tests/beta_kvm_browser.mjs', str(server.port), str(crew), str(root)]
@@ -132,9 +137,11 @@ denied_egress_addresses_v6 = []
             assert read_mail(root / (email + '.welcome')) == 'received'
         # Use the caller’s Playwright cache, separate from Drop’s isolated HOME.
         time.sleep(max(0, next_signin - time.monotonic()))
-        subprocess.run([*browser_command, 'deploy'], check=True, timeout=240)
-        owner_op('beta.revoke', sha256=CREW_SHA)
-        assert server.owner('op', 'beta.inspect', '-', stdin=json.dumps({'sha256': CREW_SHA}), expect=4).returncode == 4
+        storage = 'required' if version == '0.45.4-drop.4' else 'optional'
+        assert 's3_replica' in result['requires' if storage == 'required' else 'optional'], result
+        subprocess.run([*browser_command, 'deploy', storage], check=True, timeout=240)
+        owner_op('beta.revoke', sha256=crew_sha)
+        assert server.owner('op', 'beta.inspect', '-', stdin=json.dumps({'sha256': crew_sha}), expect=4).returncode == 4
         print('Revocation denied the previously cached release.')
     finally:
         server.stop()

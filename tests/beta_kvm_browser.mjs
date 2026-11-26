@@ -9,7 +9,7 @@ import http from 'node:http';
 import https from 'node:https';
 import {once} from 'node:events';
 const { chromium } = createRequire(new URL('../ui/package.json', import.meta.url))('playwright');
-const [port, crew, directory, phase] = process.argv.slice(2);
+const [port, crew, directory, phase, storage] = process.argv.slice(2);
 assert.ok(['join', 'deploy'].includes(phase));
 const domain = 'drop.example.test';
 const proxy = https.createServer({
@@ -92,9 +92,15 @@ try {
       await page.getByRole('checkbox', {name:/Beta Terms of Service/}).check();
       await page.getByRole('button', {name:'Email me a sign-in code'}).click();
       await page.getByLabel('Code from the email').fill(await readCode(path.join(directory, email)));
-      await page.getByText('This app requires platform S3.', {exact:false}).waitFor();
-      await page.getByRole('button',{name:/Buy 500 credits/}).click();
-      await page.getByRole('button',{name:/Buy 500 credits/}).waitFor({state:'hidden'});
+      if (storage === 'required') {
+        await page.getByText('This app requires platform S3.', {exact:false}).waitFor();
+        await page.getByRole('button',{name:/Buy 500 credits/}).click();
+        await page.getByRole('button',{name:/Buy 500 credits/}).waitFor({state:'hidden'});
+      } else {
+        assert.equal(storage, 'optional');
+        await page.getByText(/Optional services: Platform S3/).waitFor();
+        assert.equal(await page.getByRole('button',{name:/Buy 500 credits/}).count(), 0);
+      }
       const sizePicker = page.getByLabel('App size');
       await sizePicker.waitFor();
       assert.equal(await sizePicker.inputValue(), '4');
