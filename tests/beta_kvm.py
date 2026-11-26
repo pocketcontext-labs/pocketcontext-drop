@@ -13,6 +13,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import time
 
 from hosted_mail import read_mail, start_mailbox
 
@@ -90,6 +91,9 @@ denied_egress_addresses_v6 = []
         print('Released Crew manifest cached, inspector jail removed and cache reused after Drop restart.', flush=True)
         browser_command = ['node', REPO / 'tests/beta_kvm_browser.mjs', str(server.port), str(crew), str(root)]
         subprocess.run([*browser_command, 'join'], check=True, timeout=180)
+        # The sign-in form requests an OTP before approval. Even unknown addresses
+        # have a one-minute send cooldown so that eligibility stays private.
+        next_signin = time.monotonic() + 60
         for name in ('desktop', 'mobile'):
             email = name + '@example.test'
             entries = owner_op('waitlist.list', search=email)['entries']
@@ -97,6 +101,7 @@ denied_egress_addresses_v6 = []
             owner_op('waitlist.invite', id=entries[0]['id'])
             assert read_mail(root / (email + '.welcome')) == 'received'
         # Use the caller’s Playwright cache, separate from Drop’s isolated HOME.
+        time.sleep(max(0, next_signin - time.monotonic()))
         subprocess.run([*browser_command, 'deploy'], check=True, timeout=240)
         owner_op('beta.revoke', sha256=CREW_SHA)
         assert server.owner('op', 'beta.inspect', '-', stdin=json.dumps({'sha256': CREW_SHA}), expect=4).returncode == 4
