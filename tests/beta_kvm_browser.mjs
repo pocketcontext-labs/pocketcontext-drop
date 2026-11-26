@@ -9,7 +9,8 @@ import http from 'node:http';
 import https from 'node:https';
 import {once} from 'node:events';
 const { chromium } = createRequire(new URL('../ui/package.json', import.meta.url))('playwright');
-const [port, crew, directory] = process.argv.slice(2);
+const [port, crew, directory, phase] = process.argv.slice(2);
+assert.ok(['join', 'deploy'].includes(phase));
 const domain = 'drop.example.test';
 const proxy = https.createServer({
   key: await readFile(path.join(directory, 'key.pem')),
@@ -60,10 +61,33 @@ try {
       await page.getByText('Beta', {exact:true}).waitFor();
       const legal = page.getByRole('link', {name:'Terms of Service', exact:true});
       assert.equal(await legal.getAttribute('href'), 'https://' + domain + '/terms');
-      await page.locator('input[type=file]').setInputFiles(crew);
       const email = name + '@example.test';
+      if (phase === 'join') {
+        await page.getByRole('button', {name:'Sign in', exact:true}).click();
+        await page.getByLabel('Email', {exact:true}).fill(email);
+        if (name === 'desktop') {
+          await page.getByRole('button', {name:'Email me a sign-in code'}).click();
+          await page.getByRole('button', {name:'Join the waitlist with this email'}).click();
+          assert.equal(await page.getByLabel('Email', {exact:true}).inputValue(), email);
+        }
+        await page.getByRole('checkbox', {name:/Waitlist Terms/i}).check();
+        await page.getByRole('button', {name:'Email me a verification code'}).click();
+        const code = await readCode(path.join(directory, email + '.waitlist'));
+        const submit = page.getByRole('button', {name:'Verify and join the waitlist'});
+        const field = page.getByLabel('Code from the email');
+        await field.fill(code === '999999' ? '999998' : '999999');
+        await submit.click();
+        await page.getByRole('alert').waitFor();
+        await field.fill(code);
+        await submit.click();
+        await page.getByRole('heading', {name:/on the waitlist/i}).waitFor();
+        assert.equal(uploads.length, 0);
+        console.log(name + ': unapproved address verified from the sign-in flow');
+        continue;
+      }
+      await page.locator('input[type=file]').setInputFiles(crew);
       await page.getByLabel('Email', {exact:true}).fill(email);
-      await page.getByRole('checkbox').check();
+      await page.getByRole('checkbox', {name:/Beta Terms of Service/}).check();
       await page.getByRole('button', {name:'Email me a sign-in code'}).click();
       await page.getByLabel('Code from the email').fill(await readCode(path.join(directory, email)));
       const sizePicker = page.getByLabel('App size');

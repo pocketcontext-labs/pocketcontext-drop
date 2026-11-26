@@ -17,7 +17,7 @@ import tempfile
 from hosted_mail import read_mail, start_mailbox
 
 from drop_e2e import Server
-from e2e import APP_DOMAIN, free_port, HOSTED_DOMAIN, hosted_request, isolated_env
+from e2e import APP_DOMAIN, free_port, HOSTED_DOMAIN, isolated_env
 
 REPO = Path(__file__).resolve().parents[1]
 CREW_SHA = '90b0cdf5b94c37baf1d1e472f833e9b2d0df98e0361b4132bc81ecfe380a29db'
@@ -88,22 +88,16 @@ denied_egress_addresses_v6 = []
         assert result['name'] == 'PocketContext Crew' and result['version'] == '0.45.4-drop.4', result
         assert result['multipliers'] == list(range(1, 9)) and result['suggested_multiplier'] == 4, result
         print('Released Crew manifest cached, inspector jail removed and cache reused after Drop restart.', flush=True)
+        browser_command = ['node', REPO / 'tests/beta_kvm_browser.mjs', str(server.port), str(crew), str(root)]
+        subprocess.run([*browser_command, 'join'], check=True, timeout=180)
         for name in ('desktop', 'mobile'):
             email = name + '@example.test'
-            route = '/api/drop/waitlist/'
-            status, _ = hosted_request(server.port, 'POST', route + 'request',
-                                       {'email': email, 'terms_version': '2026-11-26-waitlist'})
-            assert status == 202, status
-            status, _ = hosted_request(server.port, 'POST', route + 'verify',
-                                       {'email': email, 'code': read_mail(root / (email + '.waitlist'))})
-            assert status == 200, status
             entries = owner_op('waitlist.list', search=email)['entries']
             assert len(entries) == 1 and entries[0]['email'] == email
             owner_op('waitlist.invite', id=entries[0]['id'])
             assert read_mail(root / (email + '.welcome')) == 'received'
         # Use the caller’s Playwright cache, separate from Drop’s isolated HOME.
-        subprocess.run(['node', REPO / 'tests/beta_kvm_browser.mjs', str(server.port), str(crew), str(root)],
-                       check=True, timeout=240)
+        subprocess.run([*browser_command, 'deploy'], check=True, timeout=240)
         owner_op('beta.revoke', sha256=CREW_SHA)
         assert server.owner('op', 'beta.inspect', '-', stdin=json.dumps({'sha256': CREW_SHA}), expect=4).returncode == 4
         print('Revocation denied the previously cached release.')
