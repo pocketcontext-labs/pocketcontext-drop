@@ -248,6 +248,9 @@ export default function Waitlist({ hash }: { hash: string }) {
           </p>
         )}
         <p>
+          Already have an account or invitation? <a href="#/account">Sign in to Drop</a>.
+        </p>
+        <p>
           <a href="#/">Back to Drop</a>
         </p>
       </section>

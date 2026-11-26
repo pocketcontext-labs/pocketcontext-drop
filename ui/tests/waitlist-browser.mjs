@@ -51,6 +51,8 @@ export async function checkWaitlist(browser, origin, viewport) {
     await page.goto(origin);
     await page.getByRole("link", { name: "Join waitlist" }).click();
     await page.getByRole("heading", { name: "Join the waitlist" }).waitFor();
+    const signIn = page.getByRole("link", { name: "Sign in to Drop" });
+    await signIn.waitFor();
     const terms = page.getByRole("link", { name: "Waitlist Terms" });
     const privacy = page.getByRole("link", { name: "Waitlist Privacy Notice" });
     assert.equal(
@@ -69,6 +71,13 @@ export async function checkWaitlist(browser, origin, viewport) {
         .isDisabled(),
       true,
     );
+    await page.getByRole("checkbox").check();
+    await page.getByRole("button", { name: "Send verification code" }).click();
+    await signIn.click();
+    await page.getByRole("heading", { name: "Log in to Drop" }).waitFor();
+    await page.getByRole("button", { name: "Email me a sign-in code" }).waitFor();
+    await page.goBack();
+    await page.getByLabel("Email", { exact: true }).fill(email);
     await page.getByRole("checkbox").check();
     await page.getByRole("button", { name: "Send verification code" }).click();
     await page.getByLabel("Verification code").fill("101010");
