@@ -145,7 +145,8 @@ type PlacementClearResult struct {
 
 // StatusInput names one app.
 type StatusInput struct {
-	App string `json:"app"`
+	App       string `json:"app"`
+	VerifyURL bool   `json:"verify_url,omitempty"`
 }
 
 // Phases of an app. The agent reports the node phases (ReportPhases); the
@@ -167,6 +168,7 @@ const (
 // when the node first reported this phase; LastSeen when it last reported at
 // all.
 type Status struct {
+	URLReady             bool        `json:"url_ready,omitempty"`
 	App                  string      `json:"app"`
 	Phase                string      `json:"phase"`
 	Message              string      `json:"message"`

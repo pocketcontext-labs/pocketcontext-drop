@@ -448,5 +448,10 @@ func appStatus(c *Ctx, in *dropapi.StatusInput) (any, error) {
 	case out.ReportedDeploymentID != out.DeploymentID && !failurePhases[out.Phase]:
 		out.Phase, out.Message = dropapi.PhaseDeploying, "Rolling out deployment "+out.DeploymentID+"."
 	}
+	if in.VerifyURL && app.GetString("crew_owner_email") != "" && out.ReportedDeploymentID == out.DeploymentID &&
+		(out.Phase == "running" || out.Phase == "sleeping") {
+		out.URLReady = crewURLReady(c.Request.Context(), servicesOf(c.App).AppDomain, app.GetString("slug"), out.Hostname, readinessClient)
+	}
+
 	return out, nil
 }
