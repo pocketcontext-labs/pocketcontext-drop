@@ -144,7 +144,7 @@ func (c *Ctx) quota() (dropapi.Quota, error) {
 	if err != nil {
 		return dropapi.Quota{}, err
 	}
-	return dropapi.Quota{Used: int(used), Limit: c.Auth.GetInt("app_quota"), Unlimited: c.Admin}, nil
+	return dropapi.Quota{Used: int(used), Limit: c.Auth.GetInt("app_quota"), Unlimited: c.Admin && !accountsOf(c.App).hosted}, nil
 }
 
 // checkQuota refuses one more non-archived app beyond the caller's quota.

@@ -168,6 +168,11 @@ func userSet(c *Ctx, in *dropapi.UserSetInput) (any, error) {
 		if owner {
 			return nil, Forbidden("The owner cannot be suspended.")
 		}
+		// A code or link issued before or during suspension must never
+		// become usable when the account is restored.
+		if err := c.App.DeleteAllOTPsByRecord(target); err != nil {
+			return nil, err
+		}
 		target.Set("suspended", *in.Suspended)
 		if *in.Suspended {
 			// Every existing session of the account stops working at once.

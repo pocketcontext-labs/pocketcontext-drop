@@ -319,8 +319,8 @@ func TestReleaseIsolation(t *testing.T) {
 	if list := h.MustOp(admin, "release.list", map[string]any{"app": "alice-app"}); len(list["releases"].([]any)) != 1 {
 		t.Fatalf("admin list %v", list)
 	}
-	wantError(t, h.Op(admin, "release.upload_link", map[string]any{"app": "alice-app"}), 404, dropapi.CodeNotFound)
-	wantError(t, h.Op(admin, "release.deploy", map[string]any{"app": "alice-app", "release": a.Result.Release.ID}), 404, dropapi.CodeNotFound)
+	wantError(t, h.Op(admin, "release.upload_link", map[string]any{"app": "alice-app"}), 403, dropapi.CodeForbidden)
+	wantError(t, h.Op(admin, "release.deploy", map[string]any{"app": "alice-app", "release": a.Result.Release.ID}), 403, dropapi.CodeForbidden)
 	// Bob cannot deploy Alice's release on his own app either.
 	newApp(t, h, bob, "bob-app")
 	wantError(t, h.Op(bob, "release.deploy", map[string]any{"app": "bob-app", "release": a.Result.Release.ID}), 404, dropapi.CodeNotFound)

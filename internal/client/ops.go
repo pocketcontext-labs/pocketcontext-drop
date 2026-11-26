@@ -66,7 +66,7 @@ func (c *Client) Op(op string, input any, idempotencyKey string) (any, error) {
 // RawOp calls an operation with an input given as JSON text.
 func (c *Client) RawOp(op string, input []byte, idempotencyKey string) (any, error) {
 	if _, ok := dropapi.Lookup(op); !ok {
-		return nil, fail(2, "unknown operation %q; known: %s", op, strings.Join(dropapi.Names(dropapi.RoleAdmin), ", "))
+		return nil, fail(2, "unknown operation %q", op)
 	}
 	if idempotencyKey != "" && !dropapi.IdempotencyKeyPattern.MatchString(idempotencyKey) {
 		return nil, fail(2, "--idempotency-key is 1-128 letters, digits, '.', '_', ':' or '-'")

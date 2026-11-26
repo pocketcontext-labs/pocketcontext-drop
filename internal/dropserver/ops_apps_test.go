@@ -65,7 +65,7 @@ func TestAppCreateDefaults(t *testing.T) {
 // TestAppValidation: the server refuses what the node's renderer would.
 func TestAppValidation(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
-	token := h.Token(h.Owner())
+	_, token := h.User("app-owner@example.test", "user")
 	base := func(extra map[string]any) map[string]any {
 		in := map[string]any{"name": "App", "slug": "valid-app"}
 		for k, v := range extra {
@@ -140,7 +140,7 @@ func TestAppValidation(t *testing.T) {
 }
 
 // TestAppQuota: a user has at most app_quota non-archived apps; archiving
-// frees a place, restoring takes one; admins are exempt; user.set raises it.
+// frees a place, restoring takes one; user.set raises it.
 func TestAppQuota(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	user, token := h.User("user@example.test", "user")
@@ -167,14 +167,7 @@ func TestAppQuota(t *testing.T) {
 	if app := appOf(t, h.MustOp(token, "app.restore", map[string]any{"app": "one-app"})); app["archived"] != false {
 		t.Fatalf("%v", app)
 	}
-	for i, slug := range []string{"a1-app", "a2-app", "a3-app", "a4-app"} {
-		h.MustOp(admin, "app.create", map[string]any{"name": slug, "slug": slug})
-		if i == 3 {
-			if q := h.MustOp(admin, "app.list", nil)["quota"].(map[string]any); q["unlimited"] != true || num(q["used"]) != 4 {
-				t.Fatalf("admin quota %v", q)
-			}
-		}
-	}
+	wantError(t, h.Op(admin, "app.create", map[string]any{"name": "Admin app", "slug": "admin-app"}), 403, "forbidden")
 }
 
 // TestDeploymentBumps: a change to the instance configuration gives a new
@@ -332,12 +325,12 @@ func TestSecretOperations(t *testing.T) {
 // failing store answers 502 and changes nothing.
 func TestSecretStoreUnavailable(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{NoSecrets: true})
-	token := h.Token(h.Owner())
+	_, token := h.User("app-owner@example.test", "user")
 	h.MustOp(token, "app.create", map[string]any{"name": "App", "slug": "no-store"})
 	wantError(t, h.Op(token, "secret.set", map[string]any{"app": "no-store", "name": "A", "value": "v"}), 503, "secrets_unavailable")
 
 	failing := droptest.NewHosted(t, droptest.Options{Secrets: failingStore{}})
-	token = failing.Token(failing.Owner())
+	_, token = failing.User("app-owner@example.test", "user")
 	failing.MustOp(token, "app.create", map[string]any{"name": "App", "slug": "failing"})
 	wantError(t, failing.Op(token, "secret.set", map[string]any{"app": "failing", "name": "A", "value": "v"}), 502, "secret_store_failed")
 	if n, _ := failing.App.CountRecords("app_secret_names"); n != 0 {

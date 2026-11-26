@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
-	"slices"
 	"strings"
 	"time"
 
@@ -468,8 +467,9 @@ func runDropWrite(c *Client, raw json.RawMessage) (any, error) {
 	}
 	// Any operation drop_write offers some role passes through; the server
 	// decides whether this caller's role may run it (403 forbidden otherwise).
-	if !slices.Contains(dropapi.MCPWriteNames(dropapi.RoleAdmin), args.Op) {
-		if spec, ok := dropapi.Lookup(args.Op); ok && spec.Read {
+	spec, ok := dropapi.Lookup(args.Op)
+	if !ok || !spec.MCP {
+		if ok && spec.Read {
 			return nil, invalidArguments("That operation is a read: use drop_read.")
 		}
 		return nil, invalidArguments("Unknown op, or not available through MCP; see the op table in the tool's description.")

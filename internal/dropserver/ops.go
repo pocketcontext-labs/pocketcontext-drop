@@ -125,6 +125,20 @@ func accountContext(app core.App, account *core.Record, request *http.Request) (
 	}, nil
 }
 
+func (c *Ctx) checkRole(spec dropapi.Spec) error {
+	role := dropapi.RoleUser
+	if c.Admin {
+		if !accountsOf(c.App).hosted {
+			return nil
+		}
+		role = dropapi.RoleAdmin
+	}
+	if !spec.Allows(role) {
+		return Forbidden("This operation needs a " + string(spec.Role) + " account.")
+	}
+	return nil
+}
+
 // authorizeOp reloads the account after the request body has arrived. For writes
 // the lookup and all protected effects share the same database transaction.
 func authorizeOp(app core.App, re *core.RequestEvent, spec dropapi.Spec) (*Ctx, error) {
@@ -139,8 +153,8 @@ func authorizeOp(app core.App, re *core.RequestEvent, spec dropapi.Spec) (*Ctx, 
 	if err != nil {
 		return nil, err
 	}
-	if spec.Role == dropapi.RoleAdmin && !c.Admin {
-		return nil, Forbidden("This operation needs an admin.")
+	if err := c.checkRole(spec); err != nil {
+		return nil, err
 	}
 	c.Spec = spec
 	return c, nil
@@ -164,8 +178,8 @@ func serveOp(re *core.RequestEvent, keys *sync.Mutex) error {
 	if !ok || run == nil {
 		return writeError(re, &dropapi.Error{Status: http.StatusBadRequest, Code: dropapi.CodeUnknownOp, Message: "Unknown operation.", Data: map[string]any{"op": req.Op}})
 	}
-	if spec.Role == dropapi.RoleAdmin && !c.Admin {
-		return writeError(re, Forbidden("This operation needs an admin."))
+	if err := c.checkRole(spec); err != nil {
+		return writeError(re, err)
 	}
 	input := reflect.New(reflect.TypeOf(spec.Input).Elem()).Interface()
 	raw := bytes.TrimSpace(req.Input)

@@ -216,7 +216,7 @@ func TestMCPWriteTableMatchesRegistry(t *testing.T) {
 	for _, role := range []dropapi.Role{dropapi.RoleUser, dropapi.RoleAdmin} {
 		var want []string
 		for _, s := range dropapi.Specs() {
-			if s.MCP && (role == dropapi.RoleAdmin || s.Role == dropapi.RoleUser) {
+			if s.MCP && s.Allows(role) {
 				if s.Read {
 					t.Errorf("%s is a read with MCP set", s.Name)
 				}
@@ -262,7 +262,7 @@ func TestMCPWriteTableMatchesRegistry(t *testing.T) {
 // without MCP: true (or one added with it) fails here.
 func TestMCPWriteOpsFollowTicket(t *testing.T) {
 	user := registeredOnly(ticketUserWrites)
-	admin := registeredOnly(append(append([]string(nil), ticketUserWrites...), ticketAdminWrites...))
+	admin := registeredOnly(ticketAdminWrites)
 	if got := dropapi.MCPWriteNames(dropapi.RoleUser); !slices.Equal(sortedCopy(got), sortedCopy(user)) {
 		t.Errorf("user ops %v, want %v (set MCP: true on the spec)", got, user)
 	}
@@ -478,8 +478,8 @@ func TestMCPIsolation(t *testing.T) {
 	if s := mustTool(t, h, o, "drop_read", map[string]any{"what": "secrets", "app": appA})["secrets"].([]any); len(s) != 1 {
 		t.Errorf("admin secret names %v", s)
 	}
-	wantToolError(t, callTool(t, h, o, "drop_write", map[string]any{"op": "app.set", "input": map[string]any{"app": appA, "name": "Admin was here"}}), 404, "not_found")
-	wantToolError(t, callTool(t, h, o, "drop_write", map[string]any{"op": "secret.delete", "input": map[string]any{"app": appA, "name": "TOKEN"}}), 404, "not_found")
+	wantToolError(t, callTool(t, h, o, "drop_write", map[string]any{"op": "app.set", "input": map[string]any{"app": appA, "name": "Admin was here"}}), 403, "forbidden")
+	wantToolError(t, callTool(t, h, o, "drop_write", map[string]any{"op": "secret.delete", "input": map[string]any{"app": appA, "name": "TOKEN"}}), 403, "forbidden")
 	for _, id := range []string{appA, appB} {
 		record, _ := h.App.FindRecordById("apps", id)
 		if name := record.GetString("name"); name != "A" && name != "B" || record.GetString("desired_state") != "on-request" {
@@ -527,6 +527,19 @@ func TestMCPIsolation(t *testing.T) {
 	// One grant is one account: A's token never acts as B or O.
 	if me := mustTool(t, h, a, "drop_read", map[string]any{"what": "me"}); me["email"] != "a@example.test" {
 		t.Errorf("A's token is %v", me["email"])
+	}
+}
+
+func TestSuspensionRevokesMCPGrant(t *testing.T) {
+	h := hostedMCP(t)
+	user, session := h.User("mcp@example.test", "user")
+	bearer := h.OAuthToken(session)
+	admin := h.Token(h.Owner())
+	for _, suspended := range []bool{true, false} {
+		h.MustOp(admin, "user.set", map[string]any{"user": user.Id, "suspended": suspended})
+		if w := h.MCP(bearer, "tools/list", map[string]any{}); w.Code != http.StatusUnauthorized {
+			t.Fatalf("prior MCP grant after suspended=%t: %d", suspended, w.Code)
+		}
 	}
 }
 

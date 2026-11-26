@@ -236,8 +236,8 @@ func TestAppAndSecretIsolation(t *testing.T) {
 	if s := h.MustOp(owner, "secret.list", map[string]any{"app": appA})["secrets"].([]any); len(s) != 1 {
 		t.Fatalf("admin secret names %v", s)
 	}
-	wantError(t, h.Op(owner, "app.set", map[string]any{"app": appA, "name": "Admin was here"}), 404, "not_found")
-	wantError(t, h.Op(owner, "secret.set", map[string]any{"app": appA, "name": "TOKEN", "value": "x"}), 404, "not_found")
+	wantError(t, h.Op(owner, "app.set", map[string]any{"app": appA, "name": "Admin was here"}), 403, "forbidden")
+	wantError(t, h.Op(owner, "secret.set", map[string]any{"app": appA, "name": "TOKEN", "value": "x"}), 403, "forbidden")
 	if fresh, _ := h.App.FindRecordById("apps", appA); fresh.GetString("name") != "A" {
 		t.Fatal("A's app changed")
 	}

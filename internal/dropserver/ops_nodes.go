@@ -299,6 +299,15 @@ func placementSet(c *Ctx, in *dropapi.PlacementSetInput) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	if accountsOf(c.App).hosted {
+		owner, err := c.App.FindRecordById("users", app.GetString("owner"))
+		if err != nil {
+			return nil, err
+		}
+		if hostedAdmin(c.App, owner) {
+			return nil, Forbidden("Only user-owned apps can be placed.")
+		}
+	}
 	if app.GetBool("archived") {
 		return nil, Conflict(dropapi.CodeAppArchived, "This app is archived. Restore it first.")
 	}

@@ -74,8 +74,7 @@ type Spec struct {
 	// version).
 	SecretInput bool
 	// MCP offers the operation through the MCP tool drop_write: its op enum
-	// and op table are generated from the specs with MCP set (admins see every
-	// such operation, users those of RoleUser). Only mutating operations take
+	// and op table are generated for the account role from specs with MCP set. Only mutating operations take
 	// it; reads reach MCP through drop_read's own table (internal/client).
 	MCP bool
 	// Standalone marks a mutating operation that does slow outside work (the
@@ -185,12 +184,20 @@ func Lookup(name string) (Spec, bool) {
 	return Spec{}, false
 }
 
+// Allows reports whether a hosted account may call this operation.
+func (s Spec) Allows(role Role) bool {
+	if s.Read && s.Role == RoleUser {
+		return role == RoleAdmin || role == RoleUser
+	}
+	return role == s.Role
+}
+
 // MCPWriteNames returns the operations drop_write offers a role, in registry
 // order: those with MCP set that the role may call.
 func MCPWriteNames(role Role) []string {
 	var names []string
 	for _, s := range specs {
-		if s.MCP && (role == RoleAdmin || s.Role == RoleUser) {
+		if s.MCP && s.Allows(role) {
 			names = append(names, s.Name)
 		}
 	}
@@ -201,7 +208,7 @@ func MCPWriteNames(role Role) []string {
 func Names(role Role) []string {
 	var names []string
 	for _, s := range specs {
-		if role == RoleAdmin || s.Role == RoleUser {
+		if s.Allows(role) {
 			names = append(names, s.Name)
 		}
 	}

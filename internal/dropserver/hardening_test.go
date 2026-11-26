@@ -149,7 +149,7 @@ func TestHostedRestoreInvalidatesNodeTokens(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	_, p1, t1 := h.Node("node-one", hostA)
 	_, _, t2 := h.Node("node-two", hostB)
-	owner := h.Token(h.Owner())
+	_, owner := h.User("app-owner@example.test", "user")
 	app := newApp(t, h, owner, "restore-app")
 	link := uploadLink(t, h, owner, app, nil)
 	hook := dropserver.Hooks().OnHostedRestore
@@ -341,9 +341,10 @@ func (r *firstRead) Read(p []byte) (int, error) {
 func TestAuthorizationAtCommit(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	owner := h.Token(h.Owner())
-	user, auth := h.User("admin@example.test", "admin")
+	user, auth := h.User("tenant@example.test", "user")
 	app := newApp(t, h, auth, "commit-test")
 	path := uploadLink(t, h, auth, app, map[string]any{"activate": true})
+	h.MustOp(owner, "user.set", map[string]any{"user": user.Id, "role": "admin"})
 	for _, tc := range []struct {
 		method, path, content string
 		body                  io.Reader
@@ -376,7 +377,8 @@ func TestDesiredFailsOnMissingCurrentRelease(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	owner := h.Token(h.Owner())
 	_, _, node := h.Node("node-one", hostA)
-	app := deployedApp(t, h, owner, "placed-app", 1)
+	_, user := h.User("tenant@example.test", "user")
+	app := deployedApp(t, h, user, "placed-app", 1)
 	h.MustOp(owner, "placement.set", map[string]any{"app": app, "node": "node-one"})
 	if _, err := h.App.DB().NewQuery("UPDATE apps SET current_release='missingrelease0' WHERE id={:app}").Bind(dbx.Params{"app": app}).Execute(); err != nil {
 		t.Fatal(err)
@@ -392,7 +394,7 @@ func TestDesiredFailsOnMissingCurrentRelease(t *testing.T) {
 // restore invalidates them and drops stale external deletion requests.
 func TestCleanupMigrationAndRestore(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
-	owner := h.Token(h.Owner())
+	_, owner := h.User("app-owner@example.test", "user")
 	app := newApp(t, h, owner, "upgrade-app")
 	bytes := droptest.ELF(4096, 2)
 	if u := upload(t, h, uploadLink(t, h, owner, app, nil), bytes); u.Status != 200 {

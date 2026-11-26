@@ -202,3 +202,24 @@ func TestIdempotencyKeys(t *testing.T) {
 		t.Fatalf("key after a failure: %d %s", r.Status, r.Raw)
 	}
 }
+
+func TestPromotionEndsTenantWrites(t *testing.T) {
+	h := droptest.NewHosted(t, droptest.Options{})
+	account, user := h.User("promoted@example.test", "user")
+	admin := h.Token(h.Owner())
+	app := appOf(t, h.MustOp(user, "app.create", map[string]any{"name": "Existing", "slug": "existing-app"}))
+	id := app["id"].(string)
+	link := uploadLink(t, h, user, id, nil)
+	h.MustOp(admin, "user.set", map[string]any{"user": account.Id, "role": "admin"})
+	for _, token := range []string{admin, user} {
+		for _, op := range []string{"app.create", "app.set", "app.start", "app.stop", "app.archive", "app.restore", "release.upload_link", "release.deploy", "secret.set", "secret.delete", "beta.prepare", "beta.deploy"} {
+			wantError(t, h.Op(token, op, nil), 403, "forbidden")
+		}
+		wantError(t, h.Op(token, "placement.set", map[string]any{"app": id, "node": "unused"}), 403, "forbidden")
+	}
+	wantUploadError(t, upload(t, h, link, droptest.ELF(4096, 1)), 404, "upload_link_invalid")
+	current := appOf(t, h.MustOp(user, "app.get", map[string]any{"app": id}))
+	if current["owner"] != account.Id || current["deployment_id"] != app["deployment_id"] {
+		t.Fatal("promotion changed app ownership or deployment")
+	}
+}

@@ -184,7 +184,7 @@ func (u *uploader) serve(re *core.RequestEvent) error {
 		return writeError(re, uploadLinkInvalid())
 	}
 	creator, err := re.App.FindRecordById("users", link.GetString("created_by"))
-	if err != nil || creator.GetBool("suspended") || app.GetString("owner") != creator.Id {
+	if err != nil || hostedAdmin(re.App, creator) || creator.GetBool("suspended") || app.GetString("owner") != creator.Id {
 		return writeError(re, uploadLinkInvalid())
 	}
 	if app.GetBool("archived") {
@@ -250,7 +250,7 @@ func (u *uploader) serve(re *core.RequestEvent) error {
 			return err
 		}
 		freshCreator, err := tx.FindRecordById("users", link.GetString("created_by"))
-		if err != nil || freshCreator.GetBool("suspended") || freshCreator.Id != app.GetString("owner") || freshCreator.TokenKey() != creator.TokenKey() {
+		if err != nil || hostedAdmin(tx, freshCreator) || freshCreator.GetBool("suspended") || freshCreator.Id != app.GetString("owner") || freshCreator.TokenKey() != creator.TokenKey() {
 			return uploadLinkInvalid()
 		}
 		if app.GetBool("archived") {

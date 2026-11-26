@@ -45,6 +45,10 @@ func isOwner(app core.App, record *core.Record) bool {
 	return rt != nil && rt.IsOwner(app, record)
 }
 
+func hostedAdmin(app core.App, record *core.Record) bool {
+	return accountsOf(app).hosted && (isOwner(app, record) || record.GetString("role") == string(dropapi.RoleAdmin))
+}
+
 // lowerASCII lower-cases ASCII letters only, as core and SQLite's LOWER do.
 func lowerASCII(s string) string {
 	b := []byte(s)

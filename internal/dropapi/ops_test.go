@@ -54,7 +54,7 @@ func TestBuildChecksTheInputType(t *testing.T) {
 
 func TestNamesByRole(t *testing.T) {
 	user, admin := Names(RoleUser), Names(RoleAdmin)
-	if !slices.Contains(user, "me") || slices.Contains(user, "invite.create") || len(admin) != len(Specs()) {
+	if !slices.Contains(user, "me") || slices.Contains(user, "invite.create") || slices.Contains(admin, "app.create") || !slices.Contains(admin, "app.list") {
 		t.Fatalf("user %v admin %v", user, admin)
 	}
 	for _, s := range Specs() {

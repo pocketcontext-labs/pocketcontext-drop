@@ -199,11 +199,23 @@ func TestSuspendedAccountIsLockedOut(t *testing.T) {
 		t.Fatalf("a suspended account signed in: %s", w.Body)
 	}
 	h.MustOp(owner, "user.set", map[string]any{"user": user.Id, "suspended": false})
-	fresh, err := h.App.FindRecordById("users", user.Id)
-	if err != nil {
-		t.Fatal(err)
+	if r := h.Op(token, "me", nil); r.Status != 401 {
+		t.Fatalf("restoration revived a prior session: %d", r.Status)
 	}
-	if r := h.Op(h.Token(fresh), "me", nil); r.Status != 200 {
+	w = h.Request(http.MethodPost, appserver.OTPCodePath, "", fmt.Sprintf(`{"otpId":%q,"code":%q}`, otpID, m.Code))
+	if w.Code == http.StatusOK {
+		t.Fatal("restoration revived a previously issued code")
+	}
+	// A second restored account can immediately request a fresh login.
+	// The first address remains within its normal email cooldown.
+	restored, prior := h.User("restored@example.test", "user")
+	h.MustOp(owner, "user.set", map[string]any{"user": restored.Id, "suspended": true})
+	h.MustOp(owner, "user.set", map[string]any{"user": restored.Id, "suspended": false})
+	if r := h.Op(prior, "me", nil); r.Status != 401 {
+		t.Fatalf("old session after restore: %d", r.Status)
+	}
+	fresh := h.SignIn("restored@example.test")
+	if r := h.Op(fresh.Token, "me", nil); r.Status != 200 {
 		t.Fatalf("unsuspended account: %d %s", r.Status, r.Raw)
 	}
 }

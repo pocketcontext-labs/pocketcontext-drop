@@ -191,7 +191,7 @@ func TestSecretSentinel(t *testing.T) {
 
 func TestSecretDeletionCommitAndRecovery(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
-	owner := h.Token(h.Owner())
+	_, owner := h.User("app-owner@example.test", "user")
 	id := newApp(t, h, owner, "cleanup")
 	set := map[string]any{"app": id, "name": "TOKEN", "value": "initial"}
 	del := map[string]any{"app": id, "name": "TOKEN"}
