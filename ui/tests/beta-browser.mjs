@@ -183,6 +183,25 @@ try {
           throw new Error("Unexpected operation " + op);
       }
     });
+    for (const [document, heading] of [
+      ["terms", "Drop Beta Terms of Service"],
+      ["privacy", "Drop Beta Privacy Policy"],
+    ]) {
+      await page.goto(origin + "/#/legal/2026-11-26/" + document);
+      await page.getByRole("heading", { name: heading, exact: true }).waitFor();
+      assert.equal(
+        await page
+          .getByRole("link", { name: "alberto.miorin@pocketcontext.com" })
+          .getAttribute("href"),
+        "mailto:alberto.miorin@pocketcontext.com",
+      );
+      assert.equal(
+        await page
+          .locator("body")
+          .evaluate((body) => body.scrollWidth > window.innerWidth),
+        false,
+      );
+    }
     await page.goto(origin);
     await page.getByText("Beta", { exact: true }).waitFor();
     await page.getByRole("button", { name: "Choose a file" }).focus();

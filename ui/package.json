@@ -1,7 +1,7 @@
 {
   "name": "drop-reader",
   "private": true,
-  "version": "0.4.0",
+  "version": "0.5.0",
   "type": "module",
   "packageManager": "pnpm@10.33.2",
   "scripts": {
@@ -24,6 +24,7 @@
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^6.1.1",
     "jsdom": "^26.1.0",
+    "marked": "^18.3.0",
     "playwright": "1.62.1",
     "prettier": "3.9.9",
     "typescript": "^5.8.3",

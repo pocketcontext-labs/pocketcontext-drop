@@ -584,3 +584,14 @@ section > h3 {
   .beta-landing header { flex-wrap: wrap; }
   .product-brand { font-size: 17px; gap: 6px; }
 }
+
+.beta-legal-page { min-height: 100vh; background: #f7f6ef; color: #0d1712; }
+.beta-legal-page header, .beta-legal-page footer {
+  display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;
+  padding: 1rem max(1.25rem, calc((100vw - 66rem) / 2)); background: #0d1712; color: #f7f6ef;
+}
+.beta-legal-page a { color: inherit; text-underline-offset: .18em; }
+.beta-legal-page header a { text-decoration: none; }
+.beta-legal-page main { max-width: 44rem; margin: auto; padding: clamp(2rem, 6vw, 5rem) 1.25rem; line-height: 1.6; }
+.beta-legal-page h1 { font-size: clamp(2.5rem, 7vw, 4.5rem); line-height: 1.02; letter-spacing: -.04em; }
+.beta-legal-page h2 { margin: 2rem 0 .4rem; line-height: 1.25; }

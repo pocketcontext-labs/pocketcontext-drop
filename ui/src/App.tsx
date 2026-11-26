@@ -10,6 +10,7 @@ import BetaDeploy, { BetaLanding } from "./BetaDeploy";
 import Connect from "./Connect";
 import { dropApi, type Me } from "./dropApi";
 import Login from "./Login";
+import { LegalDocument, publishedLegalDocument } from "./LegalDocument";
 import {
   appRouteFromHash,
   browserNavigation,
@@ -311,6 +312,8 @@ export default function App() {
       active = false;
     };
   }, [oauthTarget, signedIn, emailLink, checkAttempt]);
+  const legalDocument = publishedLegalDocument(hash);
+  if (legalDocument) return <LegalDocument html={legalDocument} />;
   if (!options) {
     return (
       <Status>
