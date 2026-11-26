@@ -538,6 +538,7 @@ export interface BetaRelease {
   name: string;
   version: string;
   multipliers: number[];
+  suggested_multiplier?: number;
 }
 
 export const dropApi = {

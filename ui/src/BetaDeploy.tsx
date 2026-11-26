@@ -382,7 +382,9 @@ export default function BetaDeploy({
           setDigest(sha);
           setProduct(info);
           setSize(
-            prepared ? prepared.memory_mib / 256 : (info.multipliers[0] ?? 0),
+            prepared
+              ? prepared.memory_mib / 256
+              : (info.suggested_multiplier ?? info.multipliers[0] ?? 0),
           );
         } catch (e) {
           if (active)
@@ -523,7 +525,7 @@ export default function BetaDeploy({
                 >
                   {product.multipliers.map((n) => (
                     <option key={n} value={n}>
-                      {n}×
+                      {n}×{n === product.suggested_multiplier ? " (suggested)" : ""}
                     </option>
                   ))}
                 </select>

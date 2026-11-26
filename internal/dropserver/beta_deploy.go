@@ -9,26 +9,14 @@ import (
 )
 
 // Each unit buys 256 MiB, 2 GiB of disk and one quarter of a core.
-func betaSizes(m dropapi.BetaManifest) []int {
-	sizes := []int{}
-	for n := 1; n <= 8; n++ {
-		if n >= m.Minimum.CPUQuarters && n*256 >= m.Minimum.MemoryMiB && n*2048 >= m.Minimum.DiskMiB {
-			sizes = append(sizes, n)
-		}
-	}
-	return sizes
-}
+var crewBetaSizes = []int{1, 2, 3, 4, 5, 6, 7, 8}
 
 func betaInspect(c *Ctx, in *dropapi.BetaDigest) (any, error) {
 	m, err := betaRelease(c.App, in.SHA256)
 	if err != nil {
 		return nil, err
 	}
-	sizes := betaSizes(m)
-	if len(sizes) == 0 {
-		return nil, Conflict("unsupported_binary", "This release requires a larger size than Drop Beta supports.")
-	}
-	return map[string]any{"name": "PocketContext Crew", "version": m.Version, "multipliers": sizes}, nil
+	return map[string]any{"name": "PocketContext Crew", "version": m.Version, "multipliers": crewBetaSizes, "suggested_multiplier": 4}, nil
 }
 
 func betaPrepare(c *Ctx, in *dropapi.BetaPrepareInput) (any, error) {
@@ -36,7 +24,7 @@ func betaPrepare(c *Ctx, in *dropapi.BetaPrepareInput) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !slices.Contains(betaSizes(m), in.Multiplier) {
+	if !slices.Contains(crewBetaSizes, in.Multiplier) {
 		return nil, Invalid("multiplier", "Choose an available whole-number size for this release.")
 	}
 	cpu, mem, disk := (in.Multiplier+3)/4, in.Multiplier*256, in.Multiplier*2048
@@ -134,12 +122,12 @@ func betaDeploy(c *Ctx, in *dropapi.ReleaseDeployInput) (any, error) {
 	if digest == "" {
 		return nil, Invalid("app", "Select an app prepared through Drop Beta.")
 	}
-	m, err := betaRelease(c.App, digest)
+	_, err = betaRelease(c.App, digest)
 	if err != nil {
 		return nil, err
 	}
 	size := a.GetInt("memory_mib") / 256
-	if !slices.Contains(betaSizes(m), size) || a.GetInt("vcpu") != (size+3)/4 || a.GetInt("memory_mib") != size*256 || a.GetInt("disk_mib") != size*2048 {
+	if !slices.Contains(crewBetaSizes, size) || a.GetInt("vcpu") != (size+3)/4 || a.GetInt("memory_mib") != size*256 || a.GetInt("disk_mib") != size*2048 {
 		return nil, Conflict("invalid_size", "The app size is unavailable for this release.")
 	}
 	quota, err := c.quota()

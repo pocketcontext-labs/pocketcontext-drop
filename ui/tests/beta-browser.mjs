@@ -119,7 +119,8 @@ try {
                 result: {
                   name: app.name,
                   version: "fixture",
-                  multipliers: [4, 8],
+                  multipliers: [1, 4, 8],
+                  suggested_multiplier: 4,
                 },
               })
             : send({ code: "unsupported_binary" }, 409);
@@ -270,9 +271,14 @@ try {
       .waitFor();
     await page.getByRole("button", { name: "Choose another file" }).click();
     await page.locator("input[type=file]").setInputFiles(binary);
+    await page.getByLabel("App size").waitFor();
+    assert.equal(await page.getByLabel("App size").inputValue(), "4");
+    await page.getByLabel("App size").selectOption("1");
+    await page.getByText("0.25 vCPU", { exact: true }).waitFor();
     await page.getByLabel("App size").selectOption("8");
     assert.deepEqual(await page.locator("select option").allTextContents(), [
-      "4×",
+      "1×",
+      "4× (suggested)",
       "8×",
     ]);
     await page.getByText("2 vCPU", { exact: true }).waitFor();

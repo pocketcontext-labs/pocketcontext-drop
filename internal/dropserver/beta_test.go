@@ -39,11 +39,15 @@ func TestBetaProbeLeasesAndDeployment(t *testing.T) {
 	if r := h.MustOp(admin, "beta.claim", ref); r["cached"] != true {
 		t.Fatal(r)
 	}
-	if r := h.MustOp(alice, "beta.inspect", ref); r["name"] != "PocketContext Crew" || len(r["multipliers"].([]any)) != 5 {
+	if r := h.MustOp(alice, "beta.inspect", ref); r["name"] != "PocketContext Crew" || len(r["multipliers"].([]any)) != 8 || num(r["suggested_multiplier"]) != 4 {
 		t.Fatal(r)
 	}
-	for _, bad := range []any{1, 3, 12, 4.5} {
+	for _, bad := range []any{-1, 0, 9, 12, 4.5} {
 		wantError(t, h.Op(alice, "beta.prepare", map[string]any{"sha256": digest, "multiplier": bad}), 400, dropapi.CodeInvalidInput)
+	}
+	small := appOf(t, h.MustOp(bob, "beta.prepare", map[string]any{"sha256": digest, "multiplier": 1}))
+	if num(small["memory_mib"]) != 256 || num(small["disk_mib"]) != 2048 || num(small["vcpu"]) != 1 {
+		t.Fatal(small)
 	}
 	args := map[string]any{"sha256": digest, "multiplier": 5}
 	prepared := h.Op(alice, "beta.prepare", args, "prepare-1")
