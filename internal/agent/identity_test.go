@@ -2,7 +2,6 @@ package agent
 
 import (
 	"bytes"
-	"context"
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
@@ -11,8 +10,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
-	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
-	"github.com/pocketcontext-labs/pocketcontext-drop/internal/leakscan"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,35 +34,17 @@ func TestWorkloadIdentityOffline(t *testing.T) {
 		t.Fatal(err)
 	}
 	const id = "d-0123456789abcde"
-	doc := []byte(`{"instances":[{"appId":"` + id + `","desiredState":"on-request"},{"appId":"d-222222222222222","desiredState":"stopped"}]}`)
 	now := time.Unix(12345, 0)
-	tokenPath := filepath.Join(c.sourceDir, id, "token")
-	if err := s.publish(doc, now, false); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(tokenPath); !os.IsNotExist(err) {
-		t.Fatal("minted before desired commit")
-	}
-	if err := s.publish(doc, now, true); err != nil {
-		t.Fatal(err)
-	}
-	first, err := os.ReadFile(tokenPath)
+	first, err := s.token(id, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(c.sourceDir, "d-222222222222222")); !os.IsNotExist(err) {
-		t.Fatal("minted for stopped app")
-	}
-	// Reconstruct the signer as after a process restart, without a server.
 	restarted, err := c.parseKey(secret)
 	if err != nil {
 		t.Fatal(err)
 	}
 	later := now.Add(125 * time.Second)
-	if err := restarted.publish(doc, later, true); err != nil {
-		t.Fatal(err)
-	}
-	fresh, err := os.ReadFile(tokenPath)
+	fresh, err := restarted.token(id, later)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,39 +71,38 @@ func TestWorkloadIdentityOffline(t *testing.T) {
 	if json.Unmarshal(raw, &claims) != nil || claims.Sub != id || claims.Iss != c.issuer || claims.Aud != c.audience || claims.Exp != later.Unix()+120 || strings.Join(claims.Tags.Principal["app_id"], ",") != id {
 		t.Fatal("invalid workload claims")
 	}
-	for _, path := range []string{filepath.Join(c.roleDir, id, "role-arn"), filepath.Join(c.sourceDir, id, "role-arn"), tokenPath} {
-		info, err := os.Stat(path)
-		if err != nil || info.Mode().Perm() != 0600 {
-			t.Fatal("identity file permissions")
+	for _, base := range []string{c.roleDir, c.sourceDir} {
+		if _, err := os.Stat(base); !os.IsNotExist(err) {
+			t.Fatal("in-memory signing created guest identity files")
 		}
-		b, err := os.ReadFile(path)
-		if err != nil || bytes.Contains(b, der) || (path != tokenPath && string(b) != c.role) {
-			t.Fatal("unexpected identity file contents")
+		for _, appID := range []string{id, "foreign"} {
+			dir := filepath.Join(base, appID)
+			if err := os.MkdirAll(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			for _, name := range []string{"token", "role-arn", "unrelated"} {
+				if err := os.WriteFile(filepath.Join(dir, name), []byte("fixture"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
 		}
 	}
-	if err := s.publish([]byte(`{"instances":[{"appId":"../outside","desiredState":"running"}]}`), later, true); err == nil {
-		t.Fatal("accepted invalid identity")
+	for range 2 {
+		if err := c.clearGuestFiles(); err != nil {
+			t.Fatal(err)
+		}
 	}
-	// Exercise real desired staging and scan every non-credential output.
-	e := newEnv(t)
-	rel := e.release("identity")
-	e.server.setDesired(func(d *dropapi.Desired) { d.Apps = []dropapi.DesiredApp{testApp(appA, 1, rel)} })
-	a := New(e.cfg, testSecret, "0.0.0-test", Stores{e.stores.Blobs, e.stores.Secrets}, e.logf)
-	a.hostID = testHostID
-	a.state = State{Artifacts: map[string]ArtifactInfo{}}
-	a.stager = &Stager{Dir: e.cfg.Artifacts, Blobs: e.stores.Blobs, Cache: a.state.Artifacts}
-	a.signer = restarted
-	ctx := context.Background()
-	if err := a.client.Login(ctx); err != nil {
-		t.Fatal(err)
+	for _, base := range []string{c.roleDir, c.sourceDir} {
+		for _, name := range []string{"token", "role-arn"} {
+			if _, err := os.Stat(filepath.Join(base, id, name)); !os.IsNotExist(err) {
+				t.Fatal("legacy credential remains")
+			}
+			if _, err := os.Stat(filepath.Join(base, "foreign", name)); err != nil {
+				t.Fatal("foreign credentials changed")
+			}
+		}
+		if _, err := os.Stat(filepath.Join(base, id, "unrelated")); err != nil {
+			t.Fatal("unrelated file changed")
+		}
 	}
-	if err := a.cycle(ctx); err != nil {
-		t.Fatal(err)
-	}
-	tok, err := os.ReadFile(filepath.Join(c.sourceDir, appA, "token"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	leakscan.Require(t, []leakscan.Sentinel{{Label: "node key", Value: string(secret)}, {Label: "assertion", Value: string(tok)}}, leakscan.Path(e.cfg.StatePath()), leakscan.Path(e.cfg.Desired), leakscan.Text("logs", e.logs()), leakscan.Text("reports", e.server.allReports()))
-
 }

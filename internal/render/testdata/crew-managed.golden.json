@@ -19,8 +19,6 @@
           "args": [],
           "environment": {
             "AWS_REGION": "eu-north-1",
-            "AWS_ROLE_SESSION_NAME": "d-crewdev00000001",
-            "AWS_WORKLOAD_IDENTITY": "async",
             "CREW_DROP_APP_ID": "d-crewdev00000001",
             "CREW_DROP_BOOTSTRAP": "1",
             "CREW_DROP_BUCKET": "crew-example",
@@ -79,7 +77,7 @@
       "volumeId": "d-crewdev00000001-vol"
     }
   ],
-  "revision": "drop-1-6d05a1e15276",
+  "revision": "drop-1-6a1b4914b018",
   "volumes": [
     {
       "appId": "d-crewdev00000001",

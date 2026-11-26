@@ -97,7 +97,7 @@ func ValidHookPort(port, httpPort int) bool {
 func CheckAppEnvName(name string, crew bool) string {
 	if crew {
 		switch name {
-		case "CREW_DROP_APP_ID", "CREW_DROP_BUCKET", "CREW_DROP_BOOTSTRAP", "AWS_REGION", "AWS_ROLE_ARN", "AWS_WEB_IDENTITY_TOKEN_FILE", "AWS_ROLE_SESSION_NAME", "AWS_WORKLOAD_IDENTITY", "POCKETCONTEXT_DOMAIN":
+		case "CREW_DROP_APP_ID", "CREW_DROP_BUCKET", "CREW_DROP_BOOTSTRAP", "AWS_REGION", "POCKETCONTEXT_DOMAIN":
 			return name + " is reserved for Crew"
 		}
 	}
@@ -124,10 +124,18 @@ func DeploymentIDOK(appID, id string) bool {
 	return ok && deployTail.MatchString(tail)
 }
 
-// ReservedEnv reports names an app may not set: nibrunner's own (NIBRUN_*),
-// Drop's (DROP_*) and the ones the renderer fixes (HOME, PATH).
+// PlatformIdentityEnv names the guest controls used by older runner releases.
+func PlatformIdentityEnv(name string) bool {
+	switch name {
+	case "AWS_ROLE_ARN", "AWS_WEB_IDENTITY_TOKEN_FILE", "AWS_ROLE_SESSION_NAME", "AWS_WORKLOAD_IDENTITY":
+		return true
+	}
+	return false
+}
+
+// ReservedEnv includes runner, Drop, fixed process and platform identity names.
 func ReservedEnv(name string) bool {
-	return name == "HOME" || name == "PATH" || strings.HasPrefix(name, "NIBRUN_") || strings.HasPrefix(name, "DROP_")
+	return PlatformIdentityEnv(name) || name == "HOME" || name == "PATH" || strings.HasPrefix(name, "NIBRUN_") || strings.HasPrefix(name, "DROP_")
 }
 
 // CheckEnvName returns why name cannot be an environment variable or secret

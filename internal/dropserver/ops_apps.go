@@ -219,11 +219,17 @@ type settings struct {
 }
 
 func settingsOf(r *core.Record) settings {
+	env := appEnv(r)
+	for name := range env {
+		if appspec.PlatformIdentityEnv(name) {
+			delete(env, name)
+		}
+	}
 	return settings{
 		desiredState: r.GetString("desired_state"), startState: r.GetString("start_state"),
 		idleTimeoutMs: r.GetInt("idle_timeout_ms"), vcpu: r.GetInt("vcpu"), memoryMiB: r.GetInt("memory_mib"),
 		hookPort: r.GetInt("hook_port"), crew: r.GetString("crew_enrollment") != "", diskMiB: r.GetInt("disk_mib"), httpPort: r.GetInt("http_port"), executable: r.GetString("executable_name"),
-		args: appArgs(r), env: appEnv(r), healthKind: r.GetString("health_kind"), healthPath: r.GetString("health_path"),
+		args: appArgs(r), env: env, healthKind: r.GetString("health_kind"), healthPath: r.GetString("health_path"),
 	}
 }
 

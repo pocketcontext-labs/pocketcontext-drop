@@ -40,7 +40,10 @@ migrate((app) => {
       END`);
   }
   // NibRunner applies the changed guest storage environment on a new deployment.
-  run("UPDATE apps SET deployment_seq=deployment_seq+1 WHERE current_release<>'' AND crew_enrollment<>''");
+  const identityNames="'AWS_ROLE_ARN','AWS_WEB_IDENTITY_TOKEN_FILE','AWS_ROLE_SESSION_NAME','AWS_WORKLOAD_IDENTITY'";
+  run(`UPDATE apps SET deployment_seq=deployment_seq+1 WHERE current_release<>'' AND (
+    crew_enrollment<>'' OR EXISTS(SELECT 1 FROM json_each(CASE WHEN json_valid(apps.env) THEN apps.env ELSE '{}' END) WHERE key IN (${identityNames}))
+    OR EXISTS(SELECT 1 FROM app_secret_names s WHERE s.app=apps.id AND s.name IN (${identityNames})))`);
   run(`CREATE TABLE drop_credit_meter(app TEXT NOT NULL,node TEXT NOT NULL,deployment TEXT NOT NULL,
     measured INTEGER NOT NULL DEFAULT -1,billable INTEGER NOT NULL DEFAULT -1,
     at INTEGER NOT NULL, awake INTEGER NOT NULL,units INTEGER NOT NULL,PRIMARY KEY(app,node,deployment))`);

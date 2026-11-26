@@ -135,6 +135,11 @@ func desiredApp(app core.App, record *core.Record, services Services) (dropapi.D
 		Hostnames:      []render.Hostname{},
 		Env:            appEnv(record),
 	}, Secrets: []dropapi.DesiredSecret{}}
+	for name := range a.Env {
+		if appspec.PlatformIdentityEnv(name) {
+			delete(a.Env, name)
+		}
+	}
 	if state := record.GetString("crew_enrollment"); state != "" {
 		a.ManagedCrew = true
 		var eligible bool
@@ -165,6 +170,9 @@ func desiredApp(app core.App, record *core.Record, services Services) (dropapi.D
 		return a, false, err
 	}
 	for _, s := range secrets {
+		if appspec.PlatformIdentityEnv(s.GetString("name")) {
+			continue
+		}
 		parameter, err := awsx.SecretParameter(services.SSMPrefix, nibAppID, s.GetString("name"))
 		if err != nil {
 			return a, false, err

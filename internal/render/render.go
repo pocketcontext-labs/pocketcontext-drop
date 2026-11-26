@@ -363,9 +363,6 @@ func renderEnvironment(app App) map[string]string {
 	if app.ManagedCrew {
 		env["POCKETCONTEXT_DOMAIN"] = app.Hostnames[0].Hostname
 		env["CREW_DROP_APP_ID"] = app.AppID
-		if !app.HostS3 && !app.LocalOnly && !app.ProxyOnly {
-			env["AWS_WORKLOAD_IDENTITY"] = "async"
-		}
 		if !app.LocalOnly {
 			env["CREW_DROP_BUCKET"] = app.CrewReplicaBucket
 			env["AWS_REGION"] = app.AWSRegion
@@ -376,9 +373,6 @@ func renderEnvironment(app App) map[string]string {
 		if app.ReplicaSyncSeconds != 0 {
 			env[appspec.EnvReplicaSyncInterval] = appspec.ReplicaSyncInterval(app.ReplicaSyncSeconds)
 		}
-	}
-	if mode := env["AWS_WORKLOAD_IDENTITY"]; mode == "1" || mode == "async" {
-		env["AWS_ROLE_SESSION_NAME"] = app.AppID
 	}
 	env[envHost] = envHostRef
 	env["NIBRUN_DATA_DIR"] = dataDir

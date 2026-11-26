@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"context"
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
@@ -12,6 +11,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"io"
+	"io/fs"
 	"math/big"
 	"net/url"
 	"os"
@@ -98,94 +98,43 @@ func (s *workloadSigner) token(id string, now time.Time) ([]byte, error) {
 	return []byte(signed + "." + enc(sig)), nil
 }
 
-func (s *workloadSigner) publish(doc []byte, now time.Time, includeToken bool) error {
-	var d struct {
-		Instances []struct {
-			AppID        string `json:"appId"`
-			State        string `json:"desiredState"`
-			HostServices *struct {
-				S3 bool `json:"s3"`
-			} `json:"hostServices"`
-		}
-	}
-	if len(doc) == 0 {
-		return nil
-	}
-	if err := json.Unmarshal(doc, &d); err != nil {
-		return errors.New("invalid applied identity document")
-	}
-	for _, i := range d.Instances {
-		if !appspec.AppIDPattern.MatchString(i.AppID) {
-			return errors.New("invalid workload identity app ID")
-		}
-		switch i.State {
-		case "running", "on-request", "stopped":
-		default:
-			return errors.New("invalid workload identity state")
-		}
-	}
-	for _, i := range d.Instances {
-		if i.State == "stopped" {
+// clearGuestFiles removes credentials created by older Drop agents. The
+// host proxy signs in memory. No workload has a guest token publisher.
+func (c identityConfig) clearGuestFiles() error {
+	for _, base := range []string{c.roleDir, c.sourceDir} {
+		if base == "" {
 			continue
 		}
-		if i.HostServices != nil && i.HostServices.S3 {
-			// The node's S3 proxy serves this app: no token or role for its guest.
-			for _, base := range []string{s.roleDir, s.sourceDir} {
-				for _, name := range []string{"token", "role-arn"} {
-					if err := os.Remove(filepath.Join(base, i.AppID, name)); err != nil && !os.IsNotExist(err) {
-						return err
-					}
-				}
-			}
-			continue
-		}
-		for _, base := range []string{s.roleDir, s.sourceDir} {
-			dir := filepath.Join(base, i.AppID)
-			if err := os.MkdirAll(dir, 0700); err != nil {
-				return err
-			}
-			path := filepath.Join(dir, "role-arn")
-			if b, _ := os.ReadFile(path); string(b) != s.role {
-				if err := writeFileAtomic(path, []byte(s.role)); err != nil {
-					return err
-				}
-			}
-		}
-		if !includeToken {
-			continue
-		}
-		token, err := s.token(i.AppID, now)
+		err := clearGuestIdentityDirectory(base)
 		if err != nil {
-			return err
-		}
-		if err := writeFileAtomic(filepath.Join(s.sourceDir, i.AppID, "token"), token); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (s *workloadSigner) refresh(desired string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	doc, err := readOptional(desired)
+func clearGuestIdentityDirectory(base string) error {
+	root, err := os.OpenRoot(base)
+	if os.IsNotExist(err) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
-	return s.publish(doc, time.Now(), true)
-}
-
-func (s *workloadSigner) run(ctx context.Context, desired string, logf func(string, ...any)) {
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			if err := s.refresh(desired); err != nil {
-				logf("workload identity rotation: %v", err)
+	defer root.Close()
+	entries, err := fs.ReadDir(root.FS(), ".")
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() || !appspec.AppIDPattern.MatchString(entry.Name()) {
+			continue
+		}
+		for _, name := range []string{"token", "role-arn"} {
+			if err := root.Remove(filepath.Join(entry.Name(), name)); err != nil && !os.IsNotExist(err) {
+				return err
 			}
 		}
 	}
+	return nil
 }

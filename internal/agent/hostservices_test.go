@@ -503,24 +503,30 @@ func TestHostServicesConfig(t *testing.T) {
 	}
 }
 
-func TestPublishSkipsHostS3Apps(t *testing.T) {
-	dir := t.TempDir()
-	s, _ := testSigner(t, dir)
-	plain := `{"instances":[{"appId":"` + hsApp + `","desiredState":"on-request"}]}`
-	if err := s.publish([]byte(plain), time.Now(), true); err != nil {
-		t.Fatal(err)
+func TestAgentClearsLegacyGuestIdentityBeforeServing(t *testing.T) {
+	e := newEnv(t)
+	e.cfg.identity.roleDir = filepath.Join(e.dir, "roles")
+	e.cfg.identity.sourceDir = filepath.Join(e.dir, "sources")
+	for _, base := range []string{e.cfg.identity.roleDir, e.cfg.identity.sourceDir} {
+		dir := filepath.Join(base, appA)
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range []string{"role-arn", "token"} {
+			if err := os.WriteFile(filepath.Join(dir, name), []byte("old"), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
-	token := filepath.Join(s.sourceDir, hsApp, "token")
-	if _, err := os.Stat(token); err != nil {
-		t.Fatal("no token before the switch")
-	}
-	hosted := `{"instances":[{"appId":"` + hsApp + `","desiredState":"on-request","hostServices":{"s3":true}}]}`
-	if err := s.publish([]byte(hosted), time.Now(), true); err != nil {
-		t.Fatal(err)
-	}
-	for _, p := range []string{token, filepath.Join(s.sourceDir, hsApp, "role-arn"), filepath.Join(s.roleDir, hsApp, "role-arn")} {
-		if _, err := os.Stat(p); !os.IsNotExist(err) {
-			t.Fatalf("%s left for a host S3 app", p)
+	rel := e.release("local")
+	e.server.setDesired(func(d *dropapi.Desired) { d.Apps = []dropapi.DesiredApp{testApp(appA, 1, rel)} })
+	e.start()
+	eventually(t, "ordinary deployment", revisionIs(e, "drop-2-"))
+	for _, base := range []string{e.cfg.identity.roleDir, e.cfg.identity.sourceDir} {
+		for _, name := range []string{"role-arn", "token"} {
+			if _, err := os.Stat(filepath.Join(base, appA, name)); !os.IsNotExist(err) {
+				t.Fatal("guest identity remains", name)
+			}
 		}
 	}
 }

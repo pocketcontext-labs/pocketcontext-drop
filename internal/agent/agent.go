@@ -136,7 +136,6 @@ func CheckLocal(cfg Config, limits render.Limits) (*Local, error) {
 
 // Agent is one running `drop agent run`.
 type Agent struct {
-	signer  *workloadSigner
 	cfg     Config
 	version string
 	client  *Client
@@ -195,18 +194,8 @@ func (a *Agent) Run(ctx context.Context) error {
 	a.stager = &Stager{Dir: a.cfg.Artifacts, Blobs: a.stores.Blobs, Cache: a.state.Artifacts}
 	a.logf("starting for node %s on host %s (server %s, desired.json %s, %d apps)", a.cfg.Node, a.hostID, a.cfg.Server, a.cfg.Desired, len(local.AppIDs))
 
-	a.signer, err = a.cfg.identity.load()
-	if err != nil {
+	if err := a.cfg.identity.clearGuestFiles(); err != nil {
 		return err
-	}
-	if a.signer != nil {
-		if err := a.signer.refresh(a.cfg.Desired); err != nil {
-			return err
-		}
-		workerCtx, cancel := context.WithCancel(ctx)
-		done := make(chan struct{})
-		go func() { defer close(done); a.signer.run(workerCtx, a.cfg.Desired, a.logf) }()
-		defer func() { cancel(); <-done }()
 	}
 	if err := a.signIn(ctx); err != nil || ctx.Err() != nil {
 		return err
@@ -413,7 +402,7 @@ func (a *Agent) reconcile(ctx context.Context) (wrote bool, err error) {
 			fail(id, app.DeploymentID, "failed", "refused on the node: invalid host services limits")
 			continue
 		}
-		if app.ProxyOnly && !a.cfg.HostServices {
+		if app.ManagedCrew && !app.LocalOnly && !a.cfg.HostServices {
 			fail(id, app.DeploymentID, "failed", "Platform storage needs the node S3 proxy.")
 			continue
 		}
@@ -485,20 +474,8 @@ func (a *Agent) reconcile(ctx context.Context) (wrote bool, err error) {
 		currentHash, _ = render.ContentHash(current)
 	}
 	if currentHash != out.ContentHash {
-		if a.signer != nil {
-			a.signer.mu.Lock()
-			defer a.signer.mu.Unlock()
-			if err := a.signer.publish(out.Document, a.now(), false); err != nil {
-				return false, err
-			}
-		}
 		if err := writeDesired(a.cfg.Desired, a.cfg.BackupPath(), current, out.Document); err != nil {
 			return false, fmt.Errorf("writing %s: %w", a.cfg.Desired, err)
-		}
-		if a.signer != nil {
-			if err := a.signer.publish(out.Document, a.now(), true); err != nil {
-				return true, err
-			}
 		}
 		wrote = true
 		a.writtenRevision = out.Revision

@@ -683,7 +683,7 @@ func TestCrewDeliveryFollowsAppliedInstance(t *testing.T) {
 	if inst.Config.Hooks == nil || inst.Config.Hooks.Port != 8081 {
 		t.Fatal("missing hook listener")
 	}
-	for name, want := range map[string]string{"AWS_REGION": "eu-north-1", "AWS_ROLE_SESSION_NAME": inst.AppID, "CREW_DROP_APP_ID": inst.AppID, "CREW_DROP_BUCKET": "crew-example", "POCKETCONTEXT_DOMAIN": in.Apps[0].Hostnames[0].Hostname, "AWS_WORKLOAD_IDENTITY": "async", "CREW_DROP_BOOTSTRAP": "1"} {
+	for name, want := range map[string]string{"AWS_REGION": "eu-north-1", "CREW_DROP_APP_ID": inst.AppID, "CREW_DROP_BUCKET": "crew-example", "POCKETCONTEXT_DOMAIN": in.Apps[0].Hostnames[0].Hostname, "CREW_DROP_BOOTSTRAP": "1"} {
 		if got := inst.Config.Command.Environment[name]; got != want {
 			t.Fatalf("%s = %q, want %q", name, got, want)
 		}

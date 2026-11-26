@@ -765,6 +765,10 @@ func TestCrewSignInProvisioning(t *testing.T) {
 		t.Fatal("ordinary app received mail configuration")
 	}
 	wantError(t, h.Op(a.Token, "app.set", map[string]any{"app": ordinary["id"], "sign_in_email_enabled": true}), 400, "invalid_input")
+	for _, name := range []string{"AWS_WORKLOAD_IDENTITY", "AWS_ROLE_SESSION_NAME", "AWS_ROLE_ARN", "AWS_WEB_IDENTITY_TOKEN_FILE"} {
+		wantError(t, h.Op(a.Token, "secret.set", map[string]any{"app": ordinary["id"], "name": name, "value": "fixture"}), 400, "invalid_input")
+		wantError(t, h.Op(a.Token, "app.set", map[string]any{"app": ordinary["id"], "env": map[string]any{"set": map[string]string{name: "fixture"}}}), 400, "invalid_input")
+	}
 	appA, appB := create(a.Token, "crew-alice"), create(b.Token, "crew-bob")
 	if appA["kind"] != "crew" || appA["crew_owner_email"] != alice || appA["sign_in_email_enabled"] != true {
 		t.Fatalf("creation %v", appA)

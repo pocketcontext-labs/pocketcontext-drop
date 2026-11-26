@@ -150,6 +150,10 @@ func LoadConfig(getenv func(string) string, o Overrides, needServer bool) (Confi
 		PullInterval:      DefaultPullInterval,
 		ReportInterval:    DefaultReportInterval,
 	}
+	if c.FakeAWS != "" {
+		c.identity.roleDir = filepath.Join(c.FakeAWS, "guest-identity", "roles")
+		c.identity.sourceDir = filepath.Join(c.FakeAWS, "guest-identity", "sources")
+	}
 	var err error
 	if c.HostServices, err = hostServicesEnabled(getenv); err != nil {
 		return c, err
