@@ -66,9 +66,12 @@ try {
       await page.getByRole('checkbox').check();
       await page.getByRole('button', {name:'Email me a sign-in code'}).click();
       await page.getByLabel('Code from the email').fill(await readCode(path.join(directory, email)));
-      await page.getByLabel('App size').selectOption('4');
-      await page.getByText('1024 MB', {exact:true}).waitFor();
-      await page.getByText('1 vCPU', {exact:true}).waitFor();
+      const sizePicker = page.getByLabel('App size');
+      await sizePicker.waitFor();
+      assert.equal(await sizePicker.inputValue(), '4');
+      await sizePicker.selectOption('1');
+      await page.getByText('256 MB', {exact:true}).waitFor();
+      await page.getByText('0.25 vCPU', {exact:true}).waitFor();
       await page.getByRole('button', {name:'Deploy app'}).click();
       // No production node, workload role or SMTP delivery service is attached to this Drop.
       await page.getByRole('alert').filter({hasText:'no space'}).waitFor({timeout: 45000});
@@ -79,7 +82,7 @@ try {
       await page.getByText('Quota reached', {exact:true}).waitFor();
       const apps = page.getByRole('list', {name:'Apps, newest first'});
       assert.equal(await apps.getByRole('listitem').count(), 1);
-      await apps.getByRole('link').click();
+      await apps.locator('a[href*="#/apps/"]').click();
       await page.getByRole('heading', {name:'Resume deployment'}).waitFor();
       await page.getByRole('button', {name:'Deploy app'}).click();
       await page.getByRole('alert').filter({hasText:'no space'}).waitFor();

@@ -126,7 +126,7 @@ denied_egress_addresses_v6 = []
         assert inspect(root / 'absent-nibrunner') == 'Manifest already cached.'
         result = owner_op('beta.inspect', sha256=CREW_SHA)
         assert result['name'] == 'PocketContext Crew' and result['version'] == '0.45.4-drop.4', result
-        assert 4 in result['multipliers'] and all(x >= 4 for x in result['multipliers']), result
+        assert result['multipliers'] == list(range(1, 9)) and result['suggested_multiplier'] == 4, result
         print('Released Crew manifest cached, inspector jail removed and cache reused after Drop restart.', flush=True)
         for name in ('desktop', 'mobile'):
             server.owner('invite', 'create', name + '@example.test', '--role', 'user', '--quota', '1')
