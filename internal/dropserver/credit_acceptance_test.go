@@ -2,6 +2,11 @@ package dropserver_test
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"ganigeorgiev.com/pocketbase/dbx"
 	"sync"
 	"testing"
 	"time"
@@ -153,7 +158,8 @@ func TestCreditHostCounterDelta(t *testing.T) {
 	h.MustOp(h.Token(h.Owner()), "placement.set", map[string]any{"app": app, "node": node})
 	rec := appRecord(t, h, app)
 	nib := rec.GetString("nib_app_id")
-	at := time.Now().UTC().Truncate(time.Second).Add(time.Minute)
+	day := time.Now().UTC().Truncate(24 * time.Hour).Add(24 * time.Hour)
+	at := day.Add(23*time.Hour + 30*time.Minute)
 	dropserver.SetAgentClock(h.App, func() time.Time { return at })
 	send := func(awake, billable int) {
 		row := appReport(nib, nib+"-dep-"+rec.GetString("deployment_seq"), "sleeping")
@@ -176,6 +182,33 @@ func TestCreditHostCounterDelta(t *testing.T) {
 	err := h.App.DB().NewQuery("SELECT sum(measured),sum(billable),sum(sampled) FROM drop_credit_comparison").Row(&measured, &billable, &sampled)
 	if err != nil || measured != 280 || billable != 190 || sampled != 0 {
 		t.Fatalf("overlap: %d %d %d %v", measured, billable, sampled, err)
+	}
+	// Execute the documented 24-hour comparison query for both sides of
+	// midnight. The interval spans 23:30..00:30, so each day receives half.
+	doc, err := os.ReadFile(filepath.Join(droptest.Root(t), "docs", "agent-api.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, section, ok := strings.Cut(string(doc), "### Awake accounting")
+	if !ok {
+		t.Fatal("comparison manual missing")
+	}
+	_, code, ok := strings.Cut(section, "```sql\n")
+	if !ok {
+		t.Fatal("comparison query missing")
+	}
+	query, _, _ := strings.Cut(code, "```")
+	query = strings.NewReplacer(":node", "{:node}", ":start", "{:start}").Replace(query)
+	for _, start := range []int64{day.Unix(), day.Add(24 * time.Hour).Unix()} {
+		var appID, dep string
+		var phase1, host, billed float64
+		var gap int
+		if err := h.App.DB().NewQuery(query).Bind(dbx.Params{"node": node, "start": start}).Row(&appID, &dep, &phase1, &host, &billed, &gap); err != nil {
+			t.Fatal(err)
+		}
+		if appID != app || phase1 != 0 || host != 140 || billed != 95 || gap != 3600 {
+			t.Fatalf("window %d: %q %.2f %.2f %.2f gap %d", start, appID, phase1, host, billed, gap)
+		}
 	}
 }
 
