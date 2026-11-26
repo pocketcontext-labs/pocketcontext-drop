@@ -9,7 +9,6 @@ export async function checkAccountRows(page, viewport, record) {
       role: "admin",
       owner: true,
       signed_in: true,
-      app_quota: 3,
     },
     {
       id: "member000000001",
@@ -18,7 +17,6 @@ export async function checkAccountRows(page, viewport, record) {
       role: "user",
       owner: false,
       signed_in: false,
-      app_quota: 2,
     },
   ];
   const changes = [];
@@ -45,8 +43,8 @@ export async function checkAccountRows(page, viewport, record) {
   await owner.waitFor();
   assert.ok(await owner.getByLabel("Role").isDisabled());
   assert.ok(await owner.getByRole("button", { name: "Suspend" }).isDisabled());
-  assert.ok(await owner.getByLabel("Quota").isEnabled());
-  for (const selector of ["select", "input", "button"]) {
+  assert.equal(await accounts.getByLabel("Quota").count(), 0);
+  for (const selector of ["select", "button"]) {
     const first = await owner.locator(selector).boundingBox();
     const second = await member.locator(selector).boundingBox();
     assert.ok(Math.abs(first.x - second.x) < 1, selector + " columns align");
@@ -60,8 +58,6 @@ export async function checkAccountRows(page, viewport, record) {
     }
   }
   await member.getByLabel("Role").selectOption("admin");
-  await member.getByLabel("Quota").fill("7");
-  await member.getByLabel("Quota").press("Tab");
   page.once("dialog", (dialog) => dialog.accept());
   await member.getByRole("button", { name: "Suspend" }).click();
   page.once("dialog", (dialog) => dialog.accept());
@@ -69,7 +65,6 @@ export async function checkAccountRows(page, viewport, record) {
   await member.getByRole("button", { name: "Suspend" }).waitFor();
   assert.deepEqual(changes, [
     { role: "admin" },
-    { app_quota: 7 },
     { suspended: true },
     { suspended: false },
   ]);
