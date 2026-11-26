@@ -797,3 +797,30 @@ func TestHostS3ReplacesWorkloadIdentity(t *testing.T) {
 		t.Fatalf("host S3 on an app that is not managed Crew: %+v", r)
 	}
 }
+
+func TestOnlyExplicitDeletionPurgesKnownVolume(t *testing.T) {
+	in := loadInput(t, "crew-dev.input.json")
+	first, err := Render(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := in.Apps[0].AppID
+	in.Apps = nil
+	in.Previous = first.Document
+	in.Deleted = []string{id}
+	purged, err := Render(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := decodePrevious(purged.Document)
+	if err != nil || len(doc.Instances) != 0 || len(doc.Volumes) != 1 || doc.Volumes[0].DesiredState != "absent" {
+		t.Fatalf("invalid explicit purge: %v", err)
+	}
+	in.Previous = purged.Document
+	in.Deleted = nil
+	next, err := Render(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertNeverAbsent(t, next.Document)
+}

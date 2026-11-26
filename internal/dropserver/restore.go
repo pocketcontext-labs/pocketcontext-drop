@@ -62,6 +62,16 @@ func InvalidateNodeTokens(app core.App) error {
 				return err
 			}
 		}
+		// Pause destructive jobs restored from history until the owner confirms again.
+		if err := waitExec(tx, "DELETE FROM drop_volume_deletions", nil); err != nil {
+			return err
+		}
+		if err := waitExec(tx, "DELETE FROM drop_app_deletions WHERE completed=0", nil); err != nil {
+			return err
+		}
+		if err := syncDesiredSeqs(tx); err != nil {
+			return err
+		}
 		// The restored queue describes SSM at backup time. A name may since
 		// have been recreated. An operator reconciles these entries using the
 		// backup and current store, without replaying an old destructive intent.

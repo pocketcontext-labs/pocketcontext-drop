@@ -176,6 +176,21 @@ Resources:
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
+          - Sid: ListVersionsForConfirmedDeletion
+            Effect: Allow
+            Action: s3:ListBucketVersions
+            Resource:
+              - !Sub 'arn:${AWS::Partition}:s3:::pocketcontext-drop-ax41-replicas-${AWS::AccountId}'
+              - !Sub 'arn:${AWS::Partition}:s3:::pocketcontext-drop-ax41-releases-${AWS::AccountId}'
+            Condition:
+              StringLike:
+                s3:prefix: ['d-???????????????/', 'releases/*']
+          - Sid: RemoveConfirmedAppData
+            Effect: Allow
+            Action: [s3:DeleteObjectVersion, s3:DeleteObject]
+            Resource:
+              - !Sub 'arn:${AWS::Partition}:s3:::pocketcontext-drop-ax41-replicas-${AWS::AccountId}/d-???????????????/*'
+              - !Sub 'arn:${AWS::Partition}:s3:::pocketcontext-drop-ax41-releases-${AWS::AccountId}/releases/*'
           - Sid: ReadLogs
             Effect: Allow
             Action: [s3:ListBucket, s3:GetObject]

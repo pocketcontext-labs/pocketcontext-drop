@@ -22,6 +22,7 @@ export const OPS = [
   "app.set",
   "app.start",
   "app.stop",
+  "app.delete",
   "app.archive",
   "app.restore",
   "secret.list",

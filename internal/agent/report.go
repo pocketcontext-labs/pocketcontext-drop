@@ -24,7 +24,12 @@ type nibReported struct {
 	Capacity         json.RawMessage `json:"capacity"`
 	Allocatable      json.RawMessage `json:"allocatable"`
 	Versions         json.RawMessage `json:"versions"`
-	Instances        []nibInstance   `json:"instances"`
+	Volumes          []struct {
+		AppID    string `json:"appId"`
+		VolumeID string `json:"volumeId"`
+		State    string `json:"state"`
+	} `json:"volumes"`
+	Instances []nibInstance `json:"instances"`
 }
 
 type nibInstance struct {
@@ -250,4 +255,28 @@ func buildReport(hostID, version string, seq int64, intents []appIntent, r *nibR
 		rep.Nibrunner = hostReport(r)
 	}
 	return rep
+}
+
+// Only acknowledge the accepted desired revision, after the instance is gone
+// and NibRunner reports the volume deleted or no longer lists it.
+func confirmedVolumeRemovals(ids []string, r *nibReported, host, revision string) []string {
+	if r == nil || revision == "" || r.HostID != host || deref(r.AcceptedRevision) != revision || r.Volumes == nil || r.Instances == nil {
+		return nil
+	}
+	remaining := map[string]bool{}
+	for _, v := range r.Volumes {
+		if v.State != "deleted" {
+			remaining[v.AppID] = true
+		}
+	}
+	for _, i := range r.Instances {
+		remaining[i.AppID] = true
+	}
+	var done []string
+	for _, id := range ids {
+		if !remaining[id] {
+			done = append(done, id)
+		}
+	}
+	return done
 }

@@ -646,6 +646,12 @@ func appRestore(c *Ctx, in *dropapi.AppRestoreInput) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	if deleting, err := deletionPending(c.App, app.Id); err != nil || deleting {
+		if err != nil {
+			return nil, err
+		}
+		return nil, Conflict("app_deleting", "This app is being permanently deleted.")
+	}
 	if digest := app.GetString("beta_digest"); digest != "" {
 		if _, err := betaRelease(c.App, digest); err != nil {
 			return nil, err

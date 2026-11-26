@@ -5,7 +5,7 @@
 // Input always gives byte-identical output. Drop owns the whole document
 // (decision 12 in the Drop decisions log): an Input or a previous document that
 // holds any appId not starting with "d-" is refused with a foreign_entries error
-// and nothing is rendered. The renderer never emits desiredState "absent": an
+// and nothing is rendered. An explicit Deleted entry can remove a known local volume. An
 // app that was in the previous document but is no longer in the input becomes a
 // stopped tombstone with its volume kept present.
 //
@@ -40,7 +40,8 @@ type Input struct {
 	// Keep lists appIds whose previous instance and volume entries are carried
 	// over unchanged, for example because staging or secret resolution failed
 	// this time. An id in Keep must not also be in Apps.
-	Keep []string `json:"keep,omitempty"`
+	Deleted []string `json:"deleted,omitempty"`
+	Keep    []string `json:"keep,omitempty"`
 	// Previous is the current desired.json, or empty when there is none. Its
 	// apps that are not in Apps or Keep become stopped tombstones.
 	Previous json.RawMessage `json:"previous,omitempty"`
@@ -243,7 +244,7 @@ func Render(in Input) (*Output, error) {
 		if inst, ok := prev.instances[id]; ok {
 			instances[id] = inst
 		}
-		if vol, ok := prev.volumes[id]; ok {
+		if vol, ok := prev.volumes[id]; ok && vol.DesiredState == "present" {
 			volumes[id] = vol
 		}
 	}
@@ -285,7 +286,18 @@ func Render(in Input) (*Output, error) {
 	}
 	for id, vol := range prev.volumes {
 		if _, ok := volumes[id]; !ok && !inputNames(in, id) {
+			if vol.DesiredState == "present" {
+				volumes[id] = vol
+			}
+		}
+	}
+	// A purge can only target a locally known volume with its canonical ID.
+	// Re-emit absent only while the control plane explicitly authorizes it.
+	for _, id := range in.Deleted {
+		if vol, ok := prev.volumes[id]; ok {
+			vol.DesiredState = "absent"
 			volumes[id] = vol
+			delete(instances, id)
 		}
 	}
 	sort.Strings(out.Tombstoned)

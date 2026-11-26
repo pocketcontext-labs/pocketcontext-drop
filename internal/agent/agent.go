@@ -148,6 +148,7 @@ type Agent struct {
 
 	hostID          string
 	state           State
+	deleted         []string
 	intents         []appIntent
 	appliedSeq      int64
 	writtenRevision string
@@ -442,7 +443,7 @@ func (a *Agent) reconcile(ctx context.Context) (wrote bool, err error) {
 		rep = nil
 	}
 	sort.Strings(keep)
-	out, err := render.Render(render.Input{HostID: a.hostID, DesiredSeq: d.DesiredSeq, Apps: apps, Keep: keep, Previous: current, Limits: a.limits(rep)})
+	out, err := render.Render(render.Input{HostID: a.hostID, DesiredSeq: d.DesiredSeq, Apps: apps, Keep: keep, Deleted: d.Deleted, Previous: current, Limits: a.limits(rep)})
 	if err != nil {
 		var rerr *render.Error
 		if errors.As(err, &rerr) && (rerr.Code == render.CodeForeignEntries || rerr.Code == render.CodeHostMismatch ||
@@ -500,6 +501,7 @@ func (a *Agent) reconcile(ctx context.Context) (wrote bool, err error) {
 	} else {
 		a.writtenRevision = docField(current, "revision")
 	}
+	a.deleted = d.Deleted
 	a.appliedSeq = d.DesiredSeq
 	a.intents = intents
 	a.state.NodeID = a.client.NodeID()
@@ -524,6 +526,7 @@ func (a *Agent) report(ctx context.Context) error {
 		a.logf("%v", err)
 	}
 	body := buildReport(a.hostID, a.version, a.appliedSeq, a.intents, rep, a.writtenRevision, a.now())
+	body.Deleted = confirmedVolumeRemovals(a.deleted, rep, a.hostID, a.writtenRevision)
 	if usage := hostUsage(filepath.Join(a.cfg.StateDir, HostServicesUsageFile)); len(usage) > 0 {
 		for i := range body.Apps {
 			if u := usage[body.Apps[i].DeploymentID]; u != nil && body.Apps[i].DeploymentID != "" {

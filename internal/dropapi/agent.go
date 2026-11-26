@@ -65,6 +65,7 @@ type Desired struct {
 	DesiredSeq  int64             `json:"desiredSeq"`
 	ContentHash string            `json:"contentHash"`
 	Apps        []DesiredApp      `json:"apps"`
+	Deleted     []string          `json:"deleted,omitempty"`
 	Rejected    []render.AppError `json:"rejected"`
 }
 
@@ -135,6 +136,7 @@ type Report struct {
 	DesiredSeq       int64       `json:"desiredSeq"`
 	AcceptedRevision string      `json:"acceptedRevision"`
 	Nibrunner        *HostReport `json:"nibrunner"`
+	Deleted          []string    `json:"deleted,omitempty"`
 	Apps             []AppReport `json:"apps"`
 }
 

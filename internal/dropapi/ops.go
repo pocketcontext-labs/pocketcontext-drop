@@ -120,6 +120,7 @@ var specs = []Spec{
 		Summary: "Start a stopped app in the state it had before it stopped (running or on-request)."},
 	{Name: "app.stop", Role: RoleUser, MCP: true, Input: &AppStopInput{},
 		Summary: "Stop an app; its data stays."},
+	{Name: "app.delete", Role: RoleUser, Input: &AppDeleteInput{}, Summary: "Permanently delete an app after confirming its slug."},
 	{Name: "app.archive", Role: RoleUser, Input: &AppArchiveInput{},
 		Summary: "Archive an app: it stops running and no longer counts against your quota. Its data, secrets and slug stay; app.restore brings it back."},
 	{Name: "app.restore", Role: RoleUser, Input: &AppRestoreInput{},
@@ -190,7 +191,7 @@ func Lookup(name string) (Spec, bool) {
 
 // Allows reports whether a hosted account may call this operation.
 func (s Spec) Allows(role Role) bool {
-	if s.Read && s.Role == RoleUser {
+	if (s.Read || s.Name == "app.delete") && s.Role == RoleUser {
 		return role == RoleAdmin || role == RoleUser
 	}
 	return role == s.Role

@@ -10,6 +10,7 @@ import { NumberInput, type NumberField } from "./AppNew";
 import { formatDate, stateLabels } from "./Apps";
 import {
   dropApi,
+  op,
   OpError,
   type App,
   type AppSettings,
@@ -244,6 +245,16 @@ function Overview({
             </button>
           </>
         )}
+        <button type="button" disabled={busy} onClick={async () => {
+          const slug = window.prompt(`Permanently delete ${app.name}? Its disk, S3 data, releases and secrets cannot be recovered. Type ${app.slug} to confirm.`);
+          if (slug === null) return;
+          if (slug !== app.slug) { setError("The slug did not match."); return; }
+          setBusy(true);
+          try {
+            await op("app.delete", {app: app.id, confirm_slug: slug});
+            window.location.hash = viewHashes.apps;
+          } catch (e) { setError(message(e)); } finally { setBusy(false); }
+        }}>Delete app permanently</button>
       </div>
     </div>
   );

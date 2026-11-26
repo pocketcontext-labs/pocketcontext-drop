@@ -178,7 +178,7 @@ func RenderDry(input, previous []byte, limits render.Limits) (*DryRun, error) {
 			return nil, err
 		}
 	}
-	out, err := render.Render(render.Input{HostID: d.HostID, DesiredSeq: d.DesiredSeq, Apps: apps, Keep: keep, Previous: previous, Limits: limits})
+	out, err := render.Render(render.Input{HostID: d.HostID, DesiredSeq: d.DesiredSeq, Apps: apps, Keep: keep, Deleted: d.Deleted, Previous: previous, Limits: limits})
 	if err != nil {
 		var rerr *render.Error
 		if errors.As(err, &rerr) && rerr.Code == render.CodeForeignEntries {

@@ -47,6 +47,7 @@ func Hooks() appserver.Hooks {
 		},
 		Background: func(ctx context.Context, app core.App) {
 			var workers sync.WaitGroup
+			workers.Go(func() { runAppCleanup(ctx, app) })
 			workers.Go(func() { runSecretCleanup(ctx, app) })
 			workers.Go(func() { runUploadLinkPruning(ctx, app) })
 			workers.Go(func() { runWaitlistMail(ctx, app) })

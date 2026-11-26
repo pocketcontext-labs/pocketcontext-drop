@@ -228,6 +228,8 @@ func (u *uploader) serve(re *core.RequestEvent) error {
 	}
 	ctx, cancel := context.WithTimeout(re.Request.Context(), uploadStoreTimeout)
 	defer cancel()
+	releaseBlobMu.Lock()
+	defer releaseBlobMu.Unlock()
 	_, err = services.Releases.PutIfAbsent(ctx, key, file, size, sha)
 	if err != nil {
 		re.App.Logger().Error("Drop release store failed", "key", key, "error", err.Error())

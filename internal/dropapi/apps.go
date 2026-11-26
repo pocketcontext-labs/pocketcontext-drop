@@ -82,6 +82,11 @@ type AppRef struct {
 	App string `json:"app"`
 }
 
+type AppDeleteInput struct {
+	App         string `json:"app"`
+	ConfirmSlug string `json:"confirm_slug"`
+}
+
 // AppListInput selects one page of apps, newest first: the caller's own, or
 // with All (admins only) everyone's. Archived lists archived apps instead.
 type AppListInput struct {

@@ -87,6 +87,9 @@ func buildDesired(app core.App, node *core.Record) (*dropapi.Desired, error) {
 			d.Apps = append(d.Apps, a)
 		}
 	}
+	if err := app.DB().NewQuery("SELECT nib FROM drop_volume_deletions WHERE node={:node} ORDER BY nib").Bind(dbx.Params{"node": node.Id}).Column(&d.Deleted); err != nil {
+		return nil, err
+	}
 	d.Rejected = append(d.Rejected, out.Rejected...)
 	slices.SortFunc(d.Rejected, func(a, b render.AppError) int { return strings.Compare(a.AppID, b.AppID) })
 	if d.ContentHash, err = d.ComputeContentHash(); err != nil {

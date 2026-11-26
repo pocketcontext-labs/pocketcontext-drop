@@ -83,6 +83,15 @@ func checkInput(in Input) error {
 		}
 		seen[id] = true
 	}
+	for _, id := range in.Deleted {
+		if !reAppID.MatchString(id) {
+			return bad("invalid deleted app id")
+		}
+		if seen[id] {
+			return bad("deleted app also named elsewhere")
+		}
+		seen[id] = true
+	}
 	if len(dup) > 0 {
 		slices.Sort(dup)
 		return &Error{Code: CodeInvalidInput, Message: "appIds named more than once in apps and keep", IDs: slices.Compact(dup)}

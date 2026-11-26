@@ -113,3 +113,5 @@ Errors (body `{status, code, message, data}`): 401 `unauthenticated` (no or ende
 ## What people see
 
 `status {app}` (`drop app status APP`, the app's Overview in the reader, MCP `drop_read` `what=status`) gives the phase: `archived`, `no_release` or `unplaced` before a node is involved; `pending` until the node reports the app; the reported phase; `deploying` while the node reports an older deployment (unless it failed); `unknown` when the node has not reported for 90 seconds. Admins also see the node's name. `node.list` (`drop node list`, `#/admin/nodes`, `what=nodes`) shows each node's state, whether it is online (a report in the last 90 seconds), `desired_seq`, nibrunner's numbers and its app count.
+
+The optional desired `deleted` array names app IDs awaiting confirmed volume deletion on this node. The report echoes an ID in `deleted` only after NibRunner accepts the matching revision, removes the instance and reports the volume deleted or absent. The server accepts acknowledgements only for this node and current desired sequence.

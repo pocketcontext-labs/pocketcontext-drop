@@ -248,7 +248,7 @@ func PreviewPrevious(raw []byte, apps []App, replacement string) ([]byte, error)
 }
 
 // parsePrevious reads the current document strictly. Only shapes Drop writes
-// are accepted: no checkpoints or exports, no absent entries, no unknown fields.
+// are accepted: no checkpoints, exports or unknown fields.
 func parsePrevious(raw json.RawMessage, hostID string) (previous, error) {
 	p := previous{instances: map[string]instance{}, volumes: map[string]volume{}}
 	if len(bytes.TrimSpace(raw)) == 0 {
@@ -274,8 +274,8 @@ func parsePrevious(raw json.RawMessage, hostID string) (previous, error) {
 		if !reAppID.MatchString(v.AppID) || v.VolumeID != v.AppID+"-vol" {
 			return p, bad("volume %q of app %q is not a Drop volume", v.VolumeID, v.AppID)
 		}
-		if v.DesiredState != "present" {
-			return p, &Error{Code: CodeUnsupportedEntries, Message: fmt.Sprintf("volume %q is %q; Drop never writes absent, the operator must remove it", v.VolumeID, v.DesiredState), IDs: []string{v.AppID}}
+		if v.DesiredState != "present" && v.DesiredState != "absent" {
+			return p, &Error{Code: CodeUnsupportedEntries, Message: fmt.Sprintf("volume %q is %q; unsupported volume state", v.VolumeID, v.DesiredState), IDs: []string{v.AppID}}
 		}
 		if _, dup := p.volumes[v.AppID]; dup {
 			return p, bad("app %q has two volumes", v.AppID)
@@ -288,6 +288,9 @@ func parsePrevious(raw json.RawMessage, hostID string) (previous, error) {
 		}
 		if _, ok := p.volumes[inst.AppID]; !ok {
 			return p, bad("instance %q has no volume", inst.AppID)
+		}
+		if p.volumes[inst.AppID].DesiredState == "absent" {
+			return p, &Error{Code: CodeUnsupportedEntries, Message: "instance references a volume marked absent"}
 		}
 		if _, dup := p.instances[inst.AppID]; dup {
 			return p, bad("app %q has two instances", inst.AppID)

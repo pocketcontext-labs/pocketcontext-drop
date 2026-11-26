@@ -70,7 +70,7 @@ func serveReport(re *core.RequestEvent, state *agentState) error {
 	if err != nil {
 		return writeError(re, err)
 	}
-	if writeNode || outcome.changes > 0 {
+	if writeNode || outcome.changes > 0 || len(report.Deleted) > 0 {
 		err = re.App.RunInTransaction(func(tx core.App) error {
 			fresh, err := tx.FindRecordById(dropapi.NodeCollection, node.Id)
 			if err != nil {
@@ -78,6 +78,16 @@ func serveReport(re *core.RequestEvent, state *agentState) error {
 			}
 			if fresh.GetString("state") == dropapi.NodeDisabled || fresh.TokenKey() != node.TokenKey() {
 				return Forbidden("This node no longer has access.")
+			}
+			if len(report.Deleted) > 0 && int64(fresh.GetInt("desired_seq")) == report.DesiredSeq {
+				for _, nib := range report.Deleted {
+					if err := waitExec(tx, "DELETE FROM drop_volume_deletions WHERE node={:node} AND nib={:nib}", dbx.Params{"node": node.Id, "nib": nib}); err != nil {
+						return err
+					}
+				}
+				if _, err := syncNode(tx, fresh); err != nil {
+					return err
+				}
 			}
 			if outcome, err = ingest(tx, true); err != nil {
 				return err
@@ -173,6 +183,14 @@ func checkReport(r *dropapi.Report) error {
 			if raw, err := json.Marshal(value); err != nil || len(raw) > 2048 {
 				return reportInvalid("nibrunner."+name, "nibrunner."+name+" is at most 2 KiB of JSON.")
 			}
+		}
+	}
+	if len(r.Deleted) > dropapi.MaxReportApps {
+		return reportInvalid("deleted", "Too many volume acknowledgements.")
+	}
+	for _, nib := range r.Deleted {
+		if !appspec.AppIDPattern.MatchString(nib) {
+			return reportInvalid("deleted", "Invalid app ID.")
 		}
 	}
 	if len(r.Apps) > dropapi.MaxReportApps {
