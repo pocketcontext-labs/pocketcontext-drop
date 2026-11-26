@@ -21,7 +21,7 @@ from drop_e2e import Server
 from e2e import APP_DOMAIN, free_port, HOSTED_DOMAIN, isolated_env
 
 REPO = Path(__file__).resolve().parents[1]
-CREW_SHA = '90b0cdf5b94c37baf1d1e472f833e9b2d0df98e0361b4132bc81ecfe380a29db'
+CREW_SHA = 'edeb0740870ba881c005e6a309f444206c0c133e821f69b190bcc13563923b6a'
 
 
 def scenario(root, drop, crew, nib):
@@ -116,7 +116,7 @@ denied_egress_addresses_v6 = []
         server.start(init=False)
         assert inspect(root / 'absent-nibrunner') == 'Manifest already cached.'
         result = owner_op('beta.inspect', sha256=CREW_SHA)
-        assert result['name'] == 'PocketContext Crew' and result['version'] == '0.45.4-drop.4', result
+        assert result['name'] == 'PocketContext Crew' and result['version'] == '0.45.4-drop.5', result
         assert result['multipliers'] == list(range(1, 9)) and result['suggested_multiplier'] == 4, result
         print('Released Crew manifest cached, inspector jail removed and cache reused after Drop restart.', flush=True)
         browser_command = ['node', REPO / 'tests/beta_kvm_browser.mjs', str(server.port), str(crew), str(root)]
