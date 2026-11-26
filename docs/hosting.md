@@ -181,9 +181,20 @@ Run `systemctl daemon-reload` and `systemctl enable --now drop-control-litestrea
 set -eu
 umask 077
 scratch=$(mktemp -d)
+trap 'rm -rf -- "$scratch"' EXIT
 litestream sync -wait -socket "$DROP_REPLICA_SOCKET" "$DROP_CONTROL_LIVE_DB"
 litestream restore -config /etc/drop/control-litestream.yml -o "$scratch/drop.db" "$DROP_CONTROL_LIVE_DB"
-sqlite3 -readonly "$scratch/drop.db" 'PRAGMA integrity_check'
+python3 - "$scratch/drop.db" <<'PYTHON'
+import sqlite3
+import sys
+from pathlib import Path
+
+uri = Path(sys.argv[1]).as_uri() + "?mode=ro"
+with sqlite3.connect(uri, uri=True) as db:
+    if db.execute("PRAGMA integrity_check").fetchall() != [("ok",)]:
+        raise SystemExit("SQLite integrity check failed")
+print("SQLite integrity check passed")
+PYTHON
 ```
 
 For disaster recovery, fence the old Drop writer and its Litestream service. Restore into an empty project with a fresh private cache, verify integrity, and follow the hosted restore procedure above, including SSM reconciliation and a first start with `--hosted-restore`. Before enabling replication on the recovered instance, configure the new working path and a fresh replica prefix under `control/` to preserve the previous history.
