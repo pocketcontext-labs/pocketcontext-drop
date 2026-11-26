@@ -132,6 +132,32 @@ function Phase({ app }: { app: App }) {
   );
 }
 
+function DeleteApp({ app }: { app: App }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function remove() {
+    const slug = window.prompt(`Permanently delete ${app.name}? Its disk, S3 data, releases and secrets cannot be recovered. Type ${app.slug} to confirm.`);
+    if (slug === null) return;
+    if (slug !== app.slug) {
+      setError("The slug did not match.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await op("app.delete", { app: app.id, confirm_slug: slug });
+      window.location.hash = viewHashes.apps;
+    } catch (e) {
+      setError(message(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return <>
+    <button type="button" disabled={busy} onClick={() => void remove()}>Delete app permanently</button>
+    {error && <p role="alert" className="error">{error}</p>}
+  </>;
+}
+
 function Overview({
   app,
   onChange,
@@ -245,16 +271,7 @@ function Overview({
             </button>
           </>
         )}
-        <button type="button" disabled={busy} onClick={async () => {
-          const slug = window.prompt(`Permanently delete ${app.name}? Its disk, S3 data, releases and secrets cannot be recovered. Type ${app.slug} to confirm.`);
-          if (slug === null) return;
-          if (slug !== app.slug) { setError("The slug did not match."); return; }
-          setBusy(true);
-          try {
-            await op("app.delete", {app: app.id, confirm_slug: slug});
-            window.location.hash = viewHashes.apps;
-          } catch (e) { setError(message(e)); } finally { setBusy(false); }
-        }}>Delete app permanently</button>
+        <DeleteApp app={app} />
       </div>
     </div>
   );
@@ -767,9 +784,12 @@ export default function AppPage({ id, tab }: { id: string; tab: AppTab }) {
     setApp(next);
     setVersion((v) => v + 1);
   };
-  if (app?.beta_managed && !app.archived && !app.current_release)
-    return <BetaDeploy key={app.id} account={app.owner} initialFile={null} prepared={app} onComplete={() => void load()} />;
-  if (app?.beta_managed) return <BetaStatus id={app.id} name={app.name} release={app.current_release} hostname={app.hostname} />;
+  if (app?.beta_managed) return <>
+    {!app.archived && !app.current_release
+      ? <BetaDeploy key={app.id} account={app.owner} initialFile={null} prepared={app} onComplete={() => void load()} />
+      : <BetaStatus id={app.id} name={app.name} release={app.current_release} hostname={app.hostname} />}
+    <DeleteApp app={app} />
+  </>;
   if (missing)
     return (
       <section className="panel" aria-labelledby="not-found-title">

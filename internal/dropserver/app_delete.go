@@ -3,12 +3,13 @@ package dropserver
 import (
 	"context"
 	"fmt"
-	"github.com/pocketcontext-labs/pocketcontext-drop/internal/awsx"
 	"sync"
 	"time"
 
 	"ganigeorgiev.com/pocketbase/dbx"
 	"ganigeorgiev.com/pocketbase/pocketbase/core"
+
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/awsx"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
 )
 
