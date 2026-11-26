@@ -33,3 +33,11 @@
 ## From 0.5.0 to 0.5.1
 
 Back up the hosted project, replace the Drop executable with the verified release, and restart the services that use it. This patch uses the 0.5.0 database schema and NibRunner resource contract. Existing app allocations carry over. The new size selection applies when preparing a new Crew deployment.
+
+## From 0.5.1 to 0.6.0
+
+Stop the control plane cleanly and back up the project and its previous executable before upgrading. This release adds waitlist and mail records. To roll back, use the pre-upgrade database with the previous executable and follow the hosted recovery instructions in [Hosting](hosting.md).
+
+Keep the existing SMTP and service terms configuration. Verify that the public waitlist terms and privacy notice open before sign-in and that the host has working SMTP delivery. The approved waitlist documents are versioned separately from service terms. SMTP acceptance means that the provider accepted the message for delivery.
+
+Existing owner-admin apps continue serving. Deployment and app changes must come from a user account. This release does not transfer ownership or alter the app's own sign-in identity. No node or guest restart is required for these control-plane changes.

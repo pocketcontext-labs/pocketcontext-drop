@@ -6,16 +6,18 @@ import { marked } from "marked";
 
 // Compile only the reviewed, versioned documents from the release source.
 const legalDocuments = Object.fromEntries(
-  ["terms", "privacy"].map((name) => {
-    const path = new URL(
-      `../docs/legal/2026-11-26/${name}.md`,
-      import.meta.url,
-    );
-    return [
-      `#/legal/2026-11-26/${name}`,
-      marked.parse(readFileSync(path, "utf8"), { async: false }),
-    ];
-  }),
+  ["2026-11-26", "2026-11-26-waitlist"].flatMap((version) =>
+    ["terms", "privacy"].map((name) => {
+      const path = new URL(
+        `../docs/legal/${version}/${name}.md`,
+        import.meta.url,
+      );
+      return [
+        `#/legal/${version}/${name}`,
+        marked.parse(readFileSync(path, "utf8"), { async: false }),
+      ];
+    }),
+  ),
 );
 export default defineConfig({
   define: { __DROP_LEGAL_DOCUMENTS__: JSON.stringify(legalDocuments) },

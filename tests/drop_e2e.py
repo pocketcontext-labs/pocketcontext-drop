@@ -17,7 +17,7 @@ by writing reported.json. It checks:
      `check` exit 3 naming it, without writing;
   7. no secret value or node password in state.json or the agent's output.
 
-Standard library only. Usage: python3 tests/drop_e2e.py --binary bin/drop
+Requires the test SMTP dependency. Usage: python3 tests/drop_e2e.py --binary bin/drop
 """
 import argparse
 import hashlib
@@ -33,7 +33,7 @@ import time
 
 import leak_scan
 
-from e2e import (APP_DOMAIN, HOSTED_DOMAIN, build_hello, check, free_port, hosted_request, isolated_env,
+from e2e import (APP_DOMAIN, HOSTED_DOMAIN, build_hello, check, free_port, hosted_request, hosted_mailbox, InvitedUser, isolated_env,
                  listening)
 
 HOST_ID = 'host-agent-e2e'
@@ -192,17 +192,20 @@ def scenario(binary, root):
                 'DROP_USAGE_LOG_BUCKET': 'logs-example', 'DROP_USAGE_LOG_PREFIX': 'access-logs/111122223333/eu-north-1/replicas-example/'})
     server_root = root / 'server'
     server_root.mkdir()
+    mailbox = hosted_mailbox(server_root, env)
     server = Server(binary, server_root, env)
     server.start(init=True)
     node = None
     try:
         check(hosted_request(server.port, 'GET', '/up', host='127.0.0.1')[0] == 200, 'the hosted server answers /up')
-        app = server.owner('app', 'create', 'Agent app', '--slug', 'agent-app', '--port', '80')['app']
-        server.owner('secret', 'set', 'agent-app', 'API_KEY', stdin=SENTINEL + '\n')
+        server.owner('invite', 'create', 'invitee@example.test', '--role', 'user')
+        user = InvitedUser(server.port, server_root)
+        app = user.op('app.create', name='Agent app', slug='agent-app', http_port=80)['app']
+        user.op('secret.set', app='agent-app', name='API_KEY', value=SENTINEL)
         hello = build_hello(server_root)
         hello_bytes = hello.read_bytes()
         hello_sha = hashlib.sha256(hello_bytes).hexdigest()
-        uploaded = server.owner('release', 'upload', 'agent-app', str(hello), '--activate')
+        uploaded = user.upload('agent-app', hello, activate=True)
         check(uploaded['release']['sha256'] == hello_sha, 'the release is uploaded and deployed')
         created = server.owner('node', 'create', NODE, '--host-id', HOST_ID)
         server.owner('place', 'agent-app', NODE)
@@ -258,7 +261,7 @@ def scenario(binary, root):
         check(nodes[0]['online'] and nodes[0]['agent_version'], 'the node is online with its agent version')
 
         # 4. A change on the server reaches desired.json through realtime.
-        changed = server.owner('app', 'set', 'agent-app', '--memory', '256')
+        changed = user.op('app.set', app='agent-app', memory_mib=256)
         check(changed['deployment_bumped'], 'app set starts a new deployment')
         started = time.time()
         wait_for('the new deployment in desired.json', lambda: read_json(node.desired)['instances'][0]['deploymentId'] == changed['app']['nib_app_id'] + '-dep-' + str(changed['app']['deployment_seq']), timeout=30)
@@ -286,7 +289,7 @@ def scenario(binary, root):
               f'drop usage show reports the month and the exceeded limits: {shown["month_to_date"]}')
         wait_for('the usage stop in desired.json', lambda: read_json(node.desired)['instances'][0]['desiredState'] == 'stopped', timeout=30)
         check(True, 'the hard-limit stop reaches desired.json')
-        server.owner('app', 'start', 'agent-app')
+        user.op('app.start', app='agent-app')
         wait_for('the restart in desired.json', lambda: read_json(node.desired)['instances'][0]['desiredState'] != 'stopped', timeout=30)
 
         # 5. Server down: no write, the agent keeps retrying.
@@ -300,7 +303,7 @@ def scenario(binary, root):
               'desired.json is untouched while the server is down')
         check(node.logs().count('not reachable') >= 2, 'the agent keeps retrying (pulls and reconnects logged)')
         server.start(init=False)
-        server.owner('app', 'stop', 'agent-app')
+        user.op('app.stop', app='agent-app')
         wait_for('the stopped state after the restart', lambda: read_json(node.desired)['instances'][0]['desiredState'] == 'stopped', timeout=45)
         check(True, 'after the server restarts the agent converges again (app stop reaches desired.json)')
 
@@ -343,6 +346,7 @@ def scenario(binary, root):
         if node is not None:
             node.stop()
         server.stop()
+        mailbox.stop()
 
 
 def main():

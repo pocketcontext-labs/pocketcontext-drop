@@ -5,61 +5,22 @@ Starts a temporary hosted Drop with fake AWS and a loopback TLS SMTP mailbox.
 Only the NibRunner manifest command needs root. Never point this test at a deployed host.
 """
 import argparse
-from email import policy
-from email.parser import BytesParser
 import hashlib
 import json
 import os
 from pathlib import Path
-import re
 import shlex
-import ssl
 import subprocess
 import sys
 import tempfile
 
-from aiosmtpd.controller import Controller
-from aiosmtpd.smtp import AuthResult, LoginPassword
+from hosted_mail import read_mail, start_mailbox
 
 from drop_e2e import Server
-from e2e import APP_DOMAIN, free_port, HOSTED_DOMAIN, isolated_env
+from e2e import APP_DOMAIN, free_port, HOSTED_DOMAIN, hosted_request, isolated_env
 
 REPO = Path(__file__).resolve().parents[1]
 CREW_SHA = '90b0cdf5b94c37baf1d1e472f833e9b2d0df98e0361b4132bc81ecfe380a29db'
-
-
-class Mailbox:
-    def __init__(self, directory):
-        self.directory = directory
-
-    async def handle_DATA(self, server, session, envelope):
-        msg = BytesParser(policy=policy.default).parsebytes(envelope.content)
-        code = re.fullmatch(r'(\d{6}) is your Drop sign-in code', str(msg['Subject']))
-        # No mail is sent off this loopback test host.
-        if not code or len(envelope.rcpt_tos) != 1 or envelope.rcpt_tos[0] not in ('desktop@example.test', 'mobile@example.test'):
-            return '550 Unrecognized acceptance message'
-        mailbox = self.directory / envelope.rcpt_tos[0]
-        temp = mailbox.with_suffix('.new')
-        temp.write_text(code[1])
-        temp.replace(mailbox)
-        return '250 OK'
-
-
-def test_smtp(root):
-    cert = root / 'cert.pem'
-    key = root / 'key.pem'
-    subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
-                    '-subj', '/CN=localhost', '-addext', 'subjectAltName=IP:127.0.0.1',
-                    '-keyout', key, '-out', cert], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
-    tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    tls.load_cert_chain(cert, key)
-
-    def auth(server, session, envelope, mechanism, credentials):
-        valid = isinstance(credentials, LoginPassword) and credentials.login == b'test' and credentials.password == b'test'
-        return AuthResult(success=valid, handled=False)
-
-    return Controller(Mailbox(root), hostname='127.0.0.1', port=free_port(), tls_context=tls, require_starttls=True,
-                      authenticator=auth, auth_required=True), cert
 
 
 def scenario(root, drop, crew, nib):
@@ -69,7 +30,7 @@ def scenario(root, drop, crew, nib):
     home = root / 'home'
     server_root.mkdir()
     home.mkdir()
-    mailbox, cert = test_smtp(root)
+    mailbox, cert = start_mailbox(root, free_port)
     env = isolated_env(home)
     env.update(DROP_OWNER_EMAIL='owner@example.test', DROP_SMTP_FROM='login@example.test', DROP_APP_DOMAIN=APP_DOMAIN,
                DROP_SMTP_HOST='127.0.0.1', DROP_SMTP_PORT=str(mailbox.port), DROP_SMTP_USERNAME='test', DROP_SMTP_PASSWORD='test', DROP_SMTP_TLS='starttls',
@@ -115,7 +76,6 @@ denied_egress_addresses_v6 = []
     def owner_op(name, **payload):
         return server.owner('op', name, '-', stdin=json.dumps(payload))
 
-    mailbox.start()
     try:
         server.start(init=True)
         owner_op('beta.approve', sha256=CREW_SHA)
@@ -129,7 +89,18 @@ denied_egress_addresses_v6 = []
         assert result['multipliers'] == list(range(1, 9)) and result['suggested_multiplier'] == 4, result
         print('Released Crew manifest cached, inspector jail removed and cache reused after Drop restart.', flush=True)
         for name in ('desktop', 'mobile'):
-            server.owner('invite', 'create', name + '@example.test', '--role', 'user', '--quota', '1')
+            email = name + '@example.test'
+            route = '/api/drop/waitlist/'
+            status, _ = hosted_request(server.port, 'POST', route + 'request',
+                                       {'email': email, 'terms_version': '2026-11-26-waitlist'})
+            assert status == 202, status
+            status, _ = hosted_request(server.port, 'POST', route + 'verify',
+                                       {'email': email, 'code': read_mail(root / (email + '.waitlist'))})
+            assert status == 200, status
+            entries = owner_op('waitlist.list', search=email)['entries']
+            assert len(entries) == 1 and entries[0]['email'] == email
+            owner_op('waitlist.invite', id=entries[0]['id'])
+            assert read_mail(root / (email + '.welcome')) == 'received'
         # Use the caller’s Playwright cache, separate from Drop’s isolated HOME.
         subprocess.run(['node', REPO / 'tests/beta_kvm_browser.mjs', str(server.port), str(crew), str(root)],
                        check=True, timeout=240)

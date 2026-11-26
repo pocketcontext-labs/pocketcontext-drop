@@ -781,11 +781,11 @@ def build_hello(directory):
     return out
 
 
-def hosted_request(port, method, path, body=None, host=HOSTED_DOMAIN, raw=None):
+def hosted_request(port, method, path, body=None, host=HOSTED_DOMAIN, raw=None, headers=None):
     import http.client
     connection = http.client.HTTPConnection('127.0.0.1', port, timeout=30)
     data = raw if raw is not None else None if body is None else json.dumps(body).encode()
-    headers = {'Host': host, 'Accept': 'application/json'}
+    headers = {'Host': host, 'Accept': 'application/json', **(headers or {})}
     if raw is not None:
         headers['Content-Type'] = 'application/octet-stream'
     elif data is not None:
@@ -796,6 +796,43 @@ def hosted_request(port, method, path, body=None, host=HOSTED_DOMAIN, raw=None):
         return response.status, response.read()
     finally:
         connection.close()
+
+
+def hosted_mailbox(root, env):
+    from hosted_mail import start_mailbox
+    mailbox, cert = start_mailbox(root, free_port)
+    env.update(DROP_SMTP_HOST='127.0.0.1', DROP_SMTP_PORT=str(mailbox.port), DROP_SMTP_USERNAME='test',
+               DROP_SMTP_PASSWORD='test', DROP_SMTP_TLS='starttls', SSL_CERT_FILE=str(cert),
+               DROP_TERMS_VERSION='e2e', DROP_TERMS_URL=f'https://{HOSTED_DOMAIN}/terms',
+               DROP_PRIVACY_URL=f'https://{HOSTED_DOMAIN}/privacy')
+    return mailbox
+
+
+class InvitedUser:
+    """An actual invited user's email-code session on the hosted API."""
+    def __init__(self, port, maildir):
+        self.port = port
+        email = 'invitee@example.test'
+        status, body = hosted_request(port, 'POST', '/api/collections/users/request-otp', {'email': email})
+        assert status == 200, status
+        from hosted_mail import read_mail
+        status, body = hosted_request(port, 'POST', '/api/collections/users/auth-with-otp-code',
+                                      {'otpId': json.loads(body)['otpId'], 'code': read_mail(maildir / email)},
+                                      headers={'X-Drop-Accept-Terms': 'e2e'})
+        assert status == 200, (status, body)
+        self.token = json.loads(body)['token']
+
+    def op(self, op, **fields):
+        status, data = hosted_request(self.port, 'POST', '/api/drop/op', {'op': op, 'input': fields},
+                                      headers={'Authorization': self.token})
+        assert status == 200, (op, status, data)
+        return json.loads(data)['result']
+
+    def upload(self, app, executable, **settings):
+        link = self.op('release.upload_link', app=app, **settings)
+        status, data = hosted_request(self.port, 'PUT', link['path'], raw=executable.read_bytes())
+        assert status == 200, (status, data)
+        return json.loads(data)
 
 
 def hosted_scenario(pc, r):
@@ -828,6 +865,7 @@ def hosted_scenario(pc, r):
     env = {**r.env, 'DROP_OWNER_EMAIL': 'owner@example.test', 'DROP_SMTP_FROM': 'login@example.test', 'DROP_APP_DOMAIN': APP_DOMAIN,
            'DROP_SMTP_HOST': '127.0.0.1', 'DROP_SMTP_PORT': '9', 'DROP_SMTP_USERNAME': 'synthetic',
            'DROP_SMTP_PASSWORD': 'synthetic'}
+    mailbox = hosted_mailbox(hosted, env)
     output = open(hosted / 'serve.log', 'w+', encoding='utf-8')
     server = subprocess.Popen(command, stdout=output, stderr=subprocess.STDOUT, env=env)
     try:
@@ -852,33 +890,30 @@ def hosted_scenario(pc, r):
         status, body = hosted_request(port, 'POST', '/api/collections/users/request-otp', {'email': 'stranger@example.test'})
         check(status == 200 and 'otpId' in json.loads(body), 'an unknown address gets the ordinary sign-in answer')
         check(hosted_request(port, 'POST', '/api/drop/op', {'op': 'me'})[0] == 401, 'operations require a session')
-        invited = subprocess.run([str(pc.binary), '--db', str(db), 'invite', 'create', 'invitee@example.test', '--role', 'admin'],
+        invited = subprocess.run([str(pc.binary), '--db', str(db), 'invite', 'create', 'invitee@example.test', '--role', 'user'],
                                  capture_output=True, text=True, encoding='utf-8', env=r.env, timeout=60)
         check(invited.returncode == 0, f'the owner invites through the private socket: {invited.stderr}')
         check(json.loads(invited.stdout)['sign_in_url'] == f'https://{HOSTED_DOMAIN}/#/invite?email=invitee%40example.test',
               'the sign-in URL is on the hosted domain')
-        # The sign-in email cannot be sent here (no SMTP server), but the
-        # invited address gets its account before the send.
-        hosted_request(port, 'POST', '/api/collections/users/request-otp', {'email': 'Invitee@Example.test'})
+        user = InvitedUser(port, hosted)
 
-        # Apps and secrets through the private socket, with the fake AWS directory.
         def owner(*args, stdin=None, expect=0):
             result = subprocess.run([str(pc.binary), '--db', str(db), *args], input=stdin, capture_output=True, text=True,
                                     encoding='utf-8', env=r.env, timeout=60)
             check(result.returncode == expect, f'drop {" ".join(args[:2])} exits {expect} {result.stderr.strip()[-300:]}'.rstrip())
             return json.loads(result.stdout) if expect == 0 else result
-        app = owner('app', 'create', 'Hosted app', '--slug', 'hosted-app')['app']
+        app = user.op('app.create', name='Hosted app', slug='hosted-app')['app']
         check(app['hostname'] == 'hosted-app.' + APP_DOMAIN, f"the hostname is the slug under DROP_APP_DOMAIN: {app['hostname']}")
-        set_result = owner('secret', 'set', 'hosted-app', 'API_KEY', stdin=SECRET_SENTINEL + '\n')
+        set_result = user.op('secret.set', app='hosted-app', name='API_KEY', value=SECRET_SENTINEL)
         check(set_result['secret']['version'] == 1 and set_result['secret']['length'] == len(SECRET_SENTINEL)
               and set_result['deployment_id'] == app['nib_app_id'] + '-dep-2', 'secret set stores a version and bumps the deployment')
-        check(SECRET_SENTINEL not in json.dumps(owner('secret', 'list', 'hosted-app')) + json.dumps(owner('app', 'show', 'hosted-app')),
+        check(SECRET_SENTINEL not in json.dumps(user.op('secret.list', app='hosted-app')) + json.dumps(owner('app', 'show', 'hosted-app')),
               'secret list and app show never return the value')
         stored = [p for p in (hosted / 'fake-aws' / 'secrets').rglob('*') if p.is_file() and p.name == '1']
         check(len(stored) == 1 and stored[0].read_text(encoding='utf-8') == SECRET_SENTINEL
               and (stored[0].parent / 'name').read_text(encoding='utf-8').strip() == '/drop/apps/' + app['id'] + '/API_KEY',
               'the value is in the secret store at <prefix>/apps/<app id>/<NAME>')
-        check(owner('secret', 'delete', 'hosted-app', 'API_KEY')['deployment_id'] == app['nib_app_id'] + '-dep-3', 'secret delete bumps the deployment')
+        check(user.op('secret.delete', app='hosted-app', name='API_KEY')['deployment_id'] == app['nib_app_id'] + '-dep-3', 'secret delete bumps the deployment')
 
         # Releases: the test executable, built from tests/fixtures/hello, through the CLI and a curl-style PUT.
         hello = build_hello(hosted)
@@ -888,13 +923,13 @@ def hosted_scenario(pc, r):
         not_elf.write_text('#!/bin/sh\necho hello\n', encoding='utf-8')
         refused_file = owner('release', 'upload', 'hosted-app', str(not_elf), expect=2)
         check('linux/amd64 ELF' in refused_file.stderr, 'release upload refuses a file that is not a linux/amd64 executable before asking for a link')
-        uploaded = owner('release', 'upload', 'hosted-app', str(hello), '--activate', '--note', 'e2e build')
+        uploaded = user.upload('hosted-app', hello, activate=True, note='e2e build')
         check(uploaded['created'] and uploaded['deployed'] and uploaded['release']['sha256'] == hello_sha
               and uploaded['release']['size_bytes'] == len(hello_bytes) and uploaded['release']['s3_key'] == 'releases/' + hello_sha
-              and uploaded['deployment_id'] == app['nib_app_id'] + '-dep-4', f'release upload --activate stores and deploys the release: {uploaded}')
+              and uploaded['deployment_id'] == app['nib_app_id'] + '-dep-4', f'the tenant upload stores and deploys the release: {uploaded}')
         blob = hosted / 'fake-aws' / 'blobs' / 'releases' / hello_sha
         check(blob.is_file() and blob.read_bytes() == hello_bytes, 'the release is in the fake store at releases/<sha256>')
-        link = owner('op', 'release.upload_link', json.dumps({'app': 'hosted-app'}))
+        link = user.op('release.upload_link', app='hosted-app')
         check(link['url'] == f'https://{HOSTED_DOMAIN}' + link['path'] and link['method'] == 'PUT' and link['max_bytes'] == 90 << 20,
               f'release.upload_link returns a one-time URL on the hosted domain: {link["max_bytes"]}')
         status, body = hosted_request(port, 'PUT', link['path'], raw=b'not an executable')
@@ -910,11 +945,11 @@ def hosted_scenario(pc, r):
         releases = owner('release', 'list', 'hosted-app')
         check(len(releases['releases']) == 1 and releases['current_release'] == uploaded['release']['id']
               and releases['releases'][0]['note'] == 'e2e build', f'release list shows the one current release: {releases}')
-        deployed = owner('release', 'deploy', 'hosted-app', uploaded['release']['id'])
+        deployed = user.op('release.deploy', app='hosted-app', release=uploaded['release']['id'])
         check(not deployed['deployment_bumped'] and deployed['deployment_id'] == app['nib_app_id'] + '-dep-4',
               'deploying the current release again starts no deployment')
 
-        agent_secrets, agent_texts = nodes_scenario(pc, r, owner, port, hosted, app)
+        agent_secrets, agent_texts = nodes_scenario(pc, r, owner, user, port, hosted, app)
     finally:
         server.send_signal(signal.SIGTERM)
         try:
@@ -923,11 +958,12 @@ def hosted_scenario(pc, r):
             server.kill()
             server.wait()
         output.close()
+        mailbox.stop()
     check(server.returncode == 0, 'the hosted server stops cleanly')
     with closing(sqlite3.connect(db)) as conn:
         users = conn.execute('SELECT email, role FROM users ORDER BY created').fetchall()
         used = conn.execute("SELECT count(*) FROM invites WHERE used_by != ''").fetchone()[0]
-    check(users == [('owner@example.test', 'admin'), ('invitee@example.test', 'admin')] and used == 1,
+    check(users == [('owner@example.test', 'admin'), ('invitee@example.test', 'user')] and used == 1,
           f'only the owner (an admin) and the invited address (with the invite\'s role) got accounts: {users}')
     with closing(sqlite3.connect(db)) as conn:
         dump = '\n'.join(str(row) for table in [t[0] for t in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")]
@@ -947,10 +983,10 @@ def hosted_scenario(pc, r):
     check(True, 'no secret value, upload token or node password in the database, logs, cache, release store or agent answers')
 
 
-def nodes_scenario(pc, r, owner, port, hosted, app):
+def nodes_scenario(pc, r, owner, user, port, hosted, app):
     """Nodes, placements and the agent API with the fake agent (tests/fake_agent.py) against the real binary."""
     host_id = 'host-e2e-0001'
-    owner('secret', 'set', 'hosted-app', 'API_KEY', stdin=SECRET_SENTINEL + '\n')
+    user.op('secret.set', app='hosted-app', name='API_KEY', value=SECRET_SENTINEL)
     created = owner('node', 'create', 'node-one', '--host-id', host_id)
     password = created['password']
     check(len(password) == 40 and created['identity'] == 'node-one' and created['collection'] == 'nodes',
@@ -989,12 +1025,12 @@ def nodes_scenario(pc, r, owner, port, hosted, app):
         wrong = agent.report_body(desired)
         wrong['hostId'] = 'another-host'
         check(agent.report(wrong)[0] == 409, 'a report for another host is refused')
-        owner('app', 'stop', 'hosted-app')
+        user.op('app.stop', app='hosted-app')
         stopped_seq = agent.next_seq(seq)
         stopped = agent.pull()
         check(stopped['desiredSeq'] == stopped_seq and stopped['apps'][0]['desiredState'] == 'stopped',
               'app stop bumps desired_seq and the pull says stopped')
-        owner('app', 'set', 'hosted-app', '--name', 'Renamed hosted app')
+        user.op('app.set', app='hosted-app', name='Renamed hosted app')
         check(agent.pull()['desiredSeq'] == stopped_seq, 'a rename does not change the desired document')
         listed = owner('node', 'list')['nodes']
         check(len(listed) == 1 and listed[0]['online'] and listed[0]['apps'] == 1 and listed[0]['agent_version'] == agent.version,

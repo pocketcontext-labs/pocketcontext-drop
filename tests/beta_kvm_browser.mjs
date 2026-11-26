@@ -79,8 +79,8 @@ try {
       await page.getByRole('button', {name:'Retry deployment'}).click();
       await page.getByRole('alert').filter({hasText:'no space'}).waitFor();
       await page.getByRole('link', {name:'Apps', exact:true}).click();
-      await page.getByText('Quota reached', {exact:true}).waitFor();
       const apps = page.getByRole('list', {name:'Apps, newest first'});
+      await apps.getByRole('listitem').first().waitFor();
       assert.equal(await apps.getByRole('listitem').count(), 1);
       const address = apps.getByRole('link', {name:/^https:\/\//});
       assert.equal(await address.innerText(), await address.getAttribute('href'));
