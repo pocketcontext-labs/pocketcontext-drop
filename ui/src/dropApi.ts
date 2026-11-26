@@ -59,6 +59,7 @@ export type Op = (typeof OPS)[number];
 
 export type Role = "admin" | "user";
 export interface Me {
+  trial_remaining_seconds?: number;
   hosted?: boolean;
   id: string;
   email: string;

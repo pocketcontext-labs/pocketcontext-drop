@@ -100,7 +100,11 @@ func registerOpRoutes(e *core.ServeEvent) {
 		if err != nil {
 			return writeError(re, err)
 		}
-		return re.JSON(http.StatusOK, me(c))
+		out, err := me(c)
+		if err != nil {
+			return writeError(re, err)
+		}
+		return re.JSON(http.StatusOK, out)
 	})
 }
 

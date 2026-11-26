@@ -24,13 +24,14 @@ type MeInput struct{}
 
 // Me is the signed-in account. Admin is true for role admin.
 type Me struct {
-	Hosted   bool   `json:"hosted"`
-	ID       string `json:"id"`
-	Email    string `json:"email"`
-	Role     Role   `json:"role"`
-	Admin    bool   `json:"admin"`
-	Owner    bool   `json:"owner"`
-	AppQuota int    `json:"app_quota"`
+	TrialRemainingSeconds *int64 `json:"trial_remaining_seconds,omitempty"`
+	Hosted                bool   `json:"hosted"`
+	ID                    string `json:"id"`
+	Email                 string `json:"email"`
+	Role                  Role   `json:"role"`
+	Admin                 bool   `json:"admin"`
+	Owner                 bool   `json:"owner"`
+	AppQuota              int    `json:"app_quota"`
 }
 
 // UserListInput selects one page of accounts, newest first.

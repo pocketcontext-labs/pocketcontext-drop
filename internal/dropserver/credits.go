@@ -26,14 +26,15 @@ func creditSettings(app core.App) (dropapi.CreditSettings, error) {
 }
 
 type creditAccount struct {
-	Balance int64 `db:"balance" json:"balance"`
-	Paid    bool  `db:"paid" json:"paid"`
-	Trial   int64 `db:"trial_seconds" json:"trial_seconds"`
+	FundedAt int64 `db:"funded_at" json:"-"`
+	Balance  int64 `db:"balance" json:"balance"`
+	Paid     bool  `db:"paid" json:"paid"`
+	Trial    int64 `db:"trial_seconds" json:"trial_seconds"`
 }
 
 func balanceOf(app core.App, owner string) (creditAccount, error) {
 	var a creditAccount
-	err := app.DB().NewQuery("SELECT balance,paid,trial_seconds FROM drop_credit_accounts WHERE owner={:o}").Bind(dbx.Params{"o": owner}).One(&a)
+	err := app.DB().NewQuery("SELECT balance,paid,trial_seconds,funded_at FROM drop_credit_accounts WHERE owner={:o}").Bind(dbx.Params{"o": owner}).One(&a)
 	return a, err
 }
 
@@ -82,7 +83,7 @@ func creditsGet(c *Ctx, in *dropapi.CreditViewInput) (any, error) {
  CASE WHEN m.awake=1 AND a.archived=0 AND a.desired_state<>'stopped' THEN m.units ELSE 0 END AS rate,
  COALESCE(-SUM(CASE WHEN l.kind='compute' THEN l.delta END),0) AS compute,
  COALESCE(-SUM(CASE WHEN l.kind='s3' THEN l.delta END),0) AS s3
- FROM apps a LEFT JOIN drop_credit_meter m ON m.app=a.id LEFT JOIN drop_credit_ledger l ON l.app=a.id AND l.owner=a.owner
+ FROM apps a LEFT JOIN placements p ON p.app=a.id LEFT JOIN drop_credit_meter m ON m.app=a.id AND m.node=p.node AND m.deployment=a.nib_app_id||'-dep-'||CAST(a.deployment_seq AS INTEGER) LEFT JOIN drop_credit_ledger l ON l.app=a.id AND l.owner=a.owner
  WHERE a.owner={:o} GROUP BY a.id ORDER BY a.name,a.id`).Bind(dbx.Params{"o": owner}).All(&apps)
 	if err != nil {
 		return nil, err
@@ -138,8 +139,14 @@ func creditChange(c *Ctx, owner, kind string, delta, cap int64) (any, error) {
 		return nil, err
 	}
 	if state.Balance == 0 && delta > 0 {
+		// Missing reports can straddle a purchase. Do not charge the newly
+		// funded account for any runtime before this transaction.
+		_, err := c.App.DB().Update("drop_credit_accounts", dbx.Params{"funded_at": agentStateOf(c.App).clock().Unix()}, dbx.HashExp{"owner": owner}).Execute()
+		if err != nil {
+			return nil, err
+		}
 		// Running trial deployments keep their current local-storage contract until redeployed.
-		_, err := c.App.DB().NewQuery("INSERT OR REPLACE INTO drop_credit_local_deploy(app,seq) SELECT id,deployment_seq FROM apps WHERE owner={:o} AND current_release<>''").Bind(dbx.Params{"o": owner}).Execute()
+		_, err = c.App.DB().NewQuery("INSERT OR REPLACE INTO drop_credit_local_deploy(app,seq) SELECT id,deployment_seq FROM apps WHERE owner={:o} AND current_release<>''").Bind(dbx.Params{"o": owner}).Execute()
 		if err != nil {
 			return nil, err
 		}

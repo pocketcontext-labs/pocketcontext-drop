@@ -143,7 +143,9 @@ func desiredApp(app core.App, record *core.Record, services Services) (dropapi.D
 		}
 		a.LocalOnly = !eligible
 		a.ProxyOnly = eligible
-		a.CrewReplicaBucket, a.AWSRegion = services.CrewReplicaBucket, services.AWSRegion
+		if eligible {
+			a.CrewReplicaBucket, a.AWSRegion = services.CrewReplicaBucket, services.AWSRegion
+		}
 		a.CrewFreshEnrollment = state == "fresh"
 		a.ReplicaSyncSeconds = record.GetInt("replica_sync_seconds")
 		a.Limits = hostLimits(record)

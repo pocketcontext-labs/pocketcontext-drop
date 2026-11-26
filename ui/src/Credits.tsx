@@ -52,6 +52,7 @@ export default function Credits({ admin }: { admin: boolean }) {
     try {
       if (admin) await op("credits.adjust", { account: data.account, microcredits: amount }, pending.current.key);
       else await op("credits.buy", {}, pending.current.key);
+      window.dispatchEvent(new Event("drop-credits-changed"));
       pending.current = null; setDelta(""); setBefore(0); refresh();
     } catch (e) { setError(message(e)); }
     finally { setBusy(false); }

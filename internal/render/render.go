@@ -54,8 +54,8 @@ type App struct {
 	GenericBeta         bool   `json:"genericBeta,omitzero"`
 	AppID               string `json:"appId"`        // ^d-[a-z0-9]{15}$
 	DeploymentID        string `json:"deploymentId"` // <appId>-dep-<n>
-	LocalOnly           bool   `json:"localOnly,omitempty"`
-	ProxyOnly           bool   `json:"proxyOnly,omitempty"`
+	LocalOnly           bool   `json:"localOnly,omitzero"`
+	ProxyOnly           bool   `json:"proxyOnly,omitzero"`
 	ManagedCrew         bool   `json:"managedCrew,omitzero"`
 	CrewFreshEnrollment bool   `json:"crewFreshEnrollment,omitzero"`
 	CrewReplicaBucket   string `json:"crewReplicaBucket,omitempty"`
@@ -367,8 +367,8 @@ func renderEnvironment(app App) map[string]string {
 		}
 		if !app.LocalOnly {
 			env["CREW_DROP_BUCKET"] = app.CrewReplicaBucket
+			env["AWS_REGION"] = app.AWSRegion
 		}
-		env["AWS_REGION"] = app.AWSRegion
 		if app.CrewFreshEnrollment {
 			env["CREW_DROP_BOOTSTRAP"] = "1"
 		}

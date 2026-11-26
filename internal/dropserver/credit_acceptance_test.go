@@ -153,7 +153,7 @@ func TestCreditHostCounterDelta(t *testing.T) {
 	h.MustOp(h.Token(h.Owner()), "placement.set", map[string]any{"app": app, "node": node})
 	rec := appRecord(t, h, app)
 	nib := rec.GetString("nib_app_id")
-	at := time.Now().UTC().Truncate(time.Second)
+	at := time.Now().UTC().Truncate(time.Second).Add(time.Minute)
 	dropserver.SetAgentClock(h.App, func() time.Time { return at })
 	send := func(awake, billable int) {
 		row := appReport(nib, nib+"-dep-"+rec.GetString("deployment_seq"), "sleeping")
@@ -169,12 +169,121 @@ func TestCreditHostCounterDelta(t *testing.T) {
 	send(300, 200)
 	send(300, 200)
 	view := h.MustOp(token, "credits.get", nil)
-	if n := num(view["state"].(map[string]any)["trial_seconds"]); n != 190 {
-		t.Fatalf("trial billed %d, want 190", n)
+	if n := num(view["state"].(map[string]any)["trial_seconds"]); n != 200 {
+		t.Fatalf("trial billed %d, want 200", n)
 	}
 	var measured, billable, sampled int
 	err := h.App.DB().NewQuery("SELECT sum(measured),sum(billable),sum(sampled) FROM drop_credit_comparison").Row(&measured, &billable, &sampled)
 	if err != nil || measured != 280 || billable != 190 || sampled != 0 {
 		t.Fatalf("overlap: %d %d %d %v", measured, billable, sampled, err)
+	}
+}
+
+func TestExistingManagedCrewEntersTrial(t *testing.T) {
+	h := droptest.NewHosted(t, droptest.Options{})
+	h.Invite("legacy-crew@example.test", "user")
+	token := h.SignIn("legacy-crew@example.test").Token
+	app := appOf(t, h.MustOp(token, "app.create", map[string]any{"name": "Existing Crew", "slug": "existing-crew", "kind": "crew"}))
+	id := app["id"].(string)
+	if r := upload(t, h, uploadLink(t, h, token, id, map[string]any{"activate": true}), droptest.ELF(4096, 1)); r.Status != 200 {
+		t.Fatal(r.Raw)
+	}
+	node, _, agent := h.Node("legacy-node", hostA)
+	h.MustOp(h.Token(h.Owner()), "placement.set", map[string]any{"app": id, "node": node})
+	before := appRecord(t, h, id)
+	// Recreate the pre-credit schema, preserving the deployed release, volume,
+	// placement and email account, then run the real upgrade twice.
+	db := h.App.DB()
+	for _, trigger := range []string{"drop_credit_create", "drop_credit_execution_create", "drop_credit_execution_update"} {
+		if _, err := db.NewQuery("DROP TRIGGER " + trigger).Execute(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, table := range []string{"settings", "accounts", "ledger", "s3_receipts", "s3_carry", "meter", "comparison", "local_deploy", "holds", "executions", "compute_carry"} {
+		if _, err := db.NewQuery("DROP TABLE drop_credit_" + table).Execute(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.NewQuery("DELETE FROM _migrations WHERE file='1820002400_credits.js'").Execute(); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err := h.App.RunAppMigrations(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	view := h.MustOp(token, "credits.get", nil)
+	state := view["state"].(map[string]any)
+	if num(state["balance"]) != 0 || state["paid"] != false || num(state["trial_seconds"]) != 0 || len(view["entries"].([]any)) != 0 {
+		t.Fatalf("upgrade wallet: %v", view)
+	}
+	after := appRecord(t, h, id)
+	for _, field := range []string{"volume_id", "current_release", "owner", "crew_enrollment", "desired_state"} {
+		if before.GetString(field) != after.GetString(field) {
+			t.Fatalf("upgrade changed %s", field)
+		}
+	}
+	if after.GetInt("deployment_seq") != before.GetInt("deployment_seq")+1 {
+		t.Fatal("upgrade must restart managed guest exactly once")
+	}
+	checkStorage := func(paid bool) {
+		t.Helper()
+		d, _ := desired(t, h, agent)
+		if len(d.Apps) != 1 {
+			t.Fatalf("desired: %+v", d)
+		}
+		a := d.Apps[0]
+		if a.LocalOnly == paid || a.ProxyOnly != paid || (a.CrewReplicaBucket != "") != paid || (a.AWSRegion != "") != paid {
+			t.Fatalf("storage entitlement: %+v", a)
+		}
+	}
+	checkStorage(false)
+	if r := h.Op(token, "credits.buy", nil, "legacy-pack"); r.Status != 200 {
+		t.Fatal(r.Raw)
+	}
+	checkStorage(false)
+	h.MustOp(token, "release.deploy", map[string]any{"app": id, "release": before.GetString("current_release")})
+	checkStorage(true)
+}
+
+func TestDeploymentRatesAndCounterBounds(t *testing.T) {
+	h := droptest.NewHosted(t, droptest.Options{})
+	_, token := h.User("rates@example.test", "user")
+	node, _, agent := h.Node("rates-node", hostA)
+	if r := h.Op(token, "credits.buy", nil, "fund"); r.Status != 200 {
+		t.Fatal(r.Raw)
+	}
+	app := deployedApp(t, h, token, "rate-app", 1)
+	h.MustOp(h.Token(h.Owner()), "placement.set", map[string]any{"app": app, "node": node})
+	at := time.Now().UTC().Truncate(time.Second).Add(time.Hour)
+	dropserver.SetAgentClock(h.App, func() time.Time { return at })
+	record := appRecord(t, h, app)
+	nib := record.GetString("nib_app_id")
+	old := nib + "-dep-" + record.GetString("deployment_seq")
+	send := func(dep string, seconds int64) {
+		row := appReport(nib, dep, "running")
+		row["awakeCounter"] = map[string]any{"measuredSeconds": seconds, "billableSeconds": seconds}
+		body := reportOf(hostA, row)
+		body["nibrunner"].(map[string]any)["reportedAt"] = at.Format(time.RFC3339)
+		if status, res := report(t, h, agent, body); status != 200 {
+			t.Fatalf("report %d %v", status, res)
+		}
+	}
+	send(old, 1800) // the first-ever report arrives after a network outage
+	h.MustOp(token, "app.set", map[string]any{"app": app, "vcpu": 2})
+	current := nib + "-dep-" + appRecord(t, h, app).GetString("deployment_seq")
+	at = at.Add(time.Minute)
+	send(current, 60)
+	at = at.Add(time.Minute)
+	send(old, 1860)
+	send(old, 1860)
+	at = at.Add(time.Minute)
+	send(current, 1<<32) // implausible delta, ignored
+	send(current, 120)
+	// 1× for 1860 seconds, 2× for 120 seconds.
+	expect := 500_000_000 - (1860+2*120)*1_000_000/3600
+	got := h.MustOp(token, "credits.get", nil)
+	if balance := num(got["state"].(map[string]any)["balance"]); balance != expect {
+		t.Fatalf("balance %d want %d, %+v", balance, expect, got)
 	}
 }

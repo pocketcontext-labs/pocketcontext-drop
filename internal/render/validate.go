@@ -152,10 +152,10 @@ func validateApp(app App, lim Limits) *AppError {
 	if app.ManagedCrew && (app.CrewOwnerEmail == "" || len(app.Hostnames) != 1 || app.Hostnames[0].Kind != "platform") {
 		return fail("managedCrew", "requires the verified owner and one platform hostname")
 	}
-	if app.ManagedCrew && (!crewBucket.MatchString(app.CrewReplicaBucket) || strings.Contains(app.CrewReplicaBucket, "..")) {
+	if app.ManagedCrew && !app.LocalOnly && (!crewBucket.MatchString(app.CrewReplicaBucket) || strings.Contains(app.CrewReplicaBucket, "..")) {
 		return fail("crewReplicaBucket", "must be an S3 bucket name")
 	}
-	if app.ManagedCrew && !crewRegion.MatchString(app.AWSRegion) {
+	if app.ManagedCrew && !app.LocalOnly && !crewRegion.MatchString(app.AWSRegion) {
 		return fail("awsRegion", "must be an AWS region name")
 	}
 	if !appspec.ValidReplicaSyncSeconds(app.ReplicaSyncSeconds) || (app.ReplicaSyncSeconds != 0 && !app.ManagedCrew) {

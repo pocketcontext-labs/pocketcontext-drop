@@ -19,7 +19,7 @@ import (
 // Account and invite operations (M3).
 
 func init() {
-	register("me", func(c *Ctx, _ *dropapi.MeInput) (any, error) { return me(c), nil })
+	register("me", func(c *Ctx, _ *dropapi.MeInput) (any, error) { return me(c) })
 	register("user.list", userList)
 	register("user.set", userSet)
 	register("invite.create", inviteCreate)
@@ -27,12 +27,23 @@ func init() {
 	register("invite.revoke", inviteRevoke)
 }
 
-func me(c *Ctx) dropapi.Me {
+func me(c *Ctx) (dropapi.Me, error) {
 	role := dropapi.Role(c.Auth.GetString("role"))
 	if c.Admin {
 		role = dropapi.RoleAdmin
 	}
-	return dropapi.Me{Hosted: accountsOf(c.App).hosted, ID: c.Auth.Id, Email: c.Auth.Email(), Role: role, Admin: c.Admin, Owner: c.Owner, AppQuota: c.Auth.GetInt("app_quota")}
+	out := dropapi.Me{Hosted: accountsOf(c.App).hosted, ID: c.Auth.Id, Email: c.Auth.Email(), Role: role, Admin: c.Admin, Owner: c.Owner, AppQuota: c.Auth.GetInt("app_quota")}
+	if out.Hosted && !out.Admin {
+		state, err := balanceOf(c.App, c.Auth.Id)
+		if err != nil {
+			return out, err
+		}
+		if !state.Paid {
+			left := 3600 - state.Trial
+			out.TrialRemainingSeconds = &left
+		}
+	}
+	return out, nil
 }
 
 func userOut(app core.App, r *core.Record) dropapi.User {

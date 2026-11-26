@@ -92,111 +92,141 @@ func resumeCreditHolds(tx core.App, owner string) error {
 }
 
 type meterSample struct {
-	Measured   int64  `db:"measured"`
-	Billable   int64  `db:"billable"`
-	At         int64  `db:"at"`
-	Awake      bool   `db:"awake"`
-	Units      int64  `db:"units"`
-	Remainder  int64  `db:"remainder"`
-	Node       string `db:"node"`
-	Deployment string `db:"deployment"`
+	At       int64 `db:"at"`
+	Awake    bool  `db:"awake"`
+	Measured int64 `db:"measured"`
+	Billable int64 `db:"billable"`
+}
+type creditExecution struct {
+	Start  int64 `db:"started"`
+	Units  int64 `db:"units"`
+	Legacy bool  `db:"legacy"`
 }
 
-// Meter phase 1 against the runner observation timestamp. Arrival time
-// would charge an identical HTTP retry twice. Retain the last observation
-// across agent reconnects and control-plane restarts.
+// Each node/execution owns its own baseline. Late final reports can settle
+// a previous deployment at its archived rate without touching the current one.
 func meterReport(tx core.App, node string, app *core.Record, r dropapi.AppReport, at int64, apply bool) (bool, error) {
-	if at <= 0 || r.DeploymentID == "" || r.DeploymentID != deploymentID(app) {
+	if at <= 0 || r.DeploymentID == "" {
 		return false, nil
 	}
-	awake := r.Phase == "running" || r.Phase == "starting"
-	units := int64(app.GetInt("vcpu"))
-	if app.GetString("beta_digest") != "" {
-		units = int64(max(1, app.GetInt("memory_mib")/256))
+	identity := dbx.Params{"a": app.Id, "n": node, "d": r.DeploymentID}
+	var exec creditExecution
+	err := tx.DB().NewQuery("SELECT started,units,legacy FROM drop_credit_executions WHERE app={:a} AND deployment={:d}").Bind(dbx.Params{"a": app.Id, "d": r.DeploymentID}).One(&exec)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
 	}
-	var prev meterSample
-	err := tx.DB().NewQuery("SELECT at,awake,units,remainder,node,deployment,measured,billable FROM drop_credit_meter WHERE app={:a}").Bind(dbx.Params{"a": app.Id}).One(&prev)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if err != nil {
 		return false, err
 	}
-	same := prev.Node == node && prev.Deployment == r.DeploymentID
+	var prev meterSample
+	err = tx.DB().NewQuery("SELECT at,awake,measured,billable FROM drop_credit_meter WHERE app={:a} AND node={:n} AND deployment={:d}").Bind(identity).One(&prev)
+	exists := err == nil
+	if !exists && !errors.Is(err, sql.ErrNoRows) {
+		return false, err
+	}
+	if !exists && r.DeploymentID != deploymentID(app) {
+		return false, nil
+	}
 	if at <= prev.At {
 		return false, nil
 	}
-	// Keep the counter baseline while reports coalesce. Always consume new
-	// usage in a sleeping report; the VM may have woken between samples.
+	awake := r.Phase == "running" || r.Phase == "starting"
 	counter := r.AwakeCounter
-	if same && prev.Awake == awake && (counter == nil || counter.BillableSeconds == prev.Billable) && (!awake || at-prev.At < 60) {
+	unchanged := counter == nil || counter.MeasuredSeconds == prev.Measured && counter.BillableSeconds == prev.Billable
+	if exists && awake == prev.Awake && ((!awake && unchanged) || (awake && at-prev.At < 60)) {
 		return false, nil
 	}
-	if same && prev.Awake == awake && awake && at-prev.At < 60 {
-		return false, nil
+
+	// One counter cannot advance by more than elapsed wall time. Allow one
+	// second for whole-second sampling on independent clocks. Refuse a
+	// regressed or impossible counter without advancing the durable baseline.
+	since := prev.At
+	if !exists {
+		since = exec.Start
+	}
+	span := max(0, at-since)
+	var seconds int64
+	if prev.Awake {
+		seconds = span
+	}
+	measured, billable := int64(-1), int64(-1)
+	if counter != nil {
+		measured, billable = counter.MeasuredSeconds, counter.BillableSeconds
+		switch {
+		case exists && prev.Measured >= 0:
+			dm, db := measured-prev.Measured, billable-prev.Billable
+			if dm < 0 || db < 0 || db > dm+1 || dm > span+1 {
+				return false, nil
+			}
+			if apply && span > 0 {
+				_, err = tx.DB().Insert("drop_credit_comparison", dbx.Params{"node": node, "app": app.Id, "deployment": r.DeploymentID, "since": since, "until": at, "sampled": seconds, "measured": dm, "billable": db}).Execute()
+				if err != nil {
+					return false, err
+				}
+			}
+			seconds = db
+		case !exists && !exec.Legacy:
+			if measured > span+1 {
+				return false, nil
+			}
+			seconds = billable
+		}
 	}
 	if !apply {
 		return true, nil
 	}
-	owner := app.GetString("owner")
-	var seconds int64
-	if same && prev.Awake {
-		seconds = at - prev.At
-	}
-	measured, billable := prev.Measured, prev.Billable
-	if !same || counter == nil {
-		measured, billable = -1, -1
-	}
-	if counter != nil {
-		if measured >= 0 && counter.MeasuredSeconds >= measured && counter.BillableSeconds >= billable {
-			hostDelta := counter.BillableSeconds - billable
-			_, err := tx.DB().NewQuery(`INSERT INTO drop_credit_comparison(node,app,deployment,hour,sampled,measured,billable)
-   VALUES({:n},{:a},{:d},{:h},{:s},{:m},{:b}) ON CONFLICT(node,app,deployment,hour) DO UPDATE SET
-   sampled=sampled+excluded.sampled,measured=measured+excluded.measured,billable=billable+excluded.billable`).
-				Bind(dbx.Params{"n": node, "a": app.Id, "d": r.DeploymentID, "h": at / 3600 * 3600, "s": seconds, "m": counter.MeasuredSeconds - measured, "b": hostDelta}).Execute()
-			if err != nil {
-				return false, err
-			}
-			seconds = hostDelta
-		} else if !same {
-			// New deployments start their counter at zero. An older deployment
-			// observed for the first time after upgrade establishes its baseline.
-			if prev.At != 0 {
-				seconds = counter.BillableSeconds
-			}
-		} else if measured >= 0 {
-			return false, nil
-		}
-		measured, billable = counter.MeasuredSeconds, counter.BillableSeconds
-	}
 	if seconds > 0 {
-		state, err := balanceOf(tx, owner)
+		blocked, err := settleCompute(tx, app, node, r.DeploymentID, at, seconds, exec.Units)
 		if err != nil {
 			return false, err
 		}
-		switch {
-		case state.Balance > 0:
-			numerator := seconds*units*microcredits + prev.Remainder
-			amount := min(state.Balance, numerator/3600)
-			prev.Remainder = numerator % 3600
-			if amount > 0 {
-				source := fmt.Sprintf("compute:%s:%s:%d", app.Id, node, at)
-				if err := appendCredit(tx, owner, app.Id, "compute", source, -amount); err != nil {
-					return false, err
-				}
-				state.Balance -= amount
-			}
-		case !state.Paid:
-			state.Trial = min(3600, state.Trial+seconds)
-			if _, err := tx.DB().Update("drop_credit_accounts", dbx.Params{"trial_seconds": state.Trial}, dbx.HashExp{"owner": owner}).Execute(); err != nil {
-				return false, err
-			}
-		}
-		if creditBlocked(state) {
+		if blocked {
 			awake = false
-			if err := enforceCredits(tx, owner, state); err != nil {
-				return false, err
-			}
 		}
 	}
-	_, err = tx.DB().NewQuery(`INSERT INTO drop_credit_meter(app,at,node,deployment,awake,units,remainder,measured,billable) VALUES({:a},{:t},{:n},{:d},{:w},{:u},{:r},{:m},{:b})
- ON CONFLICT(app) DO UPDATE SET at=excluded.at,node=excluded.node,deployment=excluded.deployment,awake=excluded.awake,units=excluded.units,remainder=excluded.remainder,measured=excluded.measured,billable=excluded.billable`).Bind(dbx.Params{"a": app.Id, "t": at, "n": node, "d": r.DeploymentID, "w": awake, "u": units, "r": prev.Remainder, "m": measured, "b": billable}).Execute()
+	_, err = tx.DB().NewQuery(`INSERT INTO drop_credit_meter(app,node,deployment,at,awake,units,measured,billable)
+ VALUES({:a},{:n},{:d},{:t},{:w},{:u},{:m},{:b})
+ ON CONFLICT(app,node,deployment) DO UPDATE SET at=excluded.at,awake=excluded.awake,measured=excluded.measured,billable=excluded.billable`).Bind(dbx.Params{"a": app.Id, "n": node, "d": r.DeploymentID, "t": at, "w": awake, "u": exec.Units, "m": measured, "b": billable}).Execute()
 	return true, err
+}
+
+func settleCompute(tx core.App, app *core.Record, node, deployment string, at, seconds, units int64) (bool, error) {
+	owner := app.GetString("owner")
+	state, err := balanceOf(tx, owner)
+	if err != nil {
+		return false, err
+	}
+	switch {
+	case state.Balance > 0:
+		seconds = min(seconds, max(0, at-state.FundedAt))
+		var rem int64
+		if err := tx.DB().NewQuery("SELECT COALESCE((SELECT remainder FROM drop_credit_compute_carry WHERE app={:a}),0)").Bind(dbx.Params{"a": app.Id}).Row(&rem); err != nil {
+			return false, err
+		}
+		// Saturate before multiplication. The wallet cap fits 10^12 microcredits
+		// and units is constrained to 1..16 when the deployment is recorded.
+		rate := units * microcredits
+		seconds = min(seconds, (state.Balance*3600+rate-1)/rate)
+		numerator := seconds*rate + rem
+		amount := min(state.Balance, numerator/3600)
+		if _, err := tx.DB().NewQuery("INSERT INTO drop_credit_compute_carry(app,remainder) VALUES({:a},{:r}) ON CONFLICT(app) DO UPDATE SET remainder=excluded.remainder").Bind(dbx.Params{"a": app.Id, "r": numerator % 3600}).Execute(); err != nil {
+			return false, err
+		}
+		if amount > 0 {
+			key := fmt.Sprintf("compute:%s:%s:%d", deployment, node, at)
+			if err := appendCredit(tx, owner, app.Id, "compute", key, -amount); err != nil {
+				return false, err
+			}
+			state.Balance -= amount
+		}
+	case !state.Paid:
+		state.Trial += min(seconds, 3600-state.Trial)
+		if _, err := tx.DB().Update("drop_credit_accounts", dbx.Params{"trial_seconds": state.Trial}, dbx.HashExp{"owner": owner}).Execute(); err != nil {
+			return false, err
+		}
+	}
+	if creditBlocked(state) {
+		return true, enforceCredits(tx, owner, state)
+	}
+	return false, nil
 }

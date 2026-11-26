@@ -120,12 +120,20 @@ The optional desired `deleted` array names app IDs awaiting confirmed volume del
 
 The server timestamps a sample from the authenticated node's `nibrunner.reportedAt`. It settles each placed deployment about once a minute or on phase transitions. Running and starting are awake. With phase-only reports the last observed phase spans missing reports. A node with the persistent per-deployment counter sends `apps[].awakeCounter` with nonnegative integer `measuredSeconds` and `billableSeconds`. Billable time may be lower when a platform shutdown takes time. The server settles the increase between observations and retains overlapping sample estimates. Stable timestamps and durable baselines make retries safe across process restarts.
 
-For one node and a 24-hour UTC interval, query a consistent operator snapshot. Supply the PocketBase node record ID and UTC Unix seconds for the interval. Buckets contain the intervals ending within that hour.
+For the one-day comparison, query a consistent operator snapshot after the window closes. Bind the PocketBase node record ID and UTC Unix start second. Each row covers two consecutive comparable reports; the query prorates a partial boundary interval by its overlap with the day. A phase-only sample spanning an outage cannot identify transitions between observations. Long intervals make that uncertainty visible in `longest_gap_seconds`.
 
 ```sql
-SELECT app, deployment, SUM(sampled) AS phase1_seconds,
-       SUM(measured) AS measured_seconds, SUM(billable) AS phase2_seconds
-FROM drop_credit_comparison
-WHERE node = :node AND hour >= :start AND hour < :start + 86400
+WITH intervals AS (
+  SELECT *, (MIN(until, :start + 86400) - MAX(since, :start)) * 1.0
+              / (until - since) AS fraction
+  FROM drop_credit_comparison
+  WHERE node = :node AND until > :start AND since < :start + 86400
+)
+SELECT app, deployment,
+       ROUND(SUM(sampled * fraction), 2) AS phase1_seconds,
+       ROUND(SUM(measured * fraction), 2) AS measured_seconds,
+       ROUND(SUM(billable * fraction), 2) AS phase2_seconds,
+       MAX(until - since) AS longest_gap_seconds
+FROM intervals
 GROUP BY app, deployment;
 ```

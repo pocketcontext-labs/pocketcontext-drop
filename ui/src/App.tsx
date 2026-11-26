@@ -141,6 +141,14 @@ function Workspace({
       active = false;
     };
   }, [fromSignIn]);
+  useEffect(() => {
+    if (me?.trial_remaining_seconds === undefined) return;
+    let active = true;
+    const update = () => { void dropApi.me().then(next => { if (active) setMe(next); }).catch(() => {}); };
+    const timer = window.setInterval(update, 30_000);
+    window.addEventListener("drop-credits-changed", update);
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener("drop-credits-changed", update); };
+  }, [me?.trial_remaining_seconds]);
   if (!me) return <Status>{meFailed ? <p role="alert">Could not load your account. Reload the page to retry.</p> : <p role="status">Loading account…</p>}</Status>;
   const hostedAdmin = me.admin && me.hosted === true;
   const defaultPage = ["", "#/", "#/login", "#/account"].includes(hash) || hash.startsWith("#/invite?");
@@ -215,7 +223,12 @@ function Workspace({
           </button>
         </div>
       </header>
-      <main className="content">{page}</main>
+      <main className="content">
+        {view !== "credits" && me.trial_remaining_seconds !== undefined && <p className="panel" role="status">
+          {Math.ceil(me.trial_remaining_seconds / 60)} awake minutes left. Your apps are archived after 60 awake minutes unless you buy credits. During the trial nothing is backed up. <a href={viewHashes.credits}>Manage credits</a>
+        </p>}
+        {page}
+      </main>
     </div>
   );
 }

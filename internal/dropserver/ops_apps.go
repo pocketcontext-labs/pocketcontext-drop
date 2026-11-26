@@ -411,7 +411,11 @@ func appCreate(c *Ctx, in *dropapi.AppCreateInput) (any, error) {
 			return nil, Invalid("kind", "The verified account address cannot receive Crew sign-in email.")
 		}
 		services := servicesOf(c.App)
-		if services.CrewReplicaBucket == "" || services.AWSRegion == "" || services.AppDomain == "" {
+		wallet, err := balanceOf(c.App, c.Auth.Id)
+		if err != nil {
+			return nil, err
+		}
+		if services.AppDomain == "" || (wallet.Balance > 0 && (services.CrewReplicaBucket == "" || services.AWSRegion == "")) {
 			return nil, Invalid("kind", "Configure the Crew replica bucket, AWS region and app domain before creating a Crew app.")
 		}
 		app.Set("crew_owner_email", email)
