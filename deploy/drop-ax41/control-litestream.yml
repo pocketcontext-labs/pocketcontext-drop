@@ -1,0 +1,15 @@
+levels:
+  - interval: 5m
+  - interval: 4h
+snapshot:
+  interval: 24h
+  retention: 72h
+socket:
+  enabled: true
+  path: ${DROP_REPLICA_SOCKET}
+dbs:
+  - path: ${DROP_CONTROL_LIVE_DB}
+    replica:
+      url: ${DROP_CONTROL_REPLICA_URL}
+      region: ${AWS_REGION}
+      sync-interval: 10s

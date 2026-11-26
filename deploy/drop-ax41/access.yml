@@ -10,6 +10,44 @@ Parameters:
     Default: drop-ax41
     Description: IAM user of the Drop server (releases, SSM, metering).
 Resources:
+  # Outside the app-replica namespace and the scoped operator's read wildcard.
+  ControlDatabase:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub 'pocketcontext-drop-control-ax41-${AWS::AccountId}'
+      VersioningConfiguration: {Status: Enabled}
+      OwnershipControls:
+        Rules: [{ObjectOwnership: BucketOwnerEnforced}]
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireNoncurrentDatabaseVersions
+            Status: Enabled
+            NoncurrentVersionExpiration: {NoncurrentDays: 30}
+            AbortIncompleteMultipartUpload: {DaysAfterInitiation: 1}
+  ServerControlReplica:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: DropControlDatabaseReplica
+      Users: [!Ref ServerUser]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: [s3:ListBucket, s3:GetBucketLocation]
+            Resource: !GetAtt ControlDatabase.Arn
+          - Effect: Allow
+            Action: [s3:GetObject, s3:PutObject, s3:DeleteObject, s3:AbortMultipartUpload]
+            Resource: !Sub '${ControlDatabase.Arn}/control/*'
   # Caps the workload role whatever its own policy says.
   WorkloadBoundary:
     Type: AWS::IAM::ManagedPolicy

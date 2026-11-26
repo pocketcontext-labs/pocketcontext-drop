@@ -162,3 +162,30 @@ Set `DROP_BETA_NODES` on the control plane to a comma-separated list of register
 Before enabling new Beta account activation, publish the owner-approved Terms of Service and Privacy Policy at distinct HTTPS URLs. Set `DROP_TERMS_URL`, `DROP_PRIVACY_URL` and `DROP_TERMS_VERSION` on the server and restart it. The hosted reader obtains all three from the public auth-mode response each time it opens. The same reader build works with a new approved version. The PocketContext-operated Beta ships the approved version `2026-11-26` at `/#/legal/2026-11-26/terms` and `/#/legal/2026-11-26/privacy` on its own HTTPS origin. These pages open before sign-in. Use a new immutable version for a changed document. An incomplete configuration closes new invited-account activation on a Beta-enabled instance. Returning verified accounts, the instance owner, and instances with neither a catalog nor configured Beta nodes retain their sign-in flow.
 
 The manually dispatched **Drop Beta KVM acceptance** workflow runs on a disposable GitHub-hosted Linux runner. It feeds the published Crew v0.45.4-drop.4 executable into the released NibRunner v2026.11.18 inspector through Drop's admission helper, restarts the temporary Drop server, and checks that the cached manifest works with the inspector removed. Desktop and mobile Chromium clients activate separate invited accounts through a loopback SMTP mailbox, upload the released binary and resume a deployment when no node has capacity. The final check revokes the digest and verifies that a warm cache still denies it. The run uses fake AWS storage and synthetic credentials.
+
+### Replicating the control-plane database on AX41
+
+The optional host service in `deploy/drop-ax41/drop-control-litestream.service` runs Litestream 0.5.18 as the Drop service user. It follows PocketContext Core's private working database while Drop serves. The project database is periodically replaced by atomic snapshot and is unsuitable as the replication source.
+
+Deploy the updated `deploy/drop-ax41/access.yml` to the existing `access-drop-ax41` stack with its admin credentials and existing parameters. Its retained, encrypted and versioned control-plane bucket is separate from the app replica bucket. Only the server receives the new object permissions. Install the upstream Litestream 0.5.18 Linux amd64 executable as `/usr/local/bin/litestream` (executable SHA-256 `f2d452c1527be81f06d5f135655b81b0e8d9a338cb4c2825cf2243134bc2dbd6`). Install the shipped YAML as `/etc/drop/control-litestream.yml` and the unit under `/etc/systemd/system/`. Set the following in root-owned `/etc/drop/control-replica.env`, mode 0600, substituting the actual account and verified private working path for the running project.
+
+```ini
+AWS_REGION=eu-north-1
+DROP_CONTROL_LIVE_DB=/var/lib/drop/.cache/pocketcontext-drop/4dc82c906e280ddd/live/data.db
+DROP_CONTROL_REPLICA_URL=s3://pocketcontext-drop-control-ax41-ACCOUNT/control
+```
+
+Run `systemctl daemon-reload` and `systemctl enable --now drop-control-litestream.service`. For a scratch restore, run the following as the service user with the same environment as the replication unit. The restored database contains private account data. Keep the scratch directory private and remove it after the drill.
+
+```sh
+set -eu
+umask 077
+scratch=$(mktemp -d)
+litestream sync -wait -socket "$DROP_REPLICA_SOCKET" "$DROP_CONTROL_LIVE_DB"
+litestream restore -config /etc/drop/control-litestream.yml -o "$scratch/drop.db" "$DROP_CONTROL_LIVE_DB"
+sqlite3 -readonly "$scratch/drop.db" 'PRAGMA integrity_check'
+```
+
+For disaster recovery, fence the old Drop writer and its Litestream service. Restore into an empty project with a fresh private cache, verify integrity, and follow the hosted restore procedure above, including SSM reconciliation and a first start with `--hosted-restore`. Before enabling replication on the recovered instance, configure the new working path and a fresh replica prefix under `control/` to preserve the previous history.
+
+Run `deploy/drop-ax41/test-control-replica.py` with Python, Moto's server extra and Litestream 0.5.18 on PATH to exercise the same configuration against loopback S3.

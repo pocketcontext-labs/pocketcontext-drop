@@ -1,0 +1,24 @@
+[Unit]
+Description=Replicate the Drop control-plane SQLite working database
+BindsTo=drop.service
+PartOf=drop.service
+After=drop.service network-online.target
+
+[Service]
+User=drop
+Group=drop
+EnvironmentFile=/etc/drop/aws.env
+EnvironmentFile=/etc/drop/control-replica.env
+RuntimeDirectory=drop-control-litestream
+Environment=DROP_REPLICA_SOCKET=/run/drop-control-litestream/litestream.sock
+ExecStartPre=/usr/bin/test -s ${DROP_CONTROL_LIVE_DB}
+ExecStartPre=/usr/bin/curl --silent --fail --retry 15 --retry-connrefused --retry-delay 1 --output /dev/null http://127.0.0.1:8100/up
+ExecStart=/usr/local/bin/litestream replicate -config /etc/drop/control-litestream.yml
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=drop.service
