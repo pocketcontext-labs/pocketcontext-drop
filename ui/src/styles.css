@@ -160,11 +160,11 @@ label {
   white-space: nowrap;
 }
 .content {
-  max-width: 1080px;
+  width: min(100%, 1080px);
   margin: 0 auto;
   padding: 24px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 24px;
   align-items: start;
 }
@@ -297,6 +297,29 @@ select {
 
 .add .row input[type="number"] {
   width: 88px;
+}
+.node-add-fields {
+  display: grid;
+  grid-template-columns: minmax(10rem, 15rem) minmax(12rem, 20rem) max-content;
+  gap: 4px 12px;
+  align-items: end;
+}
+.node-add-fields .hint { grid-column: 2; margin: 0; }
+.node-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 8rem max-content;
+  align-items: center;
+  gap: 12px 20px;
+}
+.node-list .node-details { display: grid; gap: 3px; margin: 0; }
+.nodes-panel select { min-width: 0; max-width: 100%; }
+.nodes-panel .add label { min-width: 0; max-width: 100%; }
+@media (max-width: 640px) {
+  .node-add-fields { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .node-add-fields .hint { grid-column: 1; grid-row: 3; }
+  .node-add-fields button { justify-self: start; }
+  .node-list li { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .node-list button { justify-self: start; }
 }
 .account-controls {
   display: grid;

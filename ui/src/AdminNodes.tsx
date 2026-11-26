@@ -64,7 +64,7 @@ function NodeForm({ onCreated }: { onCreated: (s: NodeSecret) => void }) {
     <section aria-labelledby="node-add-title">
       <h3 id="node-add-title">Add a node</h3>
       <form className="add" onSubmit={submit}>
-        <div className="row">
+        <div className="node-add-fields">
           <label>
             Name
             <input
@@ -73,7 +73,7 @@ function NodeForm({ onCreated }: { onCreated: (s: NodeSecret) => void }) {
               autoComplete="off"
               value={name}
               onChange={(event) => setName(event.target.value)}
-              placeholder="walter-aws"
+              placeholder="node-01"
             />
           </label>
           <label>
@@ -84,7 +84,7 @@ function NodeForm({ onCreated }: { onCreated: (s: NodeSecret) => void }) {
               autoComplete="off"
               value={hostId}
               onChange={(event) => setHostId(event.target.value)}
-              placeholder="hostId from reported.json"
+              aria-describedby="node-host-hint"
             />
           </label>
           <button
@@ -93,6 +93,7 @@ function NodeForm({ onCreated }: { onCreated: (s: NodeSecret) => void }) {
           >
             Add node
           </button>
+          <p className="hint" id="node-host-hint">Use the <code>hostId</code> from <code>reported.json</code>.</p>
         </div>
       </form>
       {error && (
@@ -245,11 +246,11 @@ function Nodes({
       {nodes.length === 0 ? (
         <p className="empty">No nodes yet.</p>
       ) : (
-        <ul className="apps" aria-label="Nodes by name">
+        <ul className="apps node-list" aria-label="Nodes by name">
           {nodes.map((node) => (
-            <li key={node.id} className="row user">
-              <p>
-                <span>{node.name}</span>{" "}
+            <li key={node.id}>
+              <p className="node-details">
+                <strong>{node.name}</strong>
                 <span className="quiet">
                   {node.online ? "online" : "offline"} · {node.apps}{" "}
                   {node.apps === 1 ? "app" : "apps"} · {capacityText(node)} ·
@@ -338,7 +339,7 @@ export default function AdminNodes() {
     void load();
   };
   return (
-    <section className="panel" aria-labelledby="admin-nodes-title">
+    <section className="panel nodes-panel" aria-labelledby="admin-nodes-title">
       <h2 id="admin-nodes-title">Nodes</h2>
       <NodeForm onCreated={showSecret} />
       {secret && <SecretNotice secret={secret} />}

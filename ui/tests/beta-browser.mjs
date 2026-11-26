@@ -1,5 +1,6 @@
 // Hosted reader flow using synthetic server responses. Run with pnpm test:beta-browser.
 import assert from "node:assert/strict";
+import { checkAdminNodeLayout } from "./admin-nodes-browser.mjs";
 import { checkWaitlist } from "./waitlist-browser.mjs";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -54,6 +55,7 @@ const auth = {
 let browser;
 try {
   browser = await chromium.launch();
+  await checkAdminNodeLayout(browser, origin);
   for (const viewport of [
     { width: 1200, height: 800 },
     { width: 375, height: 812 },
