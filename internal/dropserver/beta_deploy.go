@@ -144,7 +144,7 @@ func betaDeploy(c *Ctx, in *dropapi.ReleaseDeployInput) (any, error) {
 		return nil, err
 	}
 	if !quota.Unlimited && quota.Used > quota.Limit {
-		return nil, Conflict(dropapi.CodeQuotaExceeded, "Your account is over its app quota. Archive an app or contact the operator.")
+		return nil, Conflict(dropapi.CodeQuotaExceeded, "Your retained disk exceeds the 10 GiB allowance. Delete an unused volume before deploying.")
 	}
 	if !recordID.MatchString(in.Release) {
 		return nil, NotFound("Release")
@@ -162,7 +162,7 @@ func betaDeploy(c *Ctx, in *dropapi.ReleaseDeployInput) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	bumped, err := setCurrentRelease(a, r)
+	bumped, err := setCurrentRelease(c.App, a, r)
 	if err != nil {
 		return nil, err
 	}

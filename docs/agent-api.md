@@ -115,3 +115,17 @@ Errors (body `{status, code, message, data}`): 401 `unauthenticated` (no or ende
 `status {app}` (`drop app status APP`, the app's Overview in the reader, MCP `drop_read` `what=status`) gives the phase: `archived`, `no_release` or `unplaced` before a node is involved; `pending` until the node reports the app; the reported phase; `deploying` while the node reports an older deployment (unless it failed); `unknown` when the node has not reported for 90 seconds. Admins also see the node's name. `node.list` (`drop node list`, `#/admin/nodes`, `what=nodes`) shows each node's state, whether it is online (a report in the last 90 seconds), `desired_seq`, nibrunner's numbers and its app count.
 
 The optional desired `deleted` array names app IDs awaiting confirmed volume deletion on this node. The report echoes an ID in `deleted` only after NibRunner accepts the matching revision, removes the instance and reports the volume deleted or absent. The server accepts acknowledgements only for this node and current desired sequence.
+
+### Awake accounting and hourly comparison
+
+The server timestamps a sample from the authenticated node's `nibrunner.reportedAt`. It settles each placed deployment about once a minute or on phase transitions. Running and starting are awake. With phase-only reports the last observed phase spans missing reports. A node with the persistent per-deployment counter sends `apps[].awakeCounter` with nonnegative integer `measuredSeconds` and `billableSeconds`. Billable time may be lower when a platform shutdown takes time. The server settles the increase between observations and retains overlapping sample estimates. Stable timestamps and durable baselines make retries safe across process restarts.
+
+For one node and a 24-hour UTC interval, query a consistent operator snapshot. Supply the PocketBase node record ID and UTC Unix seconds for the interval. Buckets contain the intervals ending within that hour.
+
+```sql
+SELECT app, deployment, SUM(sampled) AS phase1_seconds,
+       SUM(measured) AS measured_seconds, SUM(billable) AS phase2_seconds
+FROM drop_credit_comparison
+WHERE node = :node AND hour >= :start AND hour < :start + 86400
+GROUP BY app, deployment;
+```

@@ -33,13 +33,14 @@ type nibReported struct {
 }
 
 type nibInstance struct {
-	LastHook     *dropapi.HookResult `json:"lastHook"`
-	AppID        string              `json:"appId"`
-	DeploymentID string              `json:"deploymentId"`
-	State        string              `json:"state"`
-	RestartCount int                 `json:"restartCount"`
-	LastExitCode *int                `json:"lastExitCode"`
-	ConvergedAt  *string             `json:"convergedAt"`
+	AwakeCounter *dropapi.AwakeCounter `json:"awakeCounter"`
+	LastHook     *dropapi.HookResult   `json:"lastHook"`
+	AppID        string                `json:"appId"`
+	DeploymentID string                `json:"deploymentId"`
+	State        string                `json:"state"`
+	RestartCount int                   `json:"restartCount"`
+	LastExitCode *int                  `json:"lastExitCode"`
+	ConvergedAt  *string               `json:"convergedAt"`
 }
 
 type nibCapacity struct {
@@ -222,6 +223,9 @@ func appReports(intents []appIntent, r *nibReported, writtenRevision string, now
 			}
 			if appDeploymentOK(in.AppID, inst.DeploymentID) {
 				rep.DeploymentID = inst.DeploymentID
+				if !stale && inst.AwakeCounter.Valid() {
+					rep.AwakeCounter = inst.AwakeCounter
+				}
 				if inst.LastHook.Valid() {
 					rep.LastHook = inst.LastHook
 				}

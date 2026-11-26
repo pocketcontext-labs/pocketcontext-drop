@@ -236,3 +236,17 @@ Admins use `waitlist.list` with an optional case-insensitive email substring (`s
 Each source address gets a burst of 20 public waitlist operations, replenished by one every five seconds. The hosted proxy supplies the source after checking its configured trusted peer. A mailbox can request a code once per minute and five times in 24 hours. The service caps code issuance at 100 per hour. Five wrong guesses exhaust a code. The hourly cleanup removes unverified requests older than 24 hours. Codes and withdrawal links are derived from a private per-project key. Delivery jobs persist across restarts. SMTP failures retry with increasing delays for up to eight attempts; an administrator can resend an open invitation after a failed delivery. A crash after SMTP accepts a message but before Drop records delivery can produce a duplicate email.
 
 A hosted restore drops unverified waitlist requests and cancels queued delivery, including jobs leased before the backup. Verified entries retain their withdrawal links. An administrator may resend an invitation that remains open after reviewing the restored records. The admin list includes invitation, expiry and activation timestamps when available.
+
+## Private Beta credits
+
+The Credits page and these operations use integer microcredits (1,000,000 per credit). A new account receives a 3,600-second trial shared by its apps. With a cleared balance, a previously funded account suspends its apps until a top-up. Sleeping consumes zero compute credits. At size N×, the hourly rate is N credits.
+
+| Operation | Role | Input and result |
+| --- | --- | --- |
+| `credits.get` | User or admin | Own balance, seconds consumed, burn per app, S3 and compute charges, and the last 100 ledger entries. An administrator may select `account`. Supply `before` with the oldest entry ID for the next page. |
+| `credits.accounts` | Admin | Account email, balance and total simulated purchases, paginated with `limit` and `offset`. |
+| `credits.buy` | User | Empty input, required request idempotency key. Adds one configured simulated pack and returns the balance. A purchase above the cap returns `credit_cap`. |
+| `credits.adjust` | Admin | `account` and signed `microcredits`, required request idempotency key. The transaction records the actor and adjustment and checks the cap and available funds. |
+| `credits.configure` | Admin | Supply integer `pack`, `cap`, `starting` in whole credits, `euro_micros_per_credit`, `eur_per_usd_ppm` and `markup_ppm`. The initial values are 500, 10000, 0, 10000, 1000000 and 1250000 respectively. EUR/USD is a configurable simulation rate. |
+
+Retained disk includes every app volume owned by the account, including archived volumes. The app listing's `quota.used` and `quota.limit` are MiB. A volume increase and a new app share the same 10 GiB check. Trial expiry archives all apps without deleting data. A top-up restores apps archived by the trial and resumes those stopped for depleted funds. Manually archived apps stay archived.

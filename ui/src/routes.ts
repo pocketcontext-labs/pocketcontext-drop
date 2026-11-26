@@ -13,6 +13,7 @@ export type View =
   | "apps"
   | "app-new"
   | "app"
+  | "credits"
   | "connect"
   | "admin-waitlist"
   | "admin-users"
@@ -21,6 +22,7 @@ export const viewHashes: Record<Exclude<View, "app">, string> = {
   deploy: "#/deploy",
   apps: "#/apps",
   "app-new": "#/apps/new",
+  credits: "#/credits",
   connect: "#/connect",
   "admin-waitlist": "#/admin/waitlist",
   "admin-users": "#/admin/users",
@@ -46,6 +48,7 @@ export function appHash(id: string, tab: AppTab = "overview"): string {
 
 /** The page of a hash; anything unknown is the apps page. */
 export function viewFromHash(hash: string): View {
+  if (hash === viewHashes.credits) return "credits";
   if (/^#\/connect(?:\?.*)?$/.test(hash)) return "connect";
   if (hash === viewHashes["admin-waitlist"]) return "admin-waitlist";
   if (/^#\/admin\/users(?:\?.*)?$/.test(hash)) return "admin-users";

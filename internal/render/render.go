@@ -53,6 +53,8 @@ type Input struct {
 type App struct {
 	AppID               string `json:"appId"`        // ^d-[a-z0-9]{15}$
 	DeploymentID        string `json:"deploymentId"` // <appId>-dep-<n>
+	LocalOnly           bool   `json:"localOnly,omitempty"`
+	ProxyOnly           bool   `json:"proxyOnly,omitempty"`
 	ManagedCrew         bool   `json:"managedCrew,omitzero"`
 	CrewFreshEnrollment bool   `json:"crewFreshEnrollment,omitzero"`
 	CrewReplicaBucket   string `json:"crewReplicaBucket,omitempty"`
@@ -359,10 +361,12 @@ func renderEnvironment(app App) map[string]string {
 	if app.ManagedCrew {
 		env["POCKETCONTEXT_DOMAIN"] = app.Hostnames[0].Hostname
 		env["CREW_DROP_APP_ID"] = app.AppID
-		if !app.HostS3 {
+		if !app.HostS3 && !app.LocalOnly && !app.ProxyOnly {
 			env["AWS_WORKLOAD_IDENTITY"] = "async"
 		}
-		env["CREW_DROP_BUCKET"] = app.CrewReplicaBucket
+		if !app.LocalOnly {
+			env["CREW_DROP_BUCKET"] = app.CrewReplicaBucket
+		}
 		env["AWS_REGION"] = app.AWSRegion
 		if app.CrewFreshEnrollment {
 			env["CREW_DROP_BOOTSTRAP"] = "1"

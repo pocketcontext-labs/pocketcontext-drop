@@ -47,6 +47,7 @@ type Ctx struct {
 	// Request is the HTTP request, for reading only.
 	Request         *http.Request
 	Spec            dropapi.Spec
+	creditKey       string
 	event           *Event
 	deleteParameter string               // parameter queued for cleanup after commit
 	metricsFilter   *metricsFilterAction // per-app metrics filter to apply after commit
@@ -226,6 +227,7 @@ func serveOp(re *core.RequestEvent, keys *sync.Mutex) error {
 			return err
 		}
 		if key != nil {
+			c.creditKey = key.keyHash
 			stored, found, err := key.lookup(tx)
 			if err != nil || found {
 				encoded, replayed = stored, found

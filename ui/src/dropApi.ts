@@ -5,6 +5,11 @@ import { pb } from "./api";
 // input. OPS lists every operation name in the server's registry, in its
 // order: internal/dropapi's TestReaderKnowsEveryOperation compares them.
 export const OPS = [
+  "credits.accounts",
+  "credits.get",
+  "credits.buy",
+  "credits.adjust",
+  "credits.configure",
   "me",
   "event.list",
   "user.list",
@@ -337,7 +342,7 @@ async function setUser(
 async function createInvite(input: {
   email: string;
   role: Role;
-  app_quota: number;
+  app_quota?: number;
   expires_days?: number;
 }): Promise<{ invite: Invite; sign_in_url: string }> {
   return op("invite.create", input);

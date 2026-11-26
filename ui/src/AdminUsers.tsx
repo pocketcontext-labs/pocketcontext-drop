@@ -20,7 +20,6 @@ const states: Record<Invite["state"], string> = {
 function InviteForm({ onCreated }: { onCreated: () => void }) {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("user");
-  const [quota, setQuota] = useState(3);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [link, setLink] = useState<{ email: string; url: string } | null>(null);
@@ -32,7 +31,6 @@ function InviteForm({ onCreated }: { onCreated: () => void }) {
       const created = await dropApi.createInvite({
         email: email.trim(),
         role,
-        app_quota: quota,
       });
       setLink({ email: created.invite.email, url: created.sign_in_url });
       setEmail("");
@@ -68,16 +66,6 @@ function InviteForm({ onCreated }: { onCreated: () => void }) {
               <option value="user">User</option>
               <option value="admin">Admin</option>
             </select>
-          </label>
-          <label>
-            App quota
-            <input
-              type="number"
-              min={0}
-              max={100}
-              value={quota}
-              onChange={(event) => setQuota(Number(event.target.value))}
-            />
           </label>
           <button className="primary" disabled={busy || !email.trim()}>
             Invite
@@ -227,21 +215,6 @@ function Users({
                   <option value="user">User</option>
                   <option value="admin">Admin</option>
                 </select>
-              </label>
-              <label>
-                Quota
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  defaultValue={user.app_quota}
-                  disabled={busy === user.id}
-                  onBlur={(event) => {
-                    const value = Number(event.target.value);
-                    if (value !== user.app_quota)
-                      void change(user, { app_quota: value });
-                  }}
-                />
               </label>
               <button
                 type="button"

@@ -135,6 +135,13 @@ func desiredApp(app core.App, record *core.Record, services Services) (dropapi.D
 	}, Secrets: []dropapi.DesiredSecret{}}
 	if state := record.GetString("crew_enrollment"); state != "" {
 		a.ManagedCrew = true
+		var eligible bool
+		err := app.DB().NewQuery("SELECT balance>0 AND NOT EXISTS(SELECT 1 FROM drop_credit_local_deploy WHERE app={:app} AND seq={:seq}) FROM drop_credit_accounts WHERE owner={:owner}").Bind(dbx.Params{"app": record.Id, "seq": record.GetInt("deployment_seq"), "owner": record.GetString("owner")}).Row(&eligible)
+		if err != nil {
+			return a, false, err
+		}
+		a.LocalOnly = !eligible
+		a.ProxyOnly = eligible
 		a.CrewReplicaBucket, a.AWSRegion = services.CrewReplicaBucket, services.AWSRegion
 		a.CrewFreshEnrollment = state == "fresh"
 		a.ReplicaSyncSeconds = record.GetInt("replica_sync_seconds")

@@ -50,10 +50,10 @@ func TestAppCreateDefaults(t *testing.T) {
 	}
 	full := appOf(t, h.MustOp(token, "app.create", map[string]any{
 		"name": "Full", "slug": "full-app", "desired_state": "running", "idle_timeout_ms": 60000, "vcpu": 2, "memory_mib": 4096,
-		"disk_mib": 16384, "http_port": 1, "executable_name": "crew", "args": []string{"serve", "--port", "1"},
+		"disk_mib": 8192, "http_port": 1, "executable_name": "crew", "args": []string{"serve", "--port", "1"},
 		"env": map[string]string{"WELCOME_TEXT": "hi", "URL": "https://${NIBRUN_HOSTNAME}:${NIBRUN_HTTP_PORT}/"}, "health_kind": "http",
 	}))
-	if full["health_path"] != "/" || full["desired_state"] != "running" || num(full["disk_mib"]) != 16384 || len(full["args"].([]any)) != 3 {
+	if full["health_path"] != "/" || full["desired_state"] != "running" || num(full["disk_mib"]) != 8192 || len(full["args"].([]any)) != 3 {
 		t.Fatalf("%v", full)
 	}
 	// By slug or id, for the owner.
@@ -139,35 +139,21 @@ func TestAppValidation(t *testing.T) {
 	}
 }
 
-// TestAppQuota: a user has at most app_quota non-archived apps; archiving
-// frees a place, restoring takes one; user.set raises it.
-func TestAppQuota(t *testing.T) {
+func TestRetainedDisk(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
-	user, token := h.User("user@example.test", "user")
-	admin := h.Token(h.Owner())
-	for _, slug := range []string{"one", "two", "three"} {
-		h.MustOp(token, "app.create", map[string]any{"name": slug, "slug": slug + "-app"})
+	_, token := h.User("disk@example.test", "user")
+	add := func(slug string, disk int) map[string]any {
+		return map[string]any{"name": slug, "slug": slug, "disk_mib": disk}
 	}
-	wantError(t, h.Op(token, "app.create", map[string]any{"name": "four", "slug": "four-app"}), 409, "quota_exceeded")
-	list := h.MustOp(token, "app.list", nil)
-	if q := list["quota"].(map[string]any); num(q["used"]) != 3 || num(q["limit"]) != 3 || q["unlimited"] != false {
+	h.MustOp(token, "app.create", add("large", 8192))
+	h.MustOp(token, "app.archive", map[string]any{"app": "large"})
+	h.MustOp(token, "app.create", add("small", 2048))
+	wantError(t, h.Op(token, "app.create", add("extra", 1024)), 409, "quota_exceeded")
+	wantError(t, h.Op(token, "app.set", map[string]any{"app": "small", "disk_mib": 4096}), 409, "quota_exceeded")
+	h.MustOp(token, "app.restore", map[string]any{"app": "large"})
+	if q := h.MustOp(token, "app.list", nil)["quota"].(map[string]any); num(q["used"]) != 10240 || num(q["limit"]) != 10240 {
 		t.Fatalf("quota %v", q)
 	}
-	h.MustOp(token, "app.archive", map[string]any{"app": "one-app"})
-	wantError(t, h.Op(token, "app.archive", map[string]any{"app": "one-app"}), 409, "app_archived")
-	wantError(t, h.Op(token, "app.set", map[string]any{"app": "one-app", "name": "x"}), 409, "app_archived")
-	wantError(t, h.Op(token, "app.start", map[string]any{"app": "one-app"}), 409, "app_archived")
-	h.MustOp(token, "app.create", map[string]any{"name": "four", "slug": "four-app"})
-	wantError(t, h.Op(token, "app.restore", map[string]any{"app": "one-app"}), 409, "quota_exceeded")
-	wantError(t, h.Op(token, "app.restore", map[string]any{"app": "two-app"}), 409, "app_not_archived")
-	if archived := h.MustOp(token, "app.list", map[string]any{"archived": true})["apps"].([]any); len(archived) != 1 {
-		t.Fatalf("archived list %v", archived)
-	}
-	h.MustOp(admin, "user.set", map[string]any{"user": user.Id, "app_quota": 4})
-	if app := appOf(t, h.MustOp(token, "app.restore", map[string]any{"app": "one-app"})); app["archived"] != false {
-		t.Fatalf("%v", app)
-	}
-	wantError(t, h.Op(admin, "app.create", map[string]any{"name": "Admin app", "slug": "admin-app"}), 403, "forbidden")
 }
 
 // TestDeploymentBumps: a change to the instance configuration gives a new

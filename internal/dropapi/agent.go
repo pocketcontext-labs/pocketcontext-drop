@@ -174,15 +174,25 @@ func (h *HookResult) Valid() bool {
 // a message for people (no secret or environment values), the deployment
 // nibrunner runs, and nibrunner's restart count, last exit code and
 // convergence time (RFC 3339, or empty).
+type AwakeCounter struct {
+	MeasuredSeconds int64 `json:"measuredSeconds"`
+	BillableSeconds int64 `json:"billableSeconds"`
+}
+
+func (c *AwakeCounter) Valid() bool {
+	return c == nil || c.MeasuredSeconds >= 0 && c.MeasuredSeconds <= 1<<32 && c.BillableSeconds >= 0 && c.BillableSeconds <= c.MeasuredSeconds
+}
+
 type AppReport struct {
-	LastHook     *HookResult `json:"lastHook,omitempty"`
-	AppID        string      `json:"appId"`
-	DeploymentID string      `json:"deploymentId"`
-	Phase        string      `json:"phase"`
-	Message      string      `json:"message"`
-	RestartCount int         `json:"restartCount"`
-	LastExitCode *int        `json:"lastExitCode"`
-	ConvergedAt  string      `json:"convergedAt"`
+	AwakeCounter *AwakeCounter `json:"awakeCounter,omitempty"`
+	LastHook     *HookResult   `json:"lastHook,omitempty"`
+	AppID        string        `json:"appId"`
+	DeploymentID string        `json:"deploymentId"`
+	Phase        string        `json:"phase"`
+	Message      string        `json:"message"`
+	RestartCount int           `json:"restartCount"`
+	LastExitCode *int          `json:"lastExitCode"`
+	ConvergedAt  string        `json:"convergedAt"`
 	// Usage is the host services proxy's counters of the app's deployment
 	// (hostservices.go), when the app used it.
 	Usage *HostUsage `json:"usage,omitempty"`

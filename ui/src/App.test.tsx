@@ -140,7 +140,7 @@ it("shows admins the Users page and everyone else Not found there", async () => 
   fireEvent.change(screen.getByLabelText("Email"), { target: { value: "friend@example.test" } });
   fireEvent.click(screen.getByRole("button", { name: "Invite" }));
   expect(await screen.findByText("https://drop.example.test/#/invite?email=friend%40example.test")).toBeInTheDocument();
-  expect(create).toHaveBeenCalledWith({ email: "friend@example.test", role: "user", app_quota: 3 });
+  expect(create).toHaveBeenCalledWith({ email: "friend@example.test", role: "user" });
 });
 
 it("fills in the address of an invite's sign-in URL", async () => {

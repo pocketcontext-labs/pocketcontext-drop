@@ -64,6 +64,9 @@ func (c *Ctx) writableApp(ref string) (*core.Record, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := allowCreditDeployment(c.App, app.GetString("owner")); err != nil {
+		return nil, err
+	}
 	if app.GetBool("archived") {
 		return nil, Conflict(dropapi.CodeAppArchived, "This app is archived. Restore it first.")
 	}
@@ -138,24 +141,22 @@ func (c *Ctx) appOut(r *core.Record, emails map[string]string) dropapi.App {
 	}
 }
 
-// quota is the caller's app quota.
+// Retained volumes include archived apps until permanent deletion completes.
 func (c *Ctx) quota() (dropapi.Quota, error) {
-	used, err := c.App.CountRecords("apps", dbx.HashExp{"owner": c.Auth.Id, "archived": false})
-	if err != nil {
-		return dropapi.Quota{}, err
-	}
-	return dropapi.Quota{Used: int(used), Limit: c.Auth.GetInt("app_quota"), Unlimited: c.Admin && !accountsOf(c.App).hosted}, nil
+	var used int
+	err := c.App.DB().NewQuery("SELECT COALESCE(SUM(disk_mib),0) FROM apps WHERE owner={:o}").Bind(dbx.Params{"o": c.Auth.Id}).Row(&used)
+	return dropapi.Quota{Used: used, Limit: 10 * 1024, Unlimited: c.Admin && !accountsOf(c.App).hosted}, err
 }
-
-// checkQuota refuses one more non-archived app beyond the caller's quota.
-// Operations run in one write transaction, so the count cannot race.
-func (c *Ctx) checkQuota() error {
+func (c *Ctx) checkDisk(add int) error {
+	if add <= 0 {
+		return nil
+	}
 	q, err := c.quota()
 	if err != nil || q.Unlimited {
 		return err
 	}
-	if q.Used >= q.Limit {
-		return Conflict(dropapi.CodeQuotaExceeded, fmt.Sprintf("Your app quota is %d and you have %d apps. Archive one, or ask an admin for a higher quota.", q.Limit, q.Used))
+	if add > q.Limit-q.Used {
+		return Conflict(dropapi.CodeQuotaExceeded, fmt.Sprintf("This volume would exceed your 10 GiB retained-disk allowance (%d MiB already allocated). Archived volumes count until deleted.", q.Used))
 	}
 	return nil
 }
@@ -349,9 +350,7 @@ func appCreate(c *Ctx, in *dropapi.AppCreateInput) (any, error) {
 	if slices.Contains(dropapi.ReservedSlugs, in.Slug) {
 		return nil, Invalid("slug", "The slug "+in.Slug+" is reserved.")
 	}
-	if err := c.checkQuota(); err != nil {
-		return nil, err
-	}
+
 	if _, err := c.App.FindFirstRecordByData("apps", "slug", in.Slug); err == nil {
 		return nil, Conflict(dropapi.CodeSlugTaken, "The slug "+in.Slug+" is taken. Choose another.")
 	}
@@ -384,6 +383,12 @@ func appCreate(c *Ctx, in *dropapi.AppCreateInput) (any, error) {
 		s.healthPath = "/"
 	}
 	if err := s.check(nil); err != nil {
+		return nil, err
+	}
+	if err := allowCreditDeployment(c.App, c.Auth.Id); err != nil {
+		return nil, err
+	}
+	if err := c.checkDisk(s.diskMiB); err != nil {
 		return nil, err
 	}
 	collection, err := c.App.FindCachedCollectionByNameOrId("apps")
@@ -565,6 +570,9 @@ func appSet(c *Ctx, in *dropapi.AppSetInput) (any, error) {
 	if err := s.check(names); err != nil {
 		return nil, err
 	}
+	if err := c.checkDisk(s.diskMiB - app.GetInt("disk_mib")); err != nil {
+		return nil, err
+	}
 	grows := s.vcpu > app.GetInt("vcpu") || s.memoryMiB > app.GetInt("memory_mib")
 	s.apply(app)
 	if grows {
@@ -657,12 +665,13 @@ func appRestore(c *Ctx, in *dropapi.AppRestoreInput) (any, error) {
 			return nil, err
 		}
 	}
+	if err := allowCreditDeployment(c.App, app.GetString("owner")); err != nil {
+		return nil, err
+	}
 	if !app.GetBool("archived") {
 		return nil, Conflict(dropapi.CodeAppNotArchived, "This app is not archived.")
 	}
-	if err := c.checkQuota(); err != nil {
-		return nil, err
-	}
+
 	if err := checkPlacedAppRoom(c.App, app); err != nil {
 		return nil, err
 	}

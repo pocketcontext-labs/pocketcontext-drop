@@ -90,6 +90,11 @@ var opName = regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`)
 // Later milestones add their operations here (and their handlers in
 // internal/dropserver); a test checks that both sides agree.
 var specs = []Spec{
+	{Name: "credits.accounts", Role: RoleAdmin, Read: true, Input: &UserListInput{}, Summary: "List account balances and simulated purchases for the administrator."},
+	{Name: "credits.get", Role: RoleUser, Read: true, Input: &CreditViewInput{}, Summary: "Read your balance and ledger. Administrators can select an account."},
+	{Name: "credits.buy", Role: RoleUser, Input: &MeInput{}, Summary: "Buy one simulated credit pack."},
+	{Name: "credits.adjust", Role: RoleAdmin, Input: &CreditAdjustment{}, Summary: "Record a signed adjustment to an account balance."},
+	{Name: "credits.configure", Role: RoleAdmin, Input: &CreditSettings{}, Summary: "Set the simulated pack, cap, credit value, starting grant and S3 pricing conversions."},
 	{Name: "me", Role: RoleUser, Read: true, Input: &MeInput{},
 		Summary: "The signed-in account: id, email, role, app quota and whether it is the owner."},
 	{Name: "event.list", Role: RoleUser, Read: true, Input: &EventListInput{},

@@ -9,6 +9,7 @@ import AppPage from "./AppPage";
 import Apps from "./Apps";
 import Brand from "./Brand";
 import BetaDeploy, { BetaLanding } from "./BetaDeploy";
+import Credits from "./Credits";
 import Connect from "./Connect";
 import { dropApi, type Me } from "./dropApi";
 import Login from "./Login";
@@ -146,7 +147,8 @@ function Workspace({
   const administration = view === "admin-waitlist" || view === "admin-users" || view === "admin-nodes";
   let page;
   const app = view === "app" ? appRouteFromHash(hash) : null;
-  if (hostedAdmin && (defaultPage || view === "admin-waitlist"))
+  if (view === "credits") page = <Credits admin={me.admin} />;
+  else if (hostedAdmin && (defaultPage || view === "admin-waitlist"))
     page = <AdminWaitlist account={me.id} />;
   else if (hostedAdmin && !administration) page = <NotFound admin />;
   else if (administration) {
@@ -194,6 +196,7 @@ function Workspace({
               Nodes
             </a>
           )}
+          <a href={viewHashes.credits} aria-current={view === "credits" ? "page" : undefined}>Credits</a>
           {!hostedAdmin && <a
             href={viewHashes.connect}
             aria-current={view === "connect" ? "page" : undefined}

@@ -62,9 +62,13 @@ func cleanNote(note string) (string, error) {
 // setCurrentRelease makes release the app's current release and bumps its
 // deployment when that changes it (the caller saves the app). It reports
 // whether the deployment went up.
-func setCurrentRelease(app, release *core.Record) (bool, error) {
+func setCurrentRelease(tx core.App, app, release *core.Record) (bool, error) {
 	if app.GetString("current_release") == release.Id {
-		return false, nil
+		var needsStorage bool
+		err := tx.DB().NewQuery("SELECT EXISTS(SELECT 1 FROM drop_credit_local_deploy l JOIN drop_credit_accounts c ON c.owner={:owner} WHERE l.app={:app} AND l.seq={:seq} AND c.balance>0)").Bind(dbx.Params{"owner": app.GetString("owner"), "app": app.Id, "seq": app.GetInt("deployment_seq")}).Row(&needsStorage)
+		if err != nil || !needsStorage {
+			return false, err
+		}
 	}
 	app.Set("current_release", release.Id)
 	if err := bumpDeployment(app); err != nil {
@@ -162,7 +166,7 @@ func releaseDeploy(c *Ctx, in *dropapi.ReleaseDeployInput) (any, error) {
 	if err != nil || release.GetString("app") != app.Id {
 		return nil, NotFound("Release")
 	}
-	bumped, err := setCurrentRelease(app, release)
+	bumped, err := setCurrentRelease(c.App, app, release)
 	if err != nil {
 		return nil, err
 	}

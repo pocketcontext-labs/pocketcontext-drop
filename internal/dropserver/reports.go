@@ -63,8 +63,14 @@ func serveReport(re *core.RequestEvent, state *agentState) error {
 	fingerprint := nodeFields.fingerprint()
 	writeNode := state.seen(node.Id, fingerprint, now)
 
+	var sampleAt int64
+	if report.Nibrunner != nil {
+		if observed, err := time.Parse(time.RFC3339Nano, report.Nibrunner.ReportedAt); err == nil && !observed.After(now) {
+			sampleAt = observed.Unix()
+		}
+	}
 	ingest := func(app core.App, apply bool) (reportOutcome, error) {
-		return ingestApps(app, node.Id, report.Apps, now, apply)
+		return ingestApps(app, node.Id, report.Apps, now, sampleAt, apply)
 	}
 	outcome, err := ingest(re.App, false)
 	if err != nil {
@@ -216,6 +222,9 @@ func checkReport(r *dropapi.Report) error {
 		if a.LastExitCode != nil && (*a.LastExitCode < -1<<31 || *a.LastExitCode > 1<<31-1) {
 			return reportInvalid(field+".lastExitCode", "lastExitCode is out of range.")
 		}
+		if !a.AwakeCounter.Valid() {
+			return reportInvalid(field+".awakeCounter", "Billable seconds must be between zero and measured seconds.")
+		}
 		if !a.LastHook.Valid() {
 			return reportInvalid(field+".lastHook", "Invalid lifecycle hook result.")
 		}
@@ -288,7 +297,7 @@ type reportOutcome struct {
 
 // ingestApps compares the app reports of node with its node_reports rows
 // and, with apply, writes the changed ones (and their events).
-func ingestApps(app core.App, nodeID string, reports []dropapi.AppReport, now time.Time, apply bool) (reportOutcome, error) {
+func ingestApps(app core.App, nodeID string, reports []dropapi.AppReport, now time.Time, sampleAt int64, apply bool) (reportOutcome, error) {
 	out := reportOutcome{ignored: []string{}}
 	placements, err := app.FindRecordsByFilter("placements", "node = {:node}", "", 0, 0, dbx.Params{"node": nodeID})
 	if err != nil {
@@ -319,6 +328,13 @@ func ingestApps(app core.App, nodeID string, reports []dropapi.AppReport, now ti
 			continue
 		}
 		out.accepted++
+		billed, err := meterReport(app, nodeID, appRecord, r, sampleAt, apply)
+		if err != nil {
+			return out, err
+		}
+		if billed {
+			out.changes++
+		}
 		row := existing[r.AppID]
 		previousPhase := ""
 		if row != nil {

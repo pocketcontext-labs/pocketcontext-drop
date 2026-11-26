@@ -158,6 +158,9 @@ func validateApp(app App, lim Limits) *AppError {
 	if !appspec.ValidReplicaSyncSeconds(app.ReplicaSyncSeconds) || (app.ReplicaSyncSeconds != 0 && !app.ManagedCrew) {
 		return fail("replicaSyncSeconds", "must be zero, or %d–%d on a managed Crew app", appspec.MinReplicaSyncSeconds, appspec.MaxReplicaSyncSeconds)
 	}
+	if app.LocalOnly && (app.HostS3 || app.ProxyOnly) {
+		return fail("localOnly", "local storage cannot enable host S3")
+	}
 	if app.HostS3 && !app.ManagedCrew {
 		return fail("hostS3", "host S3 serves only a managed Crew app's replica bucket")
 	}

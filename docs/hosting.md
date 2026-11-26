@@ -189,3 +189,7 @@ sqlite3 -readonly "$scratch/drop.db" 'PRAGMA integrity_check'
 For disaster recovery, fence the old Drop writer and its Litestream service. Restore into an empty project with a fresh private cache, verify integrity, and follow the hosted restore procedure above, including SSM reconciliation and a first start with `--hosted-restore`. Before enabling replication on the recovered instance, configure the new working path and a fresh replica prefix under `control/` to preserve the previous history.
 
 Run `deploy/drop-ax41/test-control-replica.py` with Python, Moto's server extra and Litestream 0.5.18 on PATH to exercise the same configuration against loopback S3.
+
+### Private Beta S3 pricing
+
+The S3 collector settles billable usage within the transaction that records each access-log object or inventory. Storage includes current and noncurrent bytes, priced per UTC inventory day using the number of days in that calendar month. S3 Standard Stockholm inputs are USD 0.005 per thousand class A requests, 0.0004 per thousand class B, 0.023 per GiB-month and 0.09 per GiB of outbound data. The server applies the configured USD-to-EUR rate and markup, carries sub-microcredit fractions, and limits deductions to remaining funds. The source for request and storage rates is the [AWS eu-north-1 S3 offer](https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonS3/current/eu-north-1/index.json).

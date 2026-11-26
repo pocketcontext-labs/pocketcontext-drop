@@ -294,7 +294,7 @@ func awsErrorCode(err error) string {
 // rendered with host S3 (refused ones aside), plus the previous entries of
 // apps whose previous desired.json entry is kept. It is written before
 // desired.json, so a new deployment is known to the proxy when it starts.
-func (a *Agent) writeHostApps(apps map[string]dropapi.DesiredApp, rejected []render.AppError, keep []string) error {
+func (a *Agent) writeHostApps(apps map[string]dropapi.DesiredApp, rejected []render.AppError, keep []string, revoked map[string]bool) error {
 	path := filepath.Join(a.cfg.StateDir, HostServicesAppsFile)
 	var previous hostservices.AppsFile
 	if raw, err := readOptional(path); err == nil && raw != nil {
@@ -311,7 +311,7 @@ func (a *Agent) writeHostApps(apps map[string]dropapi.DesiredApp, rejected []ren
 		}
 	}
 	for _, e := range previous.Apps {
-		if slices.Contains(keep, e.AppID) {
+		if !revoked[e.AppID] && slices.Contains(keep, e.AppID) {
 			entries = append(entries, e)
 		}
 	}

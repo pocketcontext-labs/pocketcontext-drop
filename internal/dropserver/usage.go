@@ -208,6 +208,9 @@ func collectLogObject(ctx context.Context, app core.App, store awsx.LogReader, k
 			if err := addHourly(tx, id, k.Hour, *c); err != nil {
 				return err
 			}
+			if err := chargeS3(tx, id, "access:"+key+":"+k.Hour, *c, usage.Stored{}, 1); err != nil {
+				return err
+			}
 			hours++
 		}
 		applied = true
@@ -337,6 +340,9 @@ func collectInventory(ctx context.Context, app core.App, s Services, apps map[st
 		}
 		for id, stored := range ids {
 			if err := setDaily(tx, id, day, stored); err != nil {
+				return err
+			}
+			if err := chargeInventory(tx, id, day, stored); err != nil {
 				return err
 			}
 			written++

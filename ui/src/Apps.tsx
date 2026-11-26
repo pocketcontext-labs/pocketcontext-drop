@@ -21,12 +21,9 @@ export const stateLabels: Record<App["desired_state"], string> = {
   stopped: "Stopped",
 };
 
-/** "2 of 3 apps", or "4 apps" for an admin (no quota). */
 export function quotaText(quota: Quota): string {
-  const apps = (n: number) => `${n} ${n === 1 ? "app" : "apps"}`;
-  return quota.unlimited
-    ? `${apps(quota.used)} (admins have no quota)`
-    : `${quota.used} of ${apps(quota.limit)}`;
+  const gib = (mib: number) => (mib / 1024).toLocaleString(undefined, {maximumFractionDigits: 2});
+  return quota.unlimited ? `${gib(quota.used)} GiB retained` : `${gib(quota.used)} of ${gib(quota.limit)} GiB retained`;
 }
 
 /** The account's apps, newest first, with its quota. */

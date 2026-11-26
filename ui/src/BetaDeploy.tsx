@@ -22,7 +22,7 @@ function explain(e: unknown, fallback: string) {
       probe_pending: "Drop is checking this app file. Try again in a moment.",
       beta_no_capacity:
         "There is no space for this deployment right now. Please retry later.",
-      quota_exceeded: "Your account has reached its app limit.",
+      quota_exceeded: "This deployment would exceed your retained-disk allowance.",
       invalid_input:
         "This selection is unavailable. Check the app file and size again.",
     };

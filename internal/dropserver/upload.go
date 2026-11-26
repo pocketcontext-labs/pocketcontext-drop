@@ -267,7 +267,10 @@ func (u *uploader) serve(re *core.RequestEvent) error {
 		}
 		deployed := false
 		if link.GetBool("activate") {
-			if deployed, err = setCurrentRelease(app, release); err != nil {
+			if err := allowCreditDeployment(tx, app.GetString("owner")); err != nil {
+				return err
+			}
+			if deployed, err = setCurrentRelease(tx, app, release); err != nil {
 				return err
 			}
 			if deployed {

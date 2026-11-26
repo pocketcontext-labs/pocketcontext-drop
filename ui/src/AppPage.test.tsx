@@ -37,10 +37,10 @@ afterEach(() => {
 
 it("lists the apps with the quota and links each to its page", async () => {
   history.replaceState(null, "", "/#/apps");
-  vi.spyOn(dropApi, "listApps").mockResolvedValue({ apps: [app], quota: { used: 1, limit: 3, unlimited: false }, has_more: false });
+  vi.spyOn(dropApi, "listApps").mockResolvedValue({ apps: [app], quota: { used: 1024, limit: 10240, unlimited: false }, has_more: false });
   render(<App />);
   expect(await screen.findByRole("link", { name: "Hello app" })).toHaveAttribute("href", `#/apps/${id}`);
-  expect(screen.getByText("1 of 3 apps")).toBeInTheDocument();
+  expect(screen.getByText("1 of 10 GiB retained")).toBeInTheDocument();
   expect(screen.getByRole("link", {name: "https://" + app.hostname})).toHaveAttribute("href", "https://" + app.hostname);
   expect(screen.getByRole("button", {name: "Copy app URL"})).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Deploy an app" })).toHaveAttribute("href", "#/deploy");

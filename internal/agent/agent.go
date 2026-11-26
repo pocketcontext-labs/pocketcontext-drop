@@ -405,13 +405,19 @@ func (a *Agent) reconcile(ctx context.Context) (wrote bool, err error) {
 		fail(r.AppID, "", "failed", "The server rejected this app's configuration.")
 	}
 	hostApps := map[string]dropapi.DesiredApp{}
+	revokedS3 := map[string]bool{}
 	for _, app := range d.Apps {
 		id := app.AppID
+		revokedS3[id] = app.LocalOnly || app.DesiredState == "stopped"
 		if !app.Limits.Valid() {
 			fail(id, app.DeploymentID, "failed", "refused on the node: invalid host services limits")
 			continue
 		}
-		if a.cfg.HostServices && app.ManagedCrew {
+		if app.ProxyOnly && !a.cfg.HostServices {
+			fail(id, app.DeploymentID, "failed", "Platform storage needs the node S3 proxy.")
+			continue
+		}
+		if a.cfg.HostServices && app.ManagedCrew && !app.LocalOnly {
 			app.HostS3 = true
 		}
 		if err := a.stager.Stage(ctx, app.Release); err != nil {
@@ -427,7 +433,7 @@ func (a *Agent) reconcile(ctx context.Context) (wrote bool, err error) {
 			used[secretKey{app.DeploymentID, s.Parameter, s.Version}] = true
 		}
 		apps = append(apps, app.RenderApp(values))
-		if app.HostS3 {
+		if app.HostS3 && !revokedS3[id] {
 			hostApps[id] = app
 		}
 		intents = append(intents, appIntent{AppID: id, DeploymentID: app.DeploymentID})
@@ -470,7 +476,7 @@ func (a *Agent) reconcile(ctx context.Context) (wrote bool, err error) {
 		phases[id] = StateApp{AppID: id, Phase: "tombstoned"}
 	}
 
-	if err := a.writeHostApps(hostApps, out.Rejected, keep); err != nil {
+	if err := a.writeHostApps(hostApps, out.Rejected, keep, revokedS3); err != nil {
 		return false, fmt.Errorf("writing %s: %w", HostServicesAppsFile, err)
 	}
 
