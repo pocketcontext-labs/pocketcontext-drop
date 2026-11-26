@@ -64,6 +64,8 @@ try {
     let firstDeployment = true;
     let deployed = false;
     let runtimeFailure = false;
+    let deploymentID = "d-1";
+    let oldFailure = false;
     let httpsReady = false;
     const operations = [];
     await page.route("**/api/**", async (route) => {
@@ -135,8 +137,12 @@ try {
             return send({ code: "beta_no_capacity" }, 409);
           }
           deployed = true;
+          if (runtimeFailure) {
+            deploymentID = "d-2";
+            oldFailure = true;
+          }
           runtimeFailure = false;
-          return send({ result: { deployment_id: "d-1" } });
+          return send({ result: { deployment_id: deploymentID } });
         case "app.get":
           return send({
             result: {
@@ -156,12 +162,19 @@ try {
           });
         case "status":
           assert.equal(input.verify_url, true);
+          if (oldFailure) {
+            oldFailure = false;
+            return send({ result: {
+              phase: "failed", deployment_id: deploymentID, reported_deployment_id: "d-1",
+              hostname: "crew.apps.example.test", url_ready: false,
+            } });
+          }
 
           return send({
             result: {
               phase: runtimeFailure ? "failed" : "running",
-              deployment_id: "d-1",
-              reported_deployment_id: "d-1",
+              deployment_id: deploymentID,
+              reported_deployment_id: deploymentID,
               hostname: "crew.apps.example.test",
               url_ready: httpsReady,
             },

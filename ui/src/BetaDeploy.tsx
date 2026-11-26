@@ -168,6 +168,14 @@ const phases: Record<string, string> = {
   sleeping: "Checking the app address",
 };
 
+// After a retry the previous deployment's terminal report can briefly be
+// the newest observation. Keep polling until the node reports the new ID.
+function deploymentPhase(status?: AppStatus) {
+  if (status?.reported_deployment_id && status.reported_deployment_id !== status.deployment_id &&
+      failurePhases.includes(status.phase)) return "deploying";
+  return status?.phase;
+}
+
 function liveUrl(status?: AppStatus) {
   if (
     status?.url_ready !== true ||
@@ -205,7 +213,7 @@ export function BetaStatus({
         setError("");
         if (
           !liveUrl(result) &&
-          !failurePhases.includes(result.phase) &&
+          !failurePhases.includes(deploymentPhase(result) ?? "") &&
           result.phase !== "archived"
         ) {
           if (Date.now() < deadline) timer = setTimeout(poll, 4000);
@@ -227,7 +235,8 @@ export function BetaStatus({
       clearTimeout(timer);
     };
   }, [id, refresh]);
-  const failed = status && failurePhases.includes(status.phase);
+  const phase = deploymentPhase(status);
+  const failed = phase && failurePhases.includes(phase);
   const url = liveUrl(status);
   const retry = async () => {
     setBusy(true);
@@ -253,9 +262,9 @@ export function BetaStatus({
           ? "Your app is live."
           : failed
             ? "Your app could not start."
-            : status?.phase === "archived"
+            : phase === "archived"
               ? "This app is archived."
-              : (phases[status?.phase ?? ""] ?? "Checking deployment…")}
+              : (phases[phase ?? ""] ?? "Checking deployment…")}
       </p>
       {url && (
         <>
