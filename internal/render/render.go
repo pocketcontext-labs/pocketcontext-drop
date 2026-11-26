@@ -51,7 +51,7 @@ type Input struct {
 
 // App is one resolved app as the agent hands it to Render.
 type App struct {
-	GenericBeta         bool   `json:"genericBeta,omitempty"`
+	GenericBeta         bool   `json:"genericBeta,omitzero"`
 	AppID               string `json:"appId"`        // ^d-[a-z0-9]{15}$
 	DeploymentID        string `json:"deploymentId"` // <appId>-dep-<n>
 	LocalOnly           bool   `json:"localOnly,omitempty"`

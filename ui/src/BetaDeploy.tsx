@@ -429,6 +429,13 @@ export default function BetaDeploy({
     prepared?.memory_mib,
   ]);
 
+  function chooseFile(next: File | null) {
+    setProduct(undefined);
+    setSize(0);
+    setPort(8080);
+    setDigest("");
+    setFile(next);
+  }
   async function deploy() {
     if (
       (!file && !stagedRelease) ||
@@ -523,13 +530,13 @@ export default function BetaDeploy({
         <p>Select your original app file to finish the upload.</p>
       )}
       {!file && !stagedRelease && (!prepared || product) && (
-        <FilePicker onSelect={setFile} />
+        <FilePicker onSelect={chooseFile} />
       )}
       {file && (
         <>
           <p className="beta-filename">{file.name}</p>
           {!locked && (
-            <button className="link" onClick={() => setFile(null)}>
+            <button className="link" onClick={() => chooseFile(null)}>
               Choose another app file
             </button>
           )}

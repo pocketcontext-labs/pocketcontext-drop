@@ -314,6 +314,7 @@ try {
     assert.ok(await page.getByRole("button",{name:"Deploy app"}).isEnabled());
     await page.getByRole("button", {name:"Choose another app file"}).click();
     await page.getByLabel("App file", { exact: true }).setInputFiles(binary);
+    await page.getByRole("heading", {name: "PocketContext Crew fixture"}).waitFor();
     await page.getByLabel("App size").waitFor();
     assert.equal(await page.getByLabel("App size").inputValue(), "4");
     await page.getByLabel("App size").selectOption("1");
