@@ -36,7 +36,7 @@ jobs:
           curl --fail --silent --show-error --location --retry 3 \
             https://github.com/pocketcontext-labs/pocketcontext-crew-drop/releases/download/v0.45.4-drop.4/pocketcontext-crew-drop-linux-amd64 -o "$release/crew"
           cd "$release/nib"
-          base=https://github.com/pocketcontext-labs/pocketcontext-nibrunner/releases/download/v2026.11.18
+          base=https://github.com/pocketcontext-labs/pocketcontext-nibrunner/releases/download/v2026.11.19
           for asset in nibrunnerd-linux-x64 manifest.json rootfs.ext4 vmlinux checksums.txt; do
             curl --fail --silent --show-error --location --retry 3 "$base/$asset" -o "$asset"
           done

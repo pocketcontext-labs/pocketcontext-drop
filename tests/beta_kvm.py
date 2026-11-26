@@ -74,12 +74,42 @@ denied_egress_addresses_v6 = []
                                 env=env, stdout=subprocess.PIPE, text=True, check=True, timeout=160)
         return result.stdout.strip()
 
+    def generic_probe_cases():
+        # Exercise the actual socket worker against the released KVM inspector,
+        # using this test's temporary host config and no production socket.
+        tools = root / 'probe-tools'
+        tools.mkdir()
+        wrapper = tools / 'nibrunnerd'
+        wrapper.write_text('#!/bin/sh\n'
+                           'test "$1" = probe-manifest && test "$2" = --config || exit 1\n'
+                           'shift 3\nexec ' + shlex.quote(str(probe)) +
+                           ' probe-manifest --config ' + shlex.quote(str(config)) + ' "$@"\n')
+        wrapper.chmod(0o700)
+        worker_env = {**env, 'PATH': str(tools) + os.pathsep + env['PATH']}
+        for name, statement in [('invalid', 'puts("invalid manifest");'), ('hanging', 'for (;;) pause();')]:
+            source = root / (name + '.c')
+            binary = root / name
+            source.write_text('#include <stdio.h>\n#include <unistd.h>\nint main(void) { ' + statement + ' return 0; }\n')
+            subprocess.run(['cc', '-static', '-Os', '-o', binary, source], check=True)
+            data = binary.read_bytes()
+            digest = hashlib.sha256(data).hexdigest()
+            header = f'{digest} {len(data)}\n'.encode()
+            output = subprocess.run([drop, 'agent', 'manifest-probe'], input=header + data,
+                                    stdout=subprocess.PIPE, env=worker_env, check=True, timeout=90)
+            receipt = json.loads(output.stdout)
+            assert receipt == {'outcome': 'invalid'}, (name, receipt)
+            attempt = owner_op('beta.claim', sha256=digest)['attempt']
+            owner_op('beta.complete', sha256=digest, attempt=attempt, outcome=receipt['outcome'])
+            result = owner_op('beta.inspect', sha256=digest)
+            assert result['generic'] and result['suggested_multiplier'] == 1, result
+        print('Non-manifest and hanging executables both received a generic profile after a real isolated probe.', flush=True)
+
     def owner_op(name, **payload):
         return server.owner('op', name, '-', stdin=json.dumps(payload))
 
     try:
         server.start(init=True)
-        owner_op('beta.approve', sha256=CREW_SHA)
+        generic_probe_cases()
         assert inspect(probe) == 'Manifest cached.'
         subprocess.run(['sudo', '-n', 'test', '!', '-e', '/run/nibrunner-manifest/work'], check=True)
         server.stop()
