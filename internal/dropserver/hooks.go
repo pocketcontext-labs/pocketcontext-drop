@@ -33,6 +33,7 @@ func Hooks() appserver.Hooks {
 			bindBetaTerms(app)
 			app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 				registerLegalHeaders(e)
+				registerWaitlist(e)
 				registerOpRoutes(e)
 				registerUploadRoute(e)
 				registerAgentRoutes(e)
@@ -48,6 +49,7 @@ func Hooks() appserver.Hooks {
 			var workers sync.WaitGroup
 			workers.Go(func() { runSecretCleanup(ctx, app) })
 			workers.Go(func() { runUploadLinkPruning(ctx, app) })
+			workers.Go(func() { runWaitlistMail(ctx, app) })
 			workers.Go(func() { runUsageCollector(ctx, app) })
 			runOpKeyPruning(ctx, app)
 			workers.Wait()

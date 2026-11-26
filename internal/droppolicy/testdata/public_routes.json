@@ -2171,6 +2171,111 @@
  },
  {
   "method": "DELETE",
+  "path": "/api/drop/waitlist/request",
+  "allow": false
+ },
+ {
+  "method": "GET",
+  "path": "/api/drop/waitlist/request",
+  "allow": false
+ },
+ {
+  "method": "HEAD",
+  "path": "/api/drop/waitlist/request",
+  "allow": false
+ },
+ {
+  "method": "OPTIONS",
+  "path": "/api/drop/waitlist/request",
+  "allow": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/api/drop/waitlist/request",
+  "allow": false
+ },
+ {
+  "method": "POST",
+  "path": "/api/drop/waitlist/request",
+  "allow": true
+ },
+ {
+  "method": "PUT",
+  "path": "/api/drop/waitlist/request",
+  "allow": false
+ },
+ {
+  "method": "DELETE",
+  "path": "/api/drop/waitlist/verify",
+  "allow": false
+ },
+ {
+  "method": "GET",
+  "path": "/api/drop/waitlist/verify",
+  "allow": false
+ },
+ {
+  "method": "HEAD",
+  "path": "/api/drop/waitlist/verify",
+  "allow": false
+ },
+ {
+  "method": "OPTIONS",
+  "path": "/api/drop/waitlist/verify",
+  "allow": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/api/drop/waitlist/verify",
+  "allow": false
+ },
+ {
+  "method": "POST",
+  "path": "/api/drop/waitlist/verify",
+  "allow": true
+ },
+ {
+  "method": "PUT",
+  "path": "/api/drop/waitlist/verify",
+  "allow": false
+ },
+ {
+  "method": "DELETE",
+  "path": "/api/drop/waitlist/leave",
+  "allow": false
+ },
+ {
+  "method": "GET",
+  "path": "/api/drop/waitlist/leave",
+  "allow": false
+ },
+ {
+  "method": "HEAD",
+  "path": "/api/drop/waitlist/leave",
+  "allow": false
+ },
+ {
+  "method": "OPTIONS",
+  "path": "/api/drop/waitlist/leave",
+  "allow": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/api/drop/waitlist/leave",
+  "allow": false
+ },
+ {
+  "method": "POST",
+  "path": "/api/drop/waitlist/leave",
+  "allow": true
+ },
+ {
+  "method": "PUT",
+  "path": "/api/drop/waitlist/leave",
+  "allow": false
+ },
+ {
+  "method": "DELETE",
   "path": "/api/drop/me",
   "allow": false
  },

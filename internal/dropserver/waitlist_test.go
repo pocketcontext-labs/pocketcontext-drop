@@ -1,0 +1,167 @@
+package dropserver_test
+
+import (
+	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"regexp"
+	"strings"
+	"testing"
+	"time"
+
+	"ganigeorgiev.com/pocketbase/dbx"
+	"ganigeorgiev.com/pocketbase/pocketbase/core"
+
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropserver"
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/droptest"
+)
+
+func TestWaitlistMembershipAndInvitation(t *testing.T) {
+	h := droptest.NewHosted(t, droptest.Options{})
+	owner := h.Token(h.Owner())
+	_, user := h.User("other@example.test", "user")
+	const address = "join@example.test"
+	request := func(action, body string, want int) {
+		t.Helper()
+		r := h.Request("POST", "/api/drop/waitlist/"+action, "", body)
+		if r.Code != want {
+			t.Fatalf("%s: %d %s", action, r.Code, r.Body.String())
+		}
+	}
+	list := func() []any {
+		return h.MustOp(owner, "waitlist.list", map[string]any{"search": "JOIN@"})["entries"].([]any)
+	}
+	body := `{"email":"join@example.test","terms_version":"2026-11-26-waitlist"}`
+	request("request", body, 202)
+	request("request", body, 202)
+	if rows := list(); len(rows) != 0 {
+		t.Fatal(rows)
+	}
+	var id string
+	var created int64
+	var key []byte
+	if err := h.App.DB().NewQuery("SELECT id,requested FROM drop_waitlist WHERE email={:email}").Bind(dbx.Params{"email": address}).Row(&id, &created); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.App.DB().NewQuery("SELECT secret FROM drop_waitlist_key").Row(&key); err != nil {
+		t.Fatal(err)
+	}
+	proof := func(purpose string, generation int64) []byte {
+		m := hmac.New(sha256.New, key)
+		fmt.Fprintf(m, "%s:%s:%d", purpose, id, generation)
+		return m.Sum(nil)
+	}
+	verify := fmt.Sprintf(`{"email":%q,"code":"%06d"}`, address, binary.BigEndian.Uint64(proof("code", created))%1000000)
+	request("verify", verify, 200)
+	request("verify", verify, 400)
+	rows := list()
+	if len(rows) != 1 {
+		t.Fatal(rows)
+	}
+	row := rows[0].(map[string]any)
+	if row["id"] != id || row["email"] != address || row["state"] != "waiting" {
+		t.Fatal(row)
+	}
+	for _, op := range []string{"waitlist.list", "waitlist.invite", "waitlist.resend", "waitlist.revoke"} {
+		if h.Op(user, op, map[string]any{}).Status != 403 {
+			t.Fatal(op)
+		}
+	}
+	args := map[string]any{"id": id}
+	h.MustOp(owner, "waitlist.invite", args)
+	h.MustOp(owner, "waitlist.invite", args)
+	var count int
+	if err := h.App.DB().NewQuery("SELECT count(*) FROM drop_waitlist_mail WHERE kind='welcome'").Row(&count); err != nil || count != 1 {
+		t.Fatal(count, err)
+	}
+	row = list()[0].(map[string]any)
+	if row["state"] != "open" || row["mail_state"] != "queued" {
+		t.Fatal(row)
+	}
+	if h.Op(owner, "waitlist.resend", args).Status != 409 {
+		t.Fatal("resend cooldown")
+	}
+	h.MustOp(owner, "waitlist.revoke", args)
+	if list()[0].(map[string]any)["state"] != "revoked" {
+		t.Fatal(list())
+	}
+	h.MustOp(owner, "waitlist.invite", args)
+	token := fmt.Sprintf("%s.%x", id, proof("leave", 0))
+	v, _ := json.Marshal(map[string]string{"token": token})
+	request("leave", string(v), 200)
+	request("leave", string(v), 200)
+	if rows := list(); len(rows) != 0 {
+		t.Fatal(rows)
+	}
+	request("request", strings.Replace(body, "-waitlist", "-old", 1), 409)
+	if time.Now().Unix()-created > 60 {
+		t.Fatal("unexpected challenge timestamp")
+	}
+}
+
+func TestWaitlistWorkerRetriesCommittedMail(t *testing.T) {
+	h := droptest.NewHosted(t, droptest.Options{})
+	message := make(chan string, 4)
+	first := true
+	h.App.OnMailerSend().BindFunc(func(e *core.MailerEvent) error {
+		if first {
+			first = false
+			return errors.New("synthetic SMTP outage")
+		}
+		message <- e.Message.Subject + " " + e.Message.Text
+		return nil
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	finished := make(chan struct{})
+	go func() { dropserver.Hooks().Background(ctx, h.App); close(finished) }()
+	defer func() { cancel(); <-finished }()
+	if r := h.Request("POST", "/api/drop/waitlist/request", "", `{"email":"worker@example.test","terms_version":"2026-11-26-waitlist"}`); r.Code != 202 {
+		t.Fatal(r.Body.String())
+	}
+	deadline := time.Now().Add(12 * time.Second)
+	for {
+		var count int
+		err := h.App.DB().NewQuery("SELECT count(*) FROM drop_waitlist_mail WHERE state='queued' AND attempts=1 AND due BETWEEN unixepoch()+1 AND unixepoch()+31").Row(&count)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if count == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("SMTP failure was not scheduled for retry")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if _, err := h.App.DB().NewQuery("UPDATE drop_waitlist_mail SET due=0").Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var text string
+	select {
+	case text = <-message:
+	case <-time.After(10 * time.Second):
+		t.Fatal("no verification mail after retry")
+	}
+	codes := regexp.MustCompile(`code is ([0-9]{6})`).FindStringSubmatch(text)
+	if len(codes) != 2 || !strings.Contains(text, "/#/waitlist/leave?token=") {
+		t.Fatal("missing verification or withdrawal")
+	}
+	if r := h.Request("POST", "/api/drop/waitlist/verify", "", fmt.Sprintf(`{"email":"worker@example.test","code":%q}`, codes[1])); r.Code != 200 {
+		t.Fatal(r.Body.String())
+	}
+	owner := h.Token(h.Owner())
+	row := h.MustOp(owner, "waitlist.list", nil)["entries"].([]any)[0].(map[string]any)
+	h.MustOp(owner, "waitlist.invite", map[string]any{"id": row["id"]})
+	select {
+	case text = <-message:
+	case <-time.After(10 * time.Second):
+		t.Fatal("no welcome email")
+	}
+	if !strings.HasPrefix(text, "Welcome to Drop Beta") || !strings.Contains(text, "/#/invite?email=worker%40example.test") {
+		t.Fatal("incorrect welcome invitation")
+	}
+}

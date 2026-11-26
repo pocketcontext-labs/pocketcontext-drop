@@ -177,6 +177,8 @@ func userSet(c *Ctx, in *dropapi.UserSetInput) (any, error) {
 		if *in.Suspended {
 			// Every existing session of the account stops working at once.
 			target.RefreshTokenKey()
+		} else if err := waitQueue(c.App, target.Id, "restore", time.Now().Unix()); err != nil {
+			return nil, err
 		}
 		changes["suspended"] = map[string]any{"from": !*in.Suspended, "to": *in.Suspended}
 	}

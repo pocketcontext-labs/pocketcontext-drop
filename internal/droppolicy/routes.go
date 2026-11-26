@@ -46,7 +46,7 @@ func PublicRoute(method, p string) bool {
 		switch p {
 		// /api/drop/op is every write: the operation framework checks the
 		// account, its role and the input (internal/dropserver/ops.go).
-		case "/api/realtime", "/api/collections/users/auth-refresh", "/api/drop/op":
+		case "/api/drop/waitlist/request", "/api/drop/waitlist/verify", "/api/drop/waitlist/leave", "/api/realtime", "/api/collections/users/auth-refresh", "/api/drop/op":
 			return true
 		// The node agent: its sign-in (the nodes auth collection, password
 		// only; Drop caps the body and limits each client address) and its

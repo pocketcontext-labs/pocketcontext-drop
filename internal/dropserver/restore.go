@@ -29,6 +29,14 @@ func InvalidateNodeTokens(app core.App) error {
 		if _, err := tx.DB().NewQuery("DELETE FROM upload_links WHERE used_at = ''").Execute(); err != nil {
 			return err
 		}
+		// The restored mail queue and unused codes predate the rollback.
+		// Retain the private key so verified members can still withdraw.
+		if err := waitExec(tx, "DELETE FROM drop_waitlist WHERE verified_at=''", nil); err != nil {
+			return err
+		}
+		if err := waitExec(tx, "UPDATE drop_waitlist_mail SET state='cancelled' WHERE state='queued'", nil); err != nil {
+			return err
+		}
 		// An old snapshot can predate a release revocation. Require the
 		// operator to reconfirm admissions before resuming restored Beta apps.
 		if _, err := tx.DB().NewQuery("UPDATE drop_beta_catalog SET approved=0").Execute(); err != nil {

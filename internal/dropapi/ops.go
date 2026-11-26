@@ -98,6 +98,10 @@ var specs = []Spec{
 		Summary: "Every account, newest first, with role, quota, suspension and whether it has signed in."},
 	{Name: "user.set", Role: RoleAdmin, MCP: true, Input: &UserSetInput{},
 		Summary: "Change an account's role, app quota or suspension. Nobody changes their own role or suspension, or the owner's."},
+	{Name: "waitlist.list", Role: RoleAdmin, Read: true, Input: &WaitlistListInput{}, Summary: "List verified waitlist entries, oldest first."},
+	{Name: "waitlist.invite", Role: RoleAdmin, Input: &WaitlistID{}, Summary: "Invite a verified waitlist member and queue a welcome email."},
+	{Name: "waitlist.resend", Role: RoleAdmin, Input: &WaitlistID{}, Summary: "Resend an open waitlist invitation."},
+	{Name: "waitlist.revoke", Role: RoleAdmin, Input: &WaitlistID{}, Summary: "Revoke an open waitlist invitation."},
 	{Name: "invite.create", Role: RoleAdmin, MCP: true, Input: &InviteCreateInput{},
 		Summary: "Invite an email address (role user or admin, app quota, 1-30 days, default 7). Returns the invite and a sign-in URL to share; no email is sent."},
 	{Name: "invite.list", Role: RoleAdmin, Read: true, Input: &InviteListInput{},
@@ -257,3 +261,12 @@ const (
 	CodeInternal              = "internal"
 	CodeUsageCollectFailed    = "usage_collect_failed"
 )
+
+type WaitlistListInput struct {
+	Search string `json:"search,omitempty"`
+	Limit  int    `json:"limit,omitempty"`
+	Offset int    `json:"offset,omitempty"`
+}
+type WaitlistID struct {
+	ID string `json:"id"`
+}
