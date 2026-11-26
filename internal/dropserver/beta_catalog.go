@@ -146,9 +146,6 @@ func parseBetaManifest(raw []byte) (dropapi.BetaManifest, error) {
 		}
 		seen[feature] = true
 	}
-	if (seen["sign_in_email"] || seen["s3_replica"]) && !seen["verified_owner_email"] {
-		return m, Invalid("manifest", "Sign-in email and S3 require a verified owner.")
-	}
 	return m, nil
 }
 

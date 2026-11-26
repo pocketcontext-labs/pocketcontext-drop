@@ -45,6 +45,13 @@ func TestBetaProbeLeasesAndDeployment(t *testing.T) {
 	for _, bad := range []any{-1, 0, 9, 12, 4.5} {
 		wantError(t, h.Op(alice, "beta.prepare", map[string]any{"sha256": digest, "multiplier": bad}), 400, dropapi.CodeInvalidInput)
 	}
+	wantError(t, h.Op(alice, "beta.prepare", map[string]any{"sha256": digest, "multiplier": 1}), 409, "storage_credits_required")
+	for i, user := range []string{alice, bob} {
+		result := h.Op(user, "credits.buy", map[string]any{}, "storage-pack-"+string(rune('a'+i)))
+		if result.Status != 200 {
+			t.Fatal(result.Raw)
+		}
+	}
 	small := appOf(t, h.MustOp(bob, "beta.prepare", map[string]any{"sha256": digest, "multiplier": 1}))
 	if num(small["memory_mib"]) != 256 || num(small["disk_mib"]) != 2048 || num(small["vcpu"]) != 1 {
 		t.Fatal(small)
@@ -188,5 +195,78 @@ func TestBetaSuggestionUsesReleaseProfile(t *testing.T) {
 		if num(r["suggested_multiplier"]) != profile.want || len(r["multipliers"].([]any)) != 8 {
 			t.Fatal(r)
 		}
+	}
+}
+
+func TestBetaIndependentServicesAndStorageEntitlement(t *testing.T) {
+	for _, tc := range []struct {
+		name                        string
+		required                    []string
+		optional                    []string
+		storage, email, owner, paid bool
+	}{
+		{name: "paid-storage", required: []string{"s3_replica"}, storage: true, paid: true},
+		{name: "trial-storage", optional: []string{"s3_replica"}, storage: true},
+		{name: "mail-only", required: []string{"sign_in_email"}, email: true},
+		{name: "owner-only", required: []string{"verified_owner_email"}, owner: true},
+		{name: "no-services"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := droptest.NewHosted(t, droptest.Options{BetaNodes: []string{"manifest-node"}})
+			admin := h.Token(h.Owner())
+			_, user := h.User("manifest@example.test", "user")
+			_, _, node := h.Node("manifest-node", hostA)
+			heartbeat := reportOf(hostA)
+			heartbeat["nibrunner"].(map[string]any)["versions"].(map[string]any)["cpuQuarterQuota"] = true
+			if code, reply := report(t, h, node, heartbeat); code != 200 {
+				t.Fatal(code, reply)
+			}
+			body := droptest.ELF(4096, 1)
+			digest := sha(body)
+			ref := map[string]any{"sha256": digest}
+			m := map[string]any{"schema": "drop.manifest/v1", "app": "sample", "version": "1", "http_port": 8080, "hook_port": 0, "health": "tcp", "hooks": []string{}, "requires": tc.required, "optional": tc.optional, "minimum": map[string]any{"cpu_quarters": 1, "memory_mib": 256, "disk_mib": 2048}}
+			attempt := h.MustOp(admin, "beta.claim", ref)["attempt"]
+			h.MustOp(admin, "beta.complete", map[string]any{"sha256": digest, "attempt": attempt, "outcome": "success", "manifest": m})
+			args := map[string]any{"sha256": digest, "multiplier": 1}
+			if result := h.MustOp(user, "beta.inspect", ref); result["generic"] != false || result["needs_storage_credits"] != tc.paid {
+				t.Fatal(result)
+			}
+			if tc.paid {
+				wantError(t, h.Op(user, "beta.prepare", args), 409, "storage_credits_required")
+				if r := h.Op(user, "credits.buy", nil, "storage"); r.Status != 200 {
+					t.Fatal(r.Raw)
+				}
+			}
+			app := appOf(t, h.MustOp(user, "beta.prepare", args))["id"].(string)
+			path := uploadLink(t, h, user, app, nil)
+			uploaded := upload(t, h, path, body)
+			if uploaded.Status != 200 {
+				t.Fatal(uploaded.Raw)
+			}
+			deploy := map[string]any{"app": app, "release": uploaded.Result.Release.ID}
+			h.MustOp(user, "beta.deploy", deploy)
+			d, raw := desired(t, h, node)
+			if len(d.Apps) != 1 {
+				t.Fatal(raw)
+			}
+			got := d.Apps[0]
+			if got.ManagedCrew != tc.storage || got.SignInEmailEnabled != tc.email || (got.CrewOwnerEmail != "" && !got.PrivateOwnerEmail) != tc.owner || got.ProxyOnly != tc.paid || got.LocalOnly != (tc.storage && !tc.paid) {
+				t.Fatal(raw)
+			}
+			if tc.storage && !tc.paid {
+				if r := h.Op(user, "credits.buy", nil, "later"); r.Status != 200 {
+					t.Fatal(r.Raw)
+				}
+				before, _ := desired(t, h, node)
+				if !before.Apps[0].LocalOnly {
+					t.Fatal("top-up granted storage before redeployment")
+				}
+				h.MustOp(user, "beta.deploy", deploy)
+				after, _ := desired(t, h, node)
+				if !after.Apps[0].ProxyOnly || after.Apps[0].LocalOnly {
+					t.Fatal("redeployment did not grant proxy-only storage")
+				}
+			}
+		})
 	}
 }

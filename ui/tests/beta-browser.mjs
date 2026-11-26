@@ -70,6 +70,7 @@ try {
     page.on("pageerror", (e) => errors.push(e.message));
     let allowed = false;
     let inspectedGeneric = false;
+    let funded = false;
     const waitlistRequests = [];
     let firstDeployment = true;
     let deployed = false;
@@ -142,6 +143,13 @@ try {
           return send({
             result: { ...record, role: "user", admin: false, hosted: true },
           });
+        case "credits.get":
+          return send({result:{account:record.id, state:{balance:funded ? 500000000 : 0,paid:funded,trial_seconds:0},
+            settings:{pack:500,euro_micros_per_credit:10000},entries:[],apps:[]}});
+        case "credits.buy":
+          assert.ok(idempotency_key);
+          funded = true;
+          return send({result:{}});
         case "beta.probe_upload":
           assert.equal(input.sha256, genericDigest);
           return send({result:{path:"/api/drop/upload/inspection"}});
@@ -152,6 +160,7 @@ try {
             ? send({
                 result: {
                   name: app.name,
+                  needs_storage_credits: !funded,
                   version: "fixture",
                   multipliers: [1, 4, 8],
                   suggested_multiplier: 4,
@@ -314,6 +323,10 @@ try {
     assert.ok(await page.getByRole("button",{name:"Deploy app"}).isEnabled());
     await page.getByRole("button", {name:"Choose another app file"}).click();
     await page.getByLabel("App file", { exact: true }).setInputFiles(binary);
+    await page.getByRole("heading", {name: "PocketContext Crew fixture"}).waitFor();
+    assert.ok(await page.getByRole("button",{name:"Deploy app"}).isDisabled());
+    await page.getByRole("button",{name:/Buy 500 credits/}).click();
+    await page.getByRole("button",{name:/Buy 500 credits/}).waitFor({state:"hidden"});
     await page.getByRole("heading", {name: "PocketContext Crew fixture"}).waitFor();
     await page.getByLabel("App size").waitFor();
     assert.equal(await page.getByLabel("App size").inputValue(), "4");

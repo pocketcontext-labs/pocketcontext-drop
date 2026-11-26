@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import Brand from "./Brand";
+import Credits from "./Credits";
 import type { PublishedLegal } from "./api";
 import AppAddress, { appURL } from "./AppAddress";
 import { BetaLegalLinks } from "./BetaLegal";
@@ -29,6 +30,7 @@ function explain(e: unknown, fallback: string) {
       probe_pending: "Drop is checking this app file. Try again in a moment.",
       beta_no_capacity:
         "There is no space for this deployment right now. Please retry later.",
+      storage_credits_required: "This app requires platform S3. Buy credits to deploy it.",
       quota_exceeded: "This deployment would exceed your retained-disk allowance.",
       invalid_input:
         "This selection is unavailable. Check the app file and size again.",
@@ -436,6 +438,14 @@ export default function BetaDeploy({
     setDigest("");
     setFile(next);
   }
+  async function refreshStorageEntitlement() {
+    try {
+      const info = await dropApi.inspectBeta(digest);
+      if (mounted.current) setProduct(info);
+    } catch (e) {
+      if (mounted.current) setError(explain(e, "Could not refresh the storage balance. Try again."));
+    }
+  }
   async function deploy() {
     if (
       (!file && !stagedRelease) ||
@@ -508,6 +518,9 @@ export default function BetaDeploy({
             "Deployment could not finish. Check your connection and retry.",
           ),
         );
+        if (e instanceof OpError && e.code === "storage_credits_required") {
+          setProduct(info => info && ({...info, needs_storage_credits:true}));
+        }
         if (e instanceof OpError && e.status === 400 && !draft.app)
           setLocked(false);
       }
@@ -553,6 +566,10 @@ export default function BetaDeploy({
               {!product.generic && product.http_port && <p>HTTP port {product.http_port}.</p>}
               {!!product.requires?.length && <p>Required services: {product.requires.map(x => serviceNames[x]).join(", ")}.</p>}
               {!!product.optional?.length && <p>Optional services: {product.optional.map(x => serviceNames[x]).join(", ")}.</p>}
+              {product.needs_storage_credits && <>
+                <p>This app requires platform S3. Buy credits to continue with this file.</p>
+                <Credits admin={false} onPurchase={() => void refreshStorageEntitlement()} />
+              </>}
               <p>Local disk is a cache. Your app is responsible for backups.</p>
               {product.generic && <>
                 <p>This app has no valid Drop manifest. There is no guarantee it will start. It receives no platform S3 or email.</p>
@@ -590,7 +607,7 @@ export default function BetaDeploy({
               <button
                 className="primary"
                 disabled={
-                  busy || (product.generic && (!Number.isInteger(port) || port < 1 || port > 65535)) ||
+                  busy || product.needs_storage_credits || (product.generic && (!Number.isInteger(port) || port < 1 || port > 65535)) ||
                   (!file && !stagedRelease) ||
                   !product.multipliers.includes(size)
                 }

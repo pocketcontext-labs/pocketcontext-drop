@@ -31,12 +31,43 @@ func betaDisplayName(m dropapi.BetaManifest) string {
 	return m.App
 }
 
+func storageNeedsCredits(app core.App, owner string, m dropapi.BetaManifest) (bool, error) {
+	if !slices.Contains(m.Requires, "s3_replica") {
+		return false, nil
+	}
+	wallet, err := balanceOf(app, owner)
+	return wallet.Balance <= 0, err
+}
+
+func allowRequiredStorage(app core.App, owner string, m dropapi.BetaManifest) error {
+	needs, err := storageNeedsCredits(app, owner, m)
+	if err != nil {
+		return err
+	}
+	if needs {
+		return Conflict("storage_credits_required", "This app requires platform S3. Buy credits to deploy it.")
+	}
+	return nil
+}
+
+func allowBetaRelease(app core.App, owner, digest string) error {
+	m, err := betaRelease(app, digest)
+	if err != nil {
+		return err
+	}
+	return allowRequiredStorage(app, owner, m)
+}
+
 func betaInspect(c *Ctx, in *dropapi.BetaDigest) (any, error) {
 	m, err := betaRelease(c.App, in.SHA256)
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"name": betaDisplayName(m), "generic": m.Schema == "", "version": m.Version, "requires": m.Requires, "optional": m.Optional, "http_port": m.HTTPPort, "multipliers": crewBetaSizes, "suggested_multiplier": suggestedCrewSize(m)}, nil
+	needs, err := storageNeedsCredits(c.App, c.Auth.Id, m)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"needs_storage_credits": needs, "name": betaDisplayName(m), "generic": m.Schema == "", "version": m.Version, "requires": m.Requires, "optional": m.Optional, "http_port": m.HTTPPort, "multipliers": crewBetaSizes, "suggested_multiplier": suggestedCrewSize(m)}, nil
 }
 
 func betaPrepare(c *Ctx, in *dropapi.BetaPrepareInput) (any, error) {
@@ -47,14 +78,18 @@ func betaPrepare(c *Ctx, in *dropapi.BetaPrepareInput) (any, error) {
 	if !slices.Contains(crewBetaSizes, in.Multiplier) {
 		return nil, Invalid("multiplier", "Choose an available whole-number size for this release.")
 	}
+	if err := allowRequiredStorage(c.App, c.Auth.Id, m); err != nil {
+		return nil, err
+	}
 	cpu, mem, disk := (in.Multiplier+3)/4, in.Multiplier*256, in.Multiplier*2048
 	if servicesOf(c.App).Releases == nil {
 		return nil, releasesUnavailable()
 	}
 	generic := m.Schema == ""
 	features := slices.Concat(m.Requires, m.Optional)
+	runtime := runtimeFeatures{storage: slices.Contains(features, "s3_replica"), signInEmail: slices.Contains(features, "sign_in_email"), ownerEmail: slices.Contains(features, "verified_owner_email")}
 	kind := "ordinary"
-	if slices.Contains(features, "verified_owner_email") {
+	if runtime.storage || runtime.signInEmail || runtime.ownerEmail {
 		kind = "crew"
 	}
 	port := m.HTTPPort
@@ -70,11 +105,11 @@ func betaPrepare(c *Ctx, in *dropapi.BetaPrepareInput) (any, error) {
 	if len(slug) > 12 {
 		slug = slug[:12]
 	}
-	result, err := appCreate(c, &dropapi.AppCreateInput{
+	result, err := createApp(c, &dropapi.AppCreateInput{
 		Name: betaDisplayName(m), Slug: slug + "-" + core.GenerateDefaultRandomId(), Kind: kind, ExecutableName: m.App,
 		VCPU: &cpu, MemoryMiB: &mem, DiskMiB: &disk, Env: map[string]string{"PORT": strconv.Itoa(port)},
 		HTTPPort: &port, HookPort: &m.HookPort, HealthKind: "tcp",
-	})
+	}, runtime)
 	if err != nil {
 		return nil, err
 	}
@@ -84,11 +119,7 @@ func betaPrepare(c *Ctx, in *dropapi.BetaPrepareInput) (any, error) {
 	}
 	app.Set("generic_beta", generic)
 	app.Set("beta_digest", in.SHA256)
-	app.Set("sign_in_email_enabled", slices.Contains(features, "sign_in_email"))
-	if !slices.Contains(features, "s3_replica") {
-		app.Set("crew_enrollment", "")
-		app.Set("replica_sync_seconds", 0)
-	}
+	app.Set("required_s3", slices.Contains(m.Requires, "s3_replica"))
 	if err := c.App.Save(app); err != nil {
 		return nil, err
 	}
@@ -167,8 +198,7 @@ func betaDeploy(c *Ctx, in *dropapi.ReleaseDeployInput) (any, error) {
 	if digest == "" {
 		return nil, Invalid("app", "Select an app prepared through Drop Beta.")
 	}
-	_, err = betaRelease(c.App, digest)
-	if err != nil {
+	if err = allowBetaRelease(c.App, a.GetString("owner"), digest); err != nil {
 		return nil, err
 	}
 	size := a.GetInt("memory_mib") / 256

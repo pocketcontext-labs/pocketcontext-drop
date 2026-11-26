@@ -824,3 +824,18 @@ func TestOnlyExplicitDeletionPurgesKnownVolume(t *testing.T) {
 	}
 	assertNeverAbsent(t, next.Document)
 }
+
+func TestPrivateRecipientDoesNotExposeOwnerAddress(t *testing.T) {
+	app := App{CrewOwnerEmail: "owner@example.test", PrivateOwnerEmail: true, SignInEmailEnabled: true}
+	inst := renderInstance(app)
+	if inst.SignInEmail == nil || inst.SignInEmail.Recipient != app.CrewOwnerEmail {
+		t.Fatal("missing email service")
+	}
+	if _, ok := renderEnvironment(app)["DROP_OWNER_EMAIL"]; ok {
+		t.Fatal("mail capability also granted verified owner email")
+	}
+	app.SignInEmailEnabled = false
+	if inst := renderInstance(app); inst.SignInEmail != nil {
+		t.Fatal("undeclared email service")
+	}
+}

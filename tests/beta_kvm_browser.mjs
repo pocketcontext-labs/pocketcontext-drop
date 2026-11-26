@@ -92,6 +92,9 @@ try {
       await page.getByRole('checkbox', {name:/Beta Terms of Service/}).check();
       await page.getByRole('button', {name:'Email me a sign-in code'}).click();
       await page.getByLabel('Code from the email').fill(await readCode(path.join(directory, email)));
+      await page.getByText('This app requires platform S3.', {exact:false}).waitFor();
+      await page.getByRole('button',{name:/Buy 500 credits/}).click();
+      await page.getByRole('button',{name:/Buy 500 credits/}).waitFor({state:'hidden'});
       const sizePicker = page.getByLabel('App size');
       await sizePicker.waitFor();
       assert.equal(await sizePicker.inputValue(), '4');

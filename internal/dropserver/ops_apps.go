@@ -116,7 +116,7 @@ func (c *Ctx) appOut(r *core.Record, emails map[string]string) dropapi.App {
 	}
 	crewOwnerEmail := r.GetString("crew_owner_email")
 	kind := "ordinary"
-	if crewOwnerEmail != "" {
+	if crewOwnerEmail != "" && (r.GetString("beta_digest") == "" || r.GetString("executable_name") == "crew") {
 		kind = "crew"
 	}
 	syncInterval := ""
@@ -328,7 +328,18 @@ func cleanName(name string) (string, error) {
 	return name, nil
 }
 
+type runtimeFeatures struct {
+	storage     bool
+	signInEmail bool
+	ownerEmail  bool
+}
+
 func appCreate(c *Ctx, in *dropapi.AppCreateInput) (any, error) {
+	crew := in.Kind == "crew"
+	return createApp(c, in, runtimeFeatures{storage: crew, signInEmail: crew, ownerEmail: crew})
+}
+
+func createApp(c *Ctx, in *dropapi.AppCreateInput, features runtimeFeatures) (any, error) {
 	// Once self-service is configured, only beta.prepare may create apps for
 	// normal users. Existing, explicitly placed apps keep the operator workflow.
 	if !c.Admin && c.Spec.Name == "app.create" {
@@ -415,13 +426,16 @@ func appCreate(c *Ctx, in *dropapi.AppCreateInput) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		if services.AppDomain == "" || (wallet.Balance > 0 && (services.CrewReplicaBucket == "" || services.AWSRegion == "")) {
+		if services.AppDomain == "" || (features.storage && wallet.Balance > 0 && (services.CrewReplicaBucket == "" || services.AWSRegion == "")) {
 			return nil, Invalid("kind", "Configure the Crew replica bucket, AWS region and app domain before creating a Crew app.")
 		}
 		app.Set("crew_owner_email", email)
-		app.Set("crew_enrollment", "fresh")
-		app.Set("sign_in_email_enabled", true)
-		app.Set("replica_sync_seconds", appspec.DefaultReplicaSyncSeconds)
+		app.Set("private_owner_email", !features.ownerEmail)
+		app.Set("sign_in_email_enabled", features.signInEmail)
+		if features.storage {
+			app.Set("crew_enrollment", "fresh")
+			app.Set("replica_sync_seconds", appspec.DefaultReplicaSyncSeconds)
+		}
 	default:
 		return nil, Invalid("kind", "App kind must be ordinary or crew.")
 	}
@@ -610,7 +624,7 @@ func setState(c *Ctx, ref string, start bool) (any, error) {
 	state := appspec.StateStopped
 	if start {
 		if digest := app.GetString("beta_digest"); digest != "" {
-			if _, err := betaRelease(c.App, digest); err != nil {
+			if err := allowBetaRelease(c.App, app.GetString("owner"), digest); err != nil {
 				return nil, err
 			}
 		}
@@ -665,7 +679,7 @@ func appRestore(c *Ctx, in *dropapi.AppRestoreInput) (any, error) {
 		return nil, Conflict("app_deleting", "This app is being permanently deleted.")
 	}
 	if digest := app.GetString("beta_digest"); digest != "" {
-		if _, err := betaRelease(c.App, digest); err != nil {
+		if err := allowBetaRelease(c.App, app.GetString("owner"), digest); err != nil {
 			return nil, err
 		}
 	}

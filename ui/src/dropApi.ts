@@ -549,6 +549,7 @@ async function clearPlacement(app: string): Promise<{ cleared_node: string }> {
 
 export interface BetaRelease {
   generic?: boolean;
+  needs_storage_credits?: boolean;
   requires?: string[];
   optional?: string[];
   http_port?: number;

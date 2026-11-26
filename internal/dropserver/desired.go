@@ -117,6 +117,7 @@ func desiredApp(app core.App, record *core.Record, services Services) (dropapi.D
 	a := dropapi.DesiredApp{App: render.App{
 		GenericBeta:        record.GetBool("generic_beta"),
 		CrewOwnerEmail:     record.GetString("crew_owner_email"),
+		PrivateOwnerEmail:  record.GetBool("private_owner_email"),
 		SignInEmailEnabled: record.GetBool("sign_in_email_enabled"),
 
 		AppID:          nibAppID,
@@ -140,6 +141,9 @@ func desiredApp(app core.App, record *core.Record, services Services) (dropapi.D
 		err := app.DB().NewQuery("SELECT balance>0 AND NOT EXISTS(SELECT 1 FROM drop_credit_local_deploy WHERE app={:app} AND seq={:seq}) FROM drop_credit_accounts WHERE owner={:owner}").Bind(dbx.Params{"app": record.Id, "seq": record.GetInt("deployment_seq"), "owner": record.GetString("owner")}).Row(&eligible)
 		if err != nil {
 			return a, false, err
+		}
+		if !eligible && record.GetBool("required_s3") {
+			a.DesiredState = appspec.StateStopped
 		}
 		a.LocalOnly = !eligible
 		a.ProxyOnly = eligible

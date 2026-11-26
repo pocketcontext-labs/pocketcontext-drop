@@ -12,7 +12,7 @@ interface Ledger {
 }
 const credits = (micro: number) => (micro / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 6 });
 
-export default function Credits({ admin }: { admin: boolean }) {
+export default function Credits({ admin, onPurchase }: { admin: boolean; onPurchase?: () => void }) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [account, setAccount] = useState("");
   const [data, setData] = useState<Ledger | null>(null);
@@ -54,6 +54,7 @@ export default function Credits({ admin }: { admin: boolean }) {
       else await op("credits.buy", {}, pending.current.key);
       window.dispatchEvent(new Event("drop-credits-changed"));
       pending.current = null; setDelta(""); setBefore(0); refresh();
+      if (!admin) onPurchase?.();
     } catch (e) { setError(message(e)); }
     finally { setBusy(false); }
   }

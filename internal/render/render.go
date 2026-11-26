@@ -61,6 +61,7 @@ type App struct {
 	CrewReplicaBucket   string `json:"crewReplicaBucket,omitempty"`
 	AWSRegion           string `json:"awsRegion,omitempty"`
 	// CrewOwnerEmail is the immutable address Drop verified at creation.
+	PrivateOwnerEmail  bool   `json:"privateOwnerEmail,omitzero"`
 	CrewOwnerEmail     string `json:"crewOwnerEmail,omitempty"`
 	SignInEmailEnabled bool   `json:"signInEmailEnabled,omitzero"`
 	// ReplicaSyncSeconds is a managed Crew app's Litestream sync interval
@@ -356,7 +357,7 @@ func renderEnvironment(app App) map[string]string {
 	for _, s := range app.Secrets {
 		env[s.Name] = s.Value
 	}
-	if app.CrewOwnerEmail != "" {
+	if app.CrewOwnerEmail != "" && !app.PrivateOwnerEmail {
 		env["DROP_OWNER_EMAIL"] = app.CrewOwnerEmail
 	}
 	if app.ManagedCrew {
