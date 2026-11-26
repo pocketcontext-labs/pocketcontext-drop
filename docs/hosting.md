@@ -188,7 +188,7 @@ sqlite3 -readonly "$scratch/drop.db" 'PRAGMA integrity_check'
 
 For disaster recovery, fence the old Drop writer and its Litestream service. Restore into an empty project with a fresh private cache, verify integrity, and follow the hosted restore procedure above, including SSM reconciliation and a first start with `--hosted-restore`. Before enabling replication on the recovered instance, configure the new working path and a fresh replica prefix under `control/` to preserve the previous history.
 
-Run `deploy/drop-ax41/test-control-replica.py` with Python, Moto's server extra and Litestream 0.5.18 on PATH to exercise the same configuration against loopback S3.
+Run `deploy/drop-ax41/test-control-replica.py` after `make build` with Python, `aiosmtpd`, Moto's server extra and Litestream 0.5.18 on PATH to exercise the same configuration against loopback S3.
 
 ### Private Beta S3 pricing
 

@@ -19,10 +19,11 @@ out, err := render.Render(render.Input{HostID, DesiredSeq, Apps, Keep, Previous,
   `foreign_entries` and lists the ids; nothing is rendered. `ForeignAppIDs`
   gives the same list for `drop agent check` and agent start. The operator
   removes foreign entries; Drop never deletes what it did not create.
-- **Never `absent`.** An app in the previous document that the input no longer
-  names becomes a stopped tombstone (same deployment, no activation) with its
-  volume present. A previous document holding an absent entry, a checkpoint,
-  an export or a field Drop never writes is refused.
+- **Volume retention and confirmed deletion.** An app omitted from desired state
+  becomes a stopped tombstone with its volume present. Only the explicit
+  `deleted` list allows the agent to mark that app's matching, locally known
+  volume absent. The next report acknowledges removal after the runner accepts
+  the revision and both the instance and the data are gone.
 - **Bad apps fail alone** (`Rejected`, with field names, never values): the
   previous entry is kept unchanged, or the app is left out. `Keep` carries an
   app's previous entry over unchanged, for failed staging or secret
