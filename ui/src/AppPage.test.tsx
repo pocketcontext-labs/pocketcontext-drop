@@ -53,15 +53,14 @@ it("hides New app when the quota is reached", async () => {
   expect(screen.queryByRole("link", { name: "Deploy an app" })).not.toBeInTheDocument();
 });
 
-it("lets an admin create an app from #/apps/new and opens its page", async () => {
-  vi.spyOn(dropApi, "me").mockResolvedValue({ ...member, admin: true, role: "admin" });
+it("lets a local developer create an app from #/apps/new and opens its page", async () => {
+  vi.spyOn(dropApi, "me").mockResolvedValue({ ...member, hosted: false, admin: true, role: "admin" });
   history.replaceState(null, "", "/#/apps/new");
   const create = vi.spyOn(dropApi, "createApp").mockResolvedValue(app);
   render(<App />);
   fireEvent.change(await screen.findByLabelText("App name"), { target: { value: " Hello app " } });
   fireEvent.change(screen.getByLabelText("Slug"), { target: { value: "hello-app" } });
-  fireEvent.change(await screen.findByLabelText("App type"), { target: { value: "crew" } });
-  expect(screen.getByRole("spinbutton", {name: /Hooks port/})).toHaveValue(8081);
+  expect(screen.queryByLabelText("App type")).toBeNull();
   const port = screen.getByLabelText("HTTP port");
   expect(port).toHaveValue(8080);
   for (const value of ["0", "65536"]) {
@@ -73,7 +72,7 @@ it("lets an admin create an app from #/apps/new and opens its page", async () =>
   fireEvent.change(port, { target: { value: "1" } });
   fireEvent.click(screen.getByRole("button", { name: "Create app" }));
   await vi.waitFor(() => expect(location.hash).toBe(`#/apps/${id}`));
-  expect(create).toHaveBeenCalledWith(expect.objectContaining({ name: "Hello app", slug: "hello-app", kind: "crew", http_port: 1, hook_port: 8081, executable_name: "crew", desired_state: "on-request", health_kind: "tcp" }));
+  expect(create).toHaveBeenCalledWith(expect.objectContaining({ name: "Hello app", slug: "hello-app", kind: "ordinary", http_port: 1, hook_port: 0, executable_name: "server", desired_state: "on-request", health_kind: "tcp" }));
 });
 
 it("only offers ordinary apps on a local server", async () => {
@@ -254,9 +253,9 @@ it("shows an app's usage against its limits, with an estimate, and no limit form
   expect(screen.queryByRole("button", { name: "Save limits" })).not.toBeInTheDocument();
 });
 
-it("lets an admin override an app's soft limits", async () => {
+it("lets the local administrator override an app's soft limits", async () => {
   history.replaceState(null, "", `/#/apps/${id}/usage`);
-  vi.spyOn(dropApi, "me").mockResolvedValue({ ...member, role: "admin", admin: true });
+  vi.spyOn(dropApi, "me").mockResolvedValue({ ...member, hosted: false, role: "admin", admin: true });
   vi.spyOn(dropApi, "getApp").mockResolvedValue({ app, secrets: [] });
   vi.spyOn(dropApi, "getUsage").mockResolvedValue(usage);
   const set = vi.spyOn(dropApi, "setUsageLimits").mockResolvedValue({});

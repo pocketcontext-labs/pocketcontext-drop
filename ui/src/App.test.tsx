@@ -149,3 +149,31 @@ it("fills in the address of an invite's sign-in URL", async () => {
   render(<App />);
   expect(await screen.findByLabelText("Email")).toHaveValue("friend@example.test");
 });
+
+it("keeps hosted admins on administration pages and never reads tenant apps for them", async () => {
+  pb.authStore.save(token, user);
+  vi.spyOn(dropApi, "me").mockResolvedValue({...member, hosted:true, admin:true, role:"admin"});
+  vi.spyOn(api, "refreshSession").mockResolvedValue();
+  const appReads = vi.spyOn(dropApi, "listApps");
+  const list = vi.spyOn(dropApi, "listWaitlist").mockResolvedValue({entries:[],has_more:false});
+  render(<App />);
+  expect(await screen.findByText("No verified waitlist entries.")).toBeInTheDocument();
+  expect(list).toHaveBeenCalledWith("", 0, 50);
+  expect(screen.queryByRole("link", {name:"Apps"})).toBeNull();
+  expect(appReads).not.toHaveBeenCalled();
+  act(() => { location.hash = "#/apps/new"; window.dispatchEvent(new HashChangeEvent("hashchange")); });
+  expect(await screen.findByRole("heading", {name:"Not found"})).toBeInTheDocument();
+  expect(screen.queryByLabelText("App name")).toBeNull();
+});
+
+it("hides the admin waitlist from a hosted member including direct navigation", async () => {
+  pb.authStore.save(token, user);
+  vi.spyOn(dropApi,"me").mockResolvedValue({...member, hosted:true});
+  vi.spyOn(api,"refreshSession").mockResolvedValue();
+  const list = vi.spyOn(dropApi,"listWaitlist");
+  history.replaceState(null,"","/#/admin/waitlist");
+  render(<App />);
+  expect(await screen.findByRole("heading",{name:"Not found"})).toBeInTheDocument();
+  expect(screen.queryByRole("link",{name:"Waitlist"})).toBeNull();
+  expect(list).not.toHaveBeenCalled();
+});

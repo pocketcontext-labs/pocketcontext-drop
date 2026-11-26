@@ -132,9 +132,12 @@ export function BetaLanding({
     <main className="beta-landing">
       <header>
         <Brand />
+        <div className="waitlist-actions">
+        <a className="button secondary" href="#/waitlist">Join waitlist</a>
         <button className="secondary" onClick={onLogin}>
           Sign in
         </button>
+        </div>
       </header>
       <section className="beta-intro">
         <h1>Deploy your app</h1>

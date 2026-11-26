@@ -287,7 +287,7 @@ export default function Login({
             Email me a sign-in code
           </button>
         </form>
-        <p className="hint">Drop is invite-only.</p>
+        <p className="hint">Drop is invite-only. <a href="#/waitlist">Join waitlist</a></p>
       </>
     );
   }

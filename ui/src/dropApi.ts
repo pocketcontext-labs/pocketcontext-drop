@@ -9,6 +9,10 @@ export const OPS = [
   "event.list",
   "user.list",
   "user.set",
+  "waitlist.list",
+  "waitlist.invite",
+  "waitlist.resend",
+  "waitlist.revoke",
   "invite.create",
   "invite.list",
   "invite.revoke",
@@ -541,7 +545,24 @@ export interface BetaRelease {
   suggested_multiplier?: number;
 }
 
+export interface WaitlistEntry {
+  id: string;
+  email: string;
+  verified_at: string;
+  invited_at: string;
+  expires_at: string;
+  activated_at: string;
+  state: "waiting" | "open" | "used" | "expired" | "revoked";
+  account_id: string;
+  suspended: boolean;
+  mail_state: "" | "queued" | "sent" | "failed";
+}
+
 export const dropApi = {
+  listWaitlist: (search: string, offset: number, limit: number) =>
+    op<{entries: WaitlistEntry[]; has_more: boolean}>("waitlist.list", {search, offset, limit}),
+  changeWaitlist: (action: "invite" | "resend" | "revoke", id: string) =>
+    op<{ok: boolean}>(`waitlist.${action}`, {id}),
   inspectBeta: (sha256: string) => op<BetaRelease>("beta.inspect", { sha256 }),
   prepareBeta: (sha256: string, multiplier: number, key: string) =>
     op<{ app: App }>("beta.prepare", { sha256, multiplier }, key),

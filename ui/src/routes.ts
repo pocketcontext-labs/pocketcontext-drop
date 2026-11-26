@@ -14,6 +14,7 @@ export type View =
   | "app-new"
   | "app"
   | "connect"
+  | "admin-waitlist"
   | "admin-users"
   | "admin-nodes";
 export const viewHashes: Record<Exclude<View, "app">, string> = {
@@ -21,6 +22,7 @@ export const viewHashes: Record<Exclude<View, "app">, string> = {
   apps: "#/apps",
   "app-new": "#/apps/new",
   connect: "#/connect",
+  "admin-waitlist": "#/admin/waitlist",
   "admin-users": "#/admin/users",
   "admin-nodes": "#/admin/nodes",
 };
@@ -45,6 +47,7 @@ export function appHash(id: string, tab: AppTab = "overview"): string {
 /** The page of a hash; anything unknown is the apps page. */
 export function viewFromHash(hash: string): View {
   if (/^#\/connect(?:\?.*)?$/.test(hash)) return "connect";
+  if (hash === viewHashes["admin-waitlist"]) return "admin-waitlist";
   if (/^#\/admin\/users(?:\?.*)?$/.test(hash)) return "admin-users";
   if (/^#\/admin\/nodes(?:\?.*)?$/.test(hash)) return "admin-nodes";
   if (hash === viewHashes.deploy) return "deploy";
@@ -170,6 +173,7 @@ function isStoredReturn(hash: string): boolean {
   if (
     hash === viewHashes.deploy ||
     hash === viewHashes.connect ||
+    hash === viewHashes["admin-waitlist"] ||
     hash === viewHashes["admin-users"] ||
     hash === viewHashes["admin-nodes"] ||
     hash === viewHashes["app-new"]

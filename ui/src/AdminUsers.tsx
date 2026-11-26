@@ -248,10 +248,13 @@ function Users({
                 className="secondary"
                 disabled={locked || busy === user.id}
                 onClick={() =>
+                  window.confirm(user.suspended
+                    ? `Restore sign-in and app management for ${user.email}?`
+                    : `Suspend sign-in and app management for ${user.email}? Their deployed apps will keep serving.`) &&
                   void change(user, { suspended: !user.suspended })
                 }
               >
-                {user.suspended ? "Unsuspend" : "Suspend"}
+                {user.suspended ? "Restore access" : "Suspend"}
               </button>
             </li>
           );

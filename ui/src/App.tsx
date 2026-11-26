@@ -1,7 +1,9 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ACCOUNT_EMAIL, api, pb, type SignInOptions } from "./api";
 import AdminNodes from "./AdminNodes";
 import AdminUsers from "./AdminUsers";
+import AdminWaitlist from "./AdminWaitlist";
+import Waitlist, {isWaitlistLeave, waitlistHash} from "./Waitlist";
 import AppNew from "./AppNew";
 import AppPage from "./AppPage";
 import Apps from "./Apps";
@@ -94,22 +96,24 @@ function SignInGate({
   return <SignIn />;
 }
 
-function NotFound() {
+function NotFound({admin = false}: {admin?: boolean}) {
   return (
     <section className="panel" aria-labelledby="not-found-title">
       <h2 id="not-found-title">Not found</h2>
       <p>
-        This page does not exist. <a href={viewHashes.apps}>Go to your apps</a>.
+        This page does not exist. <a href={admin ? viewHashes["admin-waitlist"] : viewHashes.apps}>{admin ? "Go to the waitlist" : "Go to your apps"}</a>.
       </p>
     </section>
   );
 }
 
 function Workspace({
+  fromSignIn,
   view,
   hash,
   file,
 }: {
+  fromSignIn: boolean;
   view: View;
   hash: string;
   file: File | null;
@@ -123,7 +127,9 @@ function Workspace({
     let active = true;
     dropApi.me().then(
       (value) => {
-        if (active) setMe(value);
+        if (!active) return;
+        if (fromSignIn && value.hosted && value.admin) location.hash = viewHashes["admin-waitlist"];
+        setMe(value);
       },
       () => {
         if (active) setMeFailed(true);
@@ -132,44 +138,31 @@ function Workspace({
     return () => {
       active = false;
     };
-  }, []);
+  }, [fromSignIn]);
+  if (!me) return <Status>{meFailed ? <p role="alert">Could not load your account. Reload the page to retry.</p> : <p role="status">Loading account…</p>}</Status>;
+  const hostedAdmin = me.admin && me.hosted === true;
+  const defaultPage = ["", "#/", "#/login", "#/account"].includes(hash) || hash.startsWith("#/invite?");
+  const administration = view === "admin-waitlist" || view === "admin-users" || view === "admin-nodes";
   let page;
   const app = view === "app" ? appRouteFromHash(hash) : null;
-  if (view === "connect") page = <Connect />;
-  else if (view === "deploy" || (view === "app-new" && me?.hosted && !me.admin))
-    page = me ? (
-      <BetaDeploy initialFile={file} account={me.id} />
-    ) : (
-      <p role="status">Loading account…</p>
-    );
-  else if (view === "app-new")
-    page = me ? (
-      <AppNew hosted={me.hosted === true} />
-    ) : (
-      <p role="status">Loading account…</p>
-    );
+  if (hostedAdmin && (defaultPage || view === "admin-waitlist"))
+    page = <AdminWaitlist account={me.id} />;
+  else if (hostedAdmin && !administration) page = <NotFound admin />;
+  else if (administration) {
+    if (!me.admin || view === "admin-waitlist") page = <NotFound />;
+    else page = view === "admin-users" ? <AdminUsers me={me} /> : <AdminNodes />;
+  } else if (view === "connect") page = <Connect />;
+  else if (view === "deploy" || (view === "app-new" && me.hosted))
+    page = <BetaDeploy initialFile={file} account={me.id} />;
+  else if (view === "app-new") page = <AppNew hosted={false} />;
   else if (app) page = <AppPage key={app.id} id={app.id} tab={app.tab} />;
-  else if (view === "admin-users" || view === "admin-nodes")
-    page = me?.admin ? (
-      view === "admin-users" ? (
-        <AdminUsers me={me} />
-      ) : (
-        <AdminNodes />
-      )
-    ) : me || meFailed ? (
-      <NotFound />
-    ) : (
-      <p role="status" className="quiet">
-        Loading…
-      </p>
-    );
-  else page = <Apps beta={me?.hosted === true && !me.admin} />;
+  else page = <Apps beta={me.hosted === true} />;
   return (
     <div className="app">
       <header className="topbar">
         <Brand />
         <nav className="nav" aria-label="Pages">
-          <a
+          {!hostedAdmin && <a
             href={viewHashes.apps}
             aria-current={
               view === "apps" || view === "app" || view === "app-new"
@@ -178,10 +171,10 @@ function Workspace({
             }
           >
             Apps
-          </a>
-          {me?.hosted && me.admin && (
-            <a href={viewHashes.deploy} aria-current={view === "deploy" ? "page" : undefined}>
-              Deploy
+          </a>}
+          {hostedAdmin && (
+            <a href={viewHashes["admin-waitlist"]} aria-current={defaultPage || view === "admin-waitlist" ? "page" : undefined}>
+              Waitlist
             </a>
           )}
           {me?.admin && (
@@ -200,12 +193,12 @@ function Workspace({
               Nodes
             </a>
           )}
-          <a
+          {!hostedAdmin && <a
             href={viewHashes.connect}
             aria-current={view === "connect" ? "page" : undefined}
           >
             Connect
-          </a>
+          </a>}
         </nav>
         <div className="account">
           {email && <span title={email}>{email}</span>}
@@ -248,6 +241,8 @@ export default function App() {
   useEffect(() => {
     if (signedIn) return () => setFile(null);
   }, [signedIn]);
+  const initialIdentity = useRef(signedIn);
+  useEffect(() => { if (!signedIn) initialIdentity.current = ""; }, [signedIn]);
   const [emailLink, setEmailLink] = useState(() => readEmailLoginLink());
   const [view, setView] = useState(() => viewFromHash(location.hash));
   const [hash, setHash] = useState(() => location.hash);
@@ -335,6 +330,8 @@ export default function App() {
       </Status>
     );
   }
+  if (options.mode === "email" && (hash === waitlistHash || isWaitlistLeave(hash)))
+    return <Waitlist key={hash} hash={hash} />;
   if (returning)
     return (
       <Status>
@@ -385,5 +382,5 @@ export default function App() {
       </Status>
     );
   // Remount per session so no state survives a change of identity.
-  return <Workspace key={signedIn} view={view} hash={hash} file={file} />;
+  return <Workspace key={signedIn} fromSignIn={signedIn !== initialIdentity.current} view={view} hash={hash} file={file} />;
 }

@@ -1,5 +1,6 @@
 // Hosted reader flow using synthetic server responses. Run with pnpm test:beta-browser.
 import assert from "node:assert/strict";
+import { checkWaitlist } from "./waitlist-browser.mjs";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
@@ -57,6 +58,7 @@ try {
     { width: 1200, height: 800 },
     { width: 375, height: 812 },
   ]) {
+    await checkWaitlist(browser, origin, viewport);
     const context = await browser.newContext({ viewport, permissions: ["clipboard-read", "clipboard-write"] });
     const page = await context.newPage();
     const errors = [];

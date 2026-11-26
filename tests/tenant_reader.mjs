@@ -25,7 +25,7 @@ try {
       assert.equal((await response).status(), 404);
       await page.getByRole('heading', { name: 'Not found' }).waitFor();
       assert.equal(await page.getByText(other.name, { exact: true }).count(), 0);
-      for (const route of ['users', 'nodes']) {
+      for (const route of ['waitlist', 'users', 'nodes']) {
         await page.goto(origin + '/#/admin/' + route);
         await page.getByRole('heading', { name: 'Not found' }).waitFor();
       }
