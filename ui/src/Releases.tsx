@@ -79,7 +79,7 @@ export default function Releases({
     try {
       const link = await dropApi.createUploadLink(app.id, { note: note.trim(), activate });
       if (file.size > link.max_bytes) {
-        setError(`This server takes releases of at most ${mib(link.max_bytes)}.`);
+        setError(`The app file size limit is ${mib(link.max_bytes)}.`);
         return;
       }
       const result = await dropApi.uploadRelease(link.path, file, (loaded, total) => {
@@ -127,9 +127,8 @@ export default function Releases({
     <section aria-labelledby="releases-title">
       <h3 id="releases-title">Releases</h3>
       <p className="quiet">
-        A release is the app&apos;s executable: one static linux/amd64 ELF file
-        of at most {Math.floor(MAX_RELEASE_BYTES / 1048576)} MiB (for Go:{" "}
-        <code>CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build</code>). It runs as{" "}
+        For each release, upload a static Linux (amd64) ELF app file of at most {Math.floor(MAX_RELEASE_BYTES / 1048576)} MiB. To build one with Go, run{" "}
+        <code>CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build</code>. It runs as{" "}
         <code>{app.executable_name}</code> on port {app.http_port}.
       </p>
       <div
@@ -148,16 +147,16 @@ export default function Releases({
               <code>{file.name}</code> <span className="quiet">{mib(file.size)}</span>
             </>
           ) : (
-            "Drop the executable here, or"
+            "Drop the app file here, or"
           )}
         </p>
         <label className="button secondary">
-          {file ? "Choose another file" : "Choose a file"}
+          {file ? "Choose another app file" : "Choose an app file"}
           <input
             ref={input}
             className="visually-hidden"
             type="file"
-            aria-label="Release file"
+            aria-label="App file"
             disabled={disabled}
             onChange={(event) => void choose(event.target.files?.[0])}
           />
@@ -193,12 +192,12 @@ export default function Releases({
           disabled={disabled || !file || problem !== ""}
           onClick={() => void upload()}
         >
-          Upload release
+          Upload app file
         </button>
       </div>
       {progress && (
         <p className="progress">
-          <progress value={progress.loaded} max={progress.total || 1} aria-label="Upload progress" />{" "}
+          <progress value={progress.loaded} max={progress.total || 1} aria-label="App file upload progress" />{" "}
           <span className="quiet">{percent}%</span>
         </p>
       )}

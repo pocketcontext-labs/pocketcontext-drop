@@ -194,7 +194,7 @@ function Overview({
         {app.current_release ? (
           <>The current release is set in <a href={appHash(app.id, "releases")}>Releases</a>.</>
         ) : (
-          <>No release yet: upload the app&apos;s executable in <a href={appHash(app.id, "releases")}>Releases</a>.</>
+          <>To add the first release, upload an app file in <a href={appHash(app.id, "releases")}>Releases</a>.</>
         )}{" "}
         An admin places the app on a node; until then nothing runs.
       </p>

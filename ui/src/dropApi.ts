@@ -245,7 +245,7 @@ function readStart(file: Blob, bytes: number): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
-    reader.onerror = () => reject(new Error("The file could not be read."));
+    reader.onerror = () => reject(new Error("The app file could not be read."));
     reader.readAsArrayBuffer(file.slice(0, bytes));
   });
 }
@@ -259,27 +259,27 @@ export async function releaseFileProblem(
   file: Blob,
   max = MAX_RELEASE_BYTES,
 ): Promise<string> {
-  if (file.size === 0) return "The file is empty.";
+  if (file.size === 0) return "The app file is empty.";
   if (file.size > max)
-    return `The file is ${(file.size / 1048576).toFixed(1)} MiB; a release is at most ${Math.floor(max / 1048576)} MiB.`;
+    return `The app file is ${(file.size / 1048576).toFixed(1)} MiB. The limit is ${Math.floor(max / 1048576)} MiB.`;
   const h = await readStart(file, 64);
   const want =
-    "A release is a linux/amd64 ELF executable (for Go: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build)";
+    "Choose a Linux (amd64) ELF executable as the app file";
   if (h.length < 64 || h[0] !== 0x7f || h[1] !== 0x45 || h[2] !== 0x4c || h[3] !== 0x46)
-    return `${want}; this file is not an ELF executable.`;
+    return `${want}. This file is not an ELF executable.`;
   if (h[4] !== 2 || h[5] !== 1 || h[6] !== 1)
-    return `${want}; this ELF file is not 64-bit little-endian.`;
+    return `${want}. This ELF file is not 64-bit little-endian.`;
   if (h[7] !== 0 && h[7] !== 3)
-    return `${want}; this ELF file is for another operating system.`;
+    return `${want}. This ELF file is for another operating system.`;
   const type = h[16] | (h[17] << 8);
   if (type !== 2 && type !== 3)
-    return `${want}; this ELF file is not an executable.`;
+    return `${want}. This ELF file is not an executable.`;
   const machine = h[18] | (h[19] << 8);
   if (machine !== 0x3e) {
     const arch =
       { 0xb7: "arm64", 0x03: "386", 0xf3: "riscv64" }[machine] ??
       "another architecture";
-    return `${want}; this one is built for ${arch}.`;
+    return `${want}. This one is built for ${arch}.`;
   }
   return "";
 }

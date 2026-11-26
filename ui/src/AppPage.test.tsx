@@ -180,8 +180,8 @@ it("checks a release file locally like the server", async () => {
   expect(await releaseFileProblem(elf())).toBe("");
   expect(await releaseFileProblem(elf(256, 0xb7))).toMatch(/built for arm64/);
   expect(await releaseFileProblem(new File(["#!/bin/sh\n"], "script.sh"))).toMatch(/not an ELF executable/);
-  expect(await releaseFileProblem(new File([], "empty"))).toBe("The file is empty.");
-  expect(await releaseFileProblem(elf(), 100)).toMatch(/at most 0 MiB/);
+  expect(await releaseFileProblem(new File([], "empty"))).toBe("The app file is empty.");
+  expect(await releaseFileProblem(elf(), 100)).toMatch(/limit is 0 MiB/);
 });
 
 it("uploads a release through a one-time link with progress and deploys another", async () => {
@@ -201,20 +201,20 @@ it("uploads a release through a one-time link with progress and deploys another"
   });
   render(<App />);
   expect(await screen.findByText("Current")).toBeInTheDocument();
-  const upload = screen.getByRole("button", { name: "Upload release" });
+  const upload = screen.getByRole("button", { name: "Upload app file" });
   expect(upload).toBeDisabled();
   // A file for another architecture is refused before anything is sent.
-  fireEvent.change(screen.getByLabelText("Release file"), { target: { files: [elf(256, 0xb7)] } });
+  fireEvent.change(screen.getByLabelText("App file"), { target: { files: [elf(256, 0xb7)] } });
   expect(await screen.findByText(/built for arm64/)).toBeInTheDocument();
   expect(upload).toBeDisabled();
-  fireEvent.change(screen.getByLabelText("Release file"), { target: { files: [elf()] } });
+  fireEvent.change(screen.getByLabelText("App file"), { target: { files: [elf()] } });
   await vi.waitFor(() => expect(upload).toBeEnabled());
   fireEvent.change(screen.getByLabelText("Note (optional)"), { target: { value: " v2 " } });
   fireEvent.click(upload);
   expect(await screen.findByText(`Uploaded cccccccccccc. Deployed: new deployment d-${id}-dep-2.`)).toBeInTheDocument();
   expect(link).toHaveBeenCalledWith(id, { note: "v2", activate: true });
   expect(put).toHaveBeenCalledWith("/api/drop/upload/" + "T".repeat(32), expect.any(File), expect.any(Function));
-  expect(screen.getByLabelText("Upload progress")).toHaveAttribute("value", "256");
+  expect(screen.getByLabelText("App file upload progress")).toHaveAttribute("value", "256");
   fireEvent.click(screen.getByRole("button", { name: "Deploy" }));
   expect(await screen.findByText(`Deployed bbbbbbbbbbbb: new deployment d-${id}-dep-3.`)).toBeInTheDocument();
   expect(deploy).toHaveBeenCalledWith(id, older.id);

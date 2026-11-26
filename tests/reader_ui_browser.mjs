@@ -159,9 +159,9 @@ try {
   await page.getByRole('navigation', { name: 'App' }).getByRole('link', { name: 'Releases' }).click();
   assert.match(new URL(page.url()).hash, /^#\/apps\/[a-z0-9]{15}\/releases$/);
   await page.getByText('No releases yet.').waitFor();
-  await page.getByLabel('Release file').setInputFiles({ name: 'script.sh', mimeType: 'text/plain', buffer: Buffer.from('#!/bin/sh\necho hello\n') });
+  await page.getByLabel('App file').setInputFiles({ name: 'script.sh', mimeType: 'text/plain', buffer: Buffer.from('#!/bin/sh\necho hello\n') });
   await page.getByRole('alert').getByText(/not an ELF executable/).waitFor();
-  assert(await page.getByRole('button', { name: 'Upload release' }).isDisabled(), 'a file that is not a linux/amd64 executable cannot be uploaded');
+  assert(await page.getByRole('button', { name: 'Upload app file' }).isDisabled(), 'a file that is not a linux/amd64 executable cannot be uploaded');
   await page.screenshot({ path: path.join(screenshots, 'app-releases-light.png'), fullPage: true });
   await page.getByRole('link', { name: 'Overview' }).click();
   await page.getByText(/-dep-3$/).waitFor();

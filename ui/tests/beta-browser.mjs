@@ -210,10 +210,10 @@ try {
     }
     await page.goto(origin);
     await page.getByText("Beta", { exact: true }).waitFor();
-    await page.getByRole("button", { name: "Choose a file" }).focus();
+    await page.getByRole("button", { name: "Choose an app file" }).focus();
     assert.equal(
       await page
-        .getByRole("button", { name: "Choose a file" })
+        .getByRole("button", { name: "Choose an app file" })
         .evaluate((node) => node === document.activeElement),
       true,
     );
@@ -230,7 +230,7 @@ try {
       "https://privacy.example.test/beta",
     );
     await page
-      .locator("input[type=file]")
+      .getByLabel("App file", { exact: true })
       .setInputFiles({ ...binary, name: "crew.zip" });
     await page
       .getByRole("alert")
@@ -244,11 +244,11 @@ try {
         new DragEvent("drop", { bubbles: true, dataTransfer: dt }),
       );
     });
-    await page.getByRole("alert").filter({ hasText: "exactly one" }).waitFor();
+    await page.getByRole("alert").filter({ hasText: "Choose one app file at a time" }).waitFor();
     const modified = Buffer.from(bytes);
     modified[60] = 1;
     await page
-      .locator("input[type=file]")
+      .getByLabel("App file", { exact: true })
       .setInputFiles({ ...binary, buffer: modified });
     await page
       .getByLabel("Email", { exact: true })
@@ -274,8 +274,8 @@ try {
       .getByRole("alert")
       .filter({ hasText: "not supported" })
       .waitFor();
-    await page.getByRole("button", { name: "Choose another file" }).click();
-    await page.locator("input[type=file]").setInputFiles(binary);
+    await page.getByRole("button", { name: "Choose another app file" }).click();
+    await page.getByLabel("App file", { exact: true }).setInputFiles(binary);
     await page.getByLabel("App size").waitFor();
     assert.equal(await page.getByLabel("App size").inputValue(), "4");
     await page.getByLabel("App size").selectOption("1");

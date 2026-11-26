@@ -18,13 +18,13 @@ function explain(e: unknown, fallback: string) {
   if (e instanceof OpError) {
     const messages: Record<string, string> = {
       unsupported_binary:
-        "This release is not supported. Choose an approved PocketContext binary.",
-      probe_pending: "Drop is checking this release. Try again in a moment.",
+        "This app file is not supported. Choose one from an approved PocketContext app release.",
+      probe_pending: "Drop is checking this app file. Try again in a moment.",
       beta_no_capacity:
         "There is no space for this deployment right now. Please retry later.",
       quota_exceeded: "Your account has reached its app limit.",
       invalid_input:
-        "This selection is unavailable. Check the release and size again.",
+        "This selection is unavailable. Check the app file and size again.",
     };
     return messages[e.code] ?? fallback;
   }
@@ -49,8 +49,8 @@ function FilePicker({
     if (folder || !chosen || files.length !== 1) {
       setError(
         folder
-          ? "Choose the binary inside the folder."
-          : "Choose exactly one binary at a time.",
+          ? "Choose the app file inside the folder."
+          : "Choose one app file at a time.",
       );
       return;
     }
@@ -58,13 +58,13 @@ function FilePicker({
     let problem = "";
     try {
       if (/\.(zip|tar|gz|bz2|xz|tgz|7z)$/i.test(chosen.name))
-        problem = "Extract the archive and choose the binary inside.";
+        problem = "Extract the archive and choose the app file inside.";
       else if (chosen.size > MAX_RELEASE_BYTES)
-        problem = "Choose a binary of 90 MiB or less.";
+        problem = "Choose an app file of 90 MiB or less.";
       else if (await releaseFileProblem(chosen))
-        problem = "Choose a supported PocketContext Linux binary.";
+        problem = "Choose a Linux (amd64) app file from an approved PocketContext app release.";
     } catch {
-      problem = "The file could not be read. Please choose it again.";
+      problem = "The app file could not be read. Please choose it again.";
     }
     if (attempt !== generation.current) return;
     if (problem) setError(problem);
@@ -89,20 +89,20 @@ function FilePicker({
         onDragLeave={() => setDragging(false)}
         onDrop={drop}
       >
-        <strong>Drop your PocketContext binary here</strong>
-        <p>One executable, up to 90 MiB</p>
+        <strong>Drop your app file here</strong>
+        <p>Approved Linux (amd64) app files, up to 90 MiB</p>
         <button
           className="primary"
           onClick={() => input.current?.click()}
           disabled={disabled}
         >
-          Choose a file
+          Choose an app file
         </button>
         <input
           ref={input}
           type="file"
           hidden
-          aria-label="PocketContext binary"
+          aria-label="App file"
           disabled={disabled}
           onChange={(event) => {
             void select(event.target.files);
@@ -140,10 +140,9 @@ export function BetaLanding({
         </div>
       </header>
       <section className="beta-intro">
-        <h1>Deploy your app</h1>
+        <h1>Deploy your PocketContext app</h1>
         <p>
-          Choose your PocketContext binary to get started. An invitation is
-          required to deploy.
+          You need an invitation to deploy.
         </p>
         <FilePicker onSelect={onSelect} />
         <BetaLegalLinks documents={documents} />
@@ -166,7 +165,7 @@ const phases: Record<string, string> = {
   starting: "Starting your app",
   unknown: "Waiting for a status update",
   unplaced: "Waiting for space",
-  no_release: "Waiting for a release",
+  no_release: "Waiting for an app file",
   running: "Checking the app address",
   sleeping: "Checking the app address",
 };
@@ -359,7 +358,7 @@ export default function BetaDeploy({
             if (sha && sha !== selected) {
               if (active)
                 setError(
-                  "Choose the same PocketContext release used to start this deployment.",
+                  "Choose the same app file you used to start this deployment.",
                 );
               return;
             }
@@ -386,7 +385,7 @@ export default function BetaDeploy({
         } catch (e) {
           if (active)
             setError(
-              explain(e, "Could not check this file. Please try again."),
+              explain(e, "Could not check this app file. Please try again."),
             );
         }
       };
@@ -438,7 +437,7 @@ export default function BetaDeploy({
       }
       if (!mounted.current) return;
       if (!draft.release && file) {
-        setAction("Uploading binary…");
+        setAction("Uploading app file…");
         setUpload(0);
         const link = await dropApi.createUploadLink(draft.app, {
           activate: false,
@@ -488,13 +487,13 @@ export default function BetaDeploy({
   }
   return (
     <section className="panel beta-flow">
-      <h1>{prepared ? "Resume deployment" : "Deploy your app"}</h1>
+      <h1>{prepared ? "Resume deployment" : "Deploy your PocketContext app"}</h1>
       <AppAddress hostname={hostname} />
       {prepared && !file && !product && !error && (
-        <p role="status">Checking your upload…</p>
+        <p role="status">Checking your app file…</p>
       )}
       {prepared && product && !stagedRelease && !file && (
-        <p>Select your original binary to finish the upload.</p>
+        <p>Select your original app file to finish the upload.</p>
       )}
       {!file && !stagedRelease && (!prepared || product) && (
         <FilePicker onSelect={setFile} />
@@ -504,10 +503,10 @@ export default function BetaDeploy({
           <p className="beta-filename">{file.name}</p>
           {!locked && (
             <button className="link" onClick={() => setFile(null)}>
-              Choose another file
+              Choose another app file
             </button>
           )}
-          {!product && !error && <p role="status">Checking release…</p>}
+          {!product && !error && <p role="status">Checking app file…</p>}
         </>
       )}
       {product && (
@@ -558,7 +557,7 @@ export default function BetaDeploy({
               </button>
             </>
           ) : (
-            <p>No sizes are available for this release on your account.</p>
+            <p>No sizes are available for this PocketContext app on your account.</p>
           )}
         </>
       )}
@@ -567,7 +566,7 @@ export default function BetaDeploy({
           {action}{" "}
           {upload !== null && (
             <>
-              <progress aria-label="Upload progress" value={upload} max={100} />{" "}
+              <progress aria-label="App file upload progress" value={upload} max={100} />{" "}
               {upload}%
             </>
           )}
