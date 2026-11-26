@@ -22,3 +22,10 @@
    - Deploy a Crew for Drop guest that supports the endpoint (0.45.4-drop.3 or later) to every managed Crew app on the node.
    - Last, set `DROP_AGENT_HOST_SERVICES=s3` in the agent environment and restart the agent.
 4. Check that the Crew apps' nibrunner entries carry `hostServices.s3` and no `AWS_WORKLOAD_IDENTITY`, that their token files are gone, and that their writes still reach the replica bucket.
+
+## From 0.4.0 to 0.5.0
+
+1. Back up the hosted project before applying the Beta catalog and terms migrations. Keep the old binary and follow the hosted restore procedure if reverting the database.
+2. Upgrade the node agents. Install the NibRunner release with the manifest probe on the inspection host and its matching guest image. Nodes offering fractional sizes must report support for quarter-core CPU quotas.
+3. Publish and configure the verified terms and privacy notice before admitting Beta customers. Set `DROP_BETA_NODES` to eligible nodes with tenant isolation, managed Crew storage and sign-in email configured. The operator-only drop-ax41 host is ineligible while SMT is active.
+4. Admit the independently verified Crew release digest and run the [release inspection](ops.md#beta-release-admission-and-deployment). Check an invited user's account activation, upload and HTTPS deployment on an eligible host.

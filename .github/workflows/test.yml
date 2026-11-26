@@ -60,6 +60,7 @@ jobs:
       - name: Development reader browser regression
         run: |
           pnpm --dir ui exec playwright install --with-deps chromium
+          pnpm --dir ui test:beta-browser
           node tests/ui_dev_browser.mjs --binary "$EXE"
           node tests/reader_ui_browser.mjs --binary "$EXE"
           DROP_TEST_BROWSER=1 go test -tags "$(cat build-tags.txt)" -run TestTenantReader -count=1 ./tests

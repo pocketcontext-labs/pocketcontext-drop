@@ -2,6 +2,8 @@
 
 PocketContext Drop: a private, invite-only service that runs people's apps (one Linux executable each) on a PocketContext-managed host. It builds on the shared library [pocketcontext-core](https://github.com/pocketcontext-labs/pocketcontext-core), pinned to an exact release in `go.mod`, and is one Go executable with nothing else needed at run time: a server on PocketBase with hosted multi-account mode (email sign-in, remote MCP with OAuth) behind a TLS-terminating proxy, a browser reader, a command-line client and an agent skill for Claude Code, Codex and Antigravity.
 
+**[Drop 0.5.0](docs/releases/0.5.0.md)** adds the invite-only Beta deployment flow, a digest-based manifest cache and automatic placement on eligible hosts. See the [Beta release admission guide](docs/ops.md#beta-release-admission-and-deployment).
+
 **[Drop 0.4.0](docs/releases/0.4.0.md)** keeps AWS credentials out of managed Crew guests: a node S3 proxy signs again with the app's own session and enforces limits in real time. See [host services](docs/agent.md#host-services).
 
 **[Drop 0.3.0](docs/releases/0.3.0.md)** meters each app's S3 use from the replica bucket's access logs and inventory, with monthly soft and hard limits, a Usage tab and a Crew replica sync interval setting. See [usage metering](docs/hosting.md#usage-metering).
