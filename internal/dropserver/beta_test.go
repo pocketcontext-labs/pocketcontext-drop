@@ -154,3 +154,26 @@ func TestBetaConcurrentInspectionAndNegativeCache(t *testing.T) {
 	}
 	wantError(t, h.Op(admin, "beta.inspect", ref), 409, "unsupported_binary")
 }
+
+func TestBetaSuggestionUsesReleaseProfile(t *testing.T) {
+	h := droptest.NewHosted(t, droptest.Options{})
+	admin := h.Token(h.Owner())
+	for i, profile := range []struct{ memory, cpu, disk, want int }{
+		{1, 1, 1, 1}, {1025, 1, 1, 5}, {1, 2, 12289, 7}, {1, 20, 1, 8},
+	} {
+		digest := sha(droptest.ELF(4096, byte(i)))
+		ref := map[string]any{"sha256": digest}
+		h.MustOp(admin, "beta.approve", ref)
+		attempt := h.MustOp(admin, "beta.claim", ref)["attempt"]
+		var m dropapi.BetaManifest
+		if err := json.Unmarshal([]byte(validCrewManifest), &m); err != nil {
+			t.Fatal(err)
+		}
+		m.Minimum.MemoryMiB, m.Minimum.CPUQuarters, m.Minimum.DiskMiB = profile.memory, profile.cpu, profile.disk
+		h.MustOp(admin, "beta.complete", map[string]any{"sha256": digest, "attempt": attempt, "outcome": "success", "manifest": m})
+		r := h.MustOp(admin, "beta.inspect", ref)
+		if num(r["suggested_multiplier"]) != profile.want || len(r["multipliers"].([]any)) != 8 {
+			t.Fatal(r)
+		}
+	}
+}

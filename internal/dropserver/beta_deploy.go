@@ -11,12 +11,21 @@ import (
 // Each unit buys 256 MiB, 2 GiB of disk and one quarter of a core.
 var crewBetaSizes = []int{1, 2, 3, 4, 5, 6, 7, 8}
 
+func suggestedCrewSize(m dropapi.BetaManifest) int {
+	for _, size := range crewBetaSizes {
+		if size >= m.Minimum.CPUQuarters && size*256 >= m.Minimum.MemoryMiB && size*2048 >= m.Minimum.DiskMiB {
+			return size
+		}
+	}
+	return crewBetaSizes[len(crewBetaSizes)-1]
+}
+
 func betaInspect(c *Ctx, in *dropapi.BetaDigest) (any, error) {
 	m, err := betaRelease(c.App, in.SHA256)
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"name": "PocketContext Crew", "version": m.Version, "multipliers": crewBetaSizes, "suggested_multiplier": 4}, nil
+	return map[string]any{"name": "PocketContext Crew", "version": m.Version, "multipliers": crewBetaSizes, "suggested_multiplier": suggestedCrewSize(m)}, nil
 }
 
 func betaPrepare(c *Ctx, in *dropapi.BetaPrepareInput) (any, error) {
