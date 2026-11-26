@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 
+	"ganigeorgiev.com/pocketbase/dbx"
+
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/awsx"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropserver"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/droptest"
@@ -38,7 +40,14 @@ func TestConfirmedAppDeletion(t *testing.T) {
 	if r := h.Op(owner, "app.delete", map[string]any{"app": app, "confirm_slug": "keep-me"}); r.Status != 400 {
 		t.Fatal(r.Raw)
 	}
+	if _, err := h.App.DB().NewQuery("INSERT INTO drop_credit_holds VALUES ({:app},'trial','on-request')").Bind(dbx.Params{"app": app}).Execute(); err != nil {
+		t.Fatal(err)
+	}
 	h.MustOp(owner, "app.delete", args)
+	var held int
+	if err := h.App.DB().NewQuery("SELECT COUNT(*) FROM drop_credit_holds WHERE app={:app}").Bind(dbx.Params{"app": app}).Row(&held); err != nil || held != 0 {
+		t.Fatal("top-up could revive deletion", err)
+	}
 	if r := h.Op(owner, "app.restore", map[string]any{"app": app}); r.Status != 409 {
 		t.Fatal(r.Raw)
 	}

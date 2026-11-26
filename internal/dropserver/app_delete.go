@@ -54,6 +54,10 @@ func deleteApp(c *Ctx, in *dropapi.AppDeleteInput) (any, error) {
  UNION SELECT json_extract(detail,'$.previous_node') FROM events WHERE app={:app} AND action='placement.set')`, params); err != nil {
 		return nil, err
 	}
+	// A top-up must never restart an app after its owner confirms deletion.
+	if _, err := c.App.DB().Delete("drop_credit_holds", dbx.HashExp{"app": a.Id}).Execute(); err != nil {
+		return nil, err
+	}
 	a.Set("archived", true)
 	a.Set("archived_at", time.Now().UTC())
 	a.Set("desired_state", "stopped")
