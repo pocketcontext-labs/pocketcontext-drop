@@ -5,7 +5,8 @@ export default function Brand() {
   return (
     <div className="product-brand">
       <img src={logo} width="32" height="32" alt="" />
-      <span>Drop</span>
+      <span>PocketContext <span>Drop</span></span>
+      <span className="beta-ribbon">Beta</span>
     </div>
   );
 }

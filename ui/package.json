@@ -8,7 +8,8 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:beta-browser": "node tests/beta-browser.mjs"
   },
   "dependencies": {
     "pocketbase": "^0.28.1",

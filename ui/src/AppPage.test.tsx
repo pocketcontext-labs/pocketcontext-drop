@@ -40,17 +40,18 @@ it("lists the apps with the quota and links each to its page", async () => {
   render(<App />);
   expect(await screen.findByRole("link", { name: "Hello app" })).toHaveAttribute("href", `#/apps/${id}`);
   expect(screen.getByText("1 of 3 apps")).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "New app" })).toHaveAttribute("href", "#/apps/new");
+  expect(screen.getByRole("link", { name: "Deploy an app" })).toHaveAttribute("href", "#/deploy");
 });
 
 it("hides New app when the quota is reached", async () => {
   vi.spyOn(dropApi, "listApps").mockResolvedValue({ apps: [app, app, app].map((a, i) => ({ ...a, id: `app00000000000${i}` })), quota: { used: 3, limit: 3, unlimited: false }, has_more: false });
   render(<App />);
   expect(await screen.findByText("Quota reached")).toBeInTheDocument();
-  expect(screen.queryByRole("link", { name: "New app" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Deploy an app" })).not.toBeInTheDocument();
 });
 
-it("creates an app from #/apps/new and opens its page", async () => {
+it("lets an admin create an app from #/apps/new and opens its page", async () => {
+  vi.spyOn(dropApi, "me").mockResolvedValue({ ...member, admin: true, role: "admin" });
   history.replaceState(null, "", "/#/apps/new");
   const create = vi.spyOn(dropApi, "createApp").mockResolvedValue(app);
   render(<App />);

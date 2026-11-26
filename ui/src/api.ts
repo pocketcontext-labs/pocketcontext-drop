@@ -238,20 +238,24 @@ export async function requestEmailLogin(email: string): Promise<string> {
 export async function loginEmail(
   otpId: string,
   password: string,
+  termsVersion?: string,
 ): Promise<void> {
   await signIn((client) =>
-    client.collection("users").authWithOTP(otpId, password),
+    client.collection("users").authWithOTP(otpId, password, {
+      headers: termsVersion ? { "X-Drop-Accept-Terms": termsVersion } : {},
+    }),
   );
 }
 /** Redeems the 6-digit code from the sign-in email, for the app that asked for it. */
 export async function loginEmailCode(
   otpId: string,
   code: string,
+  termsVersion?: string,
 ): Promise<void> {
   await signIn((client) =>
     client.send<RecordAuthResponse>(
       "/api/collections/users/auth-with-otp-code",
-      { method: "POST", body: { otpId, code } },
+      { method: "POST", body: { otpId, code }, headers: termsVersion ? { "X-Drop-Accept-Terms": termsVersion } : {} },
     ),
   );
 }

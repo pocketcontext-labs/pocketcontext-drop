@@ -20,6 +20,7 @@ import {
 } from "./dropApi";
 import { message } from "./errors";
 import Releases from "./Releases";
+import BetaDeploy, { BetaStatus } from "./BetaDeploy";
 import UsagePanel from "./Usage";
 import { appHash, viewHashes, type AppTab } from "./routes";
 
@@ -754,6 +755,9 @@ export default function AppPage({ id, tab }: { id: string; tab: AppTab }) {
     setApp(next);
     setVersion((v) => v + 1);
   };
+  if (app?.beta_managed && !app.archived && !app.current_release)
+    return <BetaDeploy key={app.id} account={app.owner} initialFile={null} prepared={app} onComplete={() => void load()} />;
+  if (app?.beta_managed) return <BetaStatus id={app.id} name={app.name} release={app.current_release} />;
   if (missing)
     return (
       <section className="panel" aria-labelledby="not-found-title">

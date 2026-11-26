@@ -9,6 +9,7 @@
 // to sign in and come back).
 
 export type View =
+  | "deploy"
   | "apps"
   | "app-new"
   | "app"
@@ -16,6 +17,7 @@ export type View =
   | "admin-users"
   | "admin-nodes";
 export const viewHashes: Record<Exclude<View, "app">, string> = {
+  deploy: "#/deploy",
   apps: "#/apps",
   "app-new": "#/apps/new",
   connect: "#/connect",
@@ -45,6 +47,7 @@ export function viewFromHash(hash: string): View {
   if (/^#\/connect(?:\?.*)?$/.test(hash)) return "connect";
   if (/^#\/admin\/users(?:\?.*)?$/.test(hash)) return "admin-users";
   if (/^#\/admin\/nodes(?:\?.*)?$/.test(hash)) return "admin-nodes";
+  if (hash === viewHashes.deploy) return "deploy";
   if (hash === viewHashes["app-new"]) return "app-new";
   if (appRouteFromHash(hash)) return "app";
   return "apps";
@@ -165,6 +168,7 @@ export function rememberLoginReturn(hash: string) {
 /** Only the exact forms loginReturnHash writes; anything else in storage is refused. */
 function isStoredReturn(hash: string): boolean {
   if (
+    hash === viewHashes.deploy ||
     hash === viewHashes.connect ||
     hash === viewHashes["admin-users"] ||
     hash === viewHashes["admin-nodes"] ||

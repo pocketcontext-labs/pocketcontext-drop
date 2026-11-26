@@ -6,6 +6,7 @@ import AppNew from "./AppNew";
 import AppPage from "./AppPage";
 import Apps from "./Apps";
 import Brand from "./Brand";
+import BetaDeploy, { BetaLanding } from "./BetaDeploy";
 import Connect from "./Connect";
 import { dropApi, type Me } from "./dropApi";
 import Login from "./Login";
@@ -54,7 +55,16 @@ function Status({ children }: { children: React.ReactNode }) {
 }
 
 /** Email sign-in on the hosted origin; the project's password locally. */
-function SignInGate() {
+function SignInGate({
+  hash,
+  file,
+  onSelect,
+}: {
+  hash: string;
+  file: File | null;
+  onSelect: (file: File) => void;
+}) {
+  const [login, setLogin] = useState(false);
   const [mode, setMode] = useState<AuthMode | null>(null);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -73,8 +83,27 @@ function SignInGate() {
       active = false;
     };
   }, [attempt]);
-  if (mode === "email")
-    return <Login initialEmail={inviteEmailFromHash(location.hash)} />;
+  if (mode === "email") {
+    const landing = ["", "#/", viewHashes.deploy].includes(hash);
+    if (landing && !login && !file)
+      return (
+        <BetaLanding
+          onLogin={() => setLogin(true)}
+          onSelect={(chosen) => {
+            onSelect(chosen);
+            location.hash = viewHashes.deploy;
+          }}
+        />
+      );
+    return (
+      <Login
+        initialEmail={inviteEmailFromHash(hash)}
+        betaEnrollment={
+          !!file || hash === viewHashes.deploy || !!inviteEmailFromHash(hash)
+        }
+      />
+    );
+  }
   if (mode === "password") return <SignIn />;
   return (
     <Status>
@@ -108,7 +137,15 @@ function NotFound() {
   );
 }
 
-function Workspace({ view, hash }: { view: View; hash: string }) {
+function Workspace({
+  view,
+  hash,
+  file,
+}: {
+  view: View;
+  hash: string;
+  file: File | null;
+}) {
   const email = accountEmail();
   // The account's role decides which pages it has; the server checks it on
   // every operation regardless.
@@ -131,7 +168,18 @@ function Workspace({ view, hash }: { view: View; hash: string }) {
   let page;
   const app = view === "app" ? appRouteFromHash(hash) : null;
   if (view === "connect") page = <Connect />;
-  else if (view === "app-new") page = <AppNew hosted={me?.hosted === true} />;
+  else if (view === "deploy" || (view === "app-new" && me?.hosted && !me.admin))
+    page = me ? (
+      <BetaDeploy initialFile={file} account={me.id} />
+    ) : (
+      <p role="status">Loading account…</p>
+    );
+  else if (view === "app-new")
+    page = me ? (
+      <AppNew hosted={me.hosted === true} />
+    ) : (
+      <p role="status">Loading account…</p>
+    );
   else if (app) page = <AppPage key={app.id} id={app.id} tab={app.tab} />;
   else if (view === "admin-users" || view === "admin-nodes")
     page = me?.admin ? (
@@ -147,7 +195,7 @@ function Workspace({ view, hash }: { view: View; hash: string }) {
         Loading…
       </p>
     );
-  else page = <Apps />;
+  else page = <Apps beta={me?.hosted === true && !me.admin} />;
   return (
     <div className="app">
       <header className="topbar">
@@ -163,6 +211,11 @@ function Workspace({ view, hash }: { view: View; hash: string }) {
           >
             Apps
           </a>
+          {me?.hosted && me.admin && (
+            <a href={viewHashes.deploy} aria-current={view === "deploy" ? "page" : undefined}>
+              Deploy
+            </a>
+          )}
           {me?.admin && (
             <a
               href={viewHashes["admin-users"]}
@@ -203,10 +256,17 @@ function Workspace({ view, hash }: { view: View; hash: string }) {
 }
 
 export default function App() {
+  const [file, setFile] = useState<File | null>(null);
   const signedIn = useSyncExternalStore(subscribe, identity, () => "");
+  useEffect(() => {
+    if (signedIn) return () => setFile(null);
+  }, [signedIn]);
   const [emailLink, setEmailLink] = useState(() => readEmailLoginLink());
   const [view, setView] = useState(() => viewFromHash(location.hash));
   const [hash, setHash] = useState(() => location.hash);
+  useEffect(() => {
+    if (signedIn && hash !== viewHashes.deploy) setFile(null);
+  }, [signedIn, hash]);
   const [signinHash, setSigninHash] = useState(currentSigninHash);
   const [returning, setReturning] = useState(false);
   const [checkFailed, setCheckFailed] = useState(false);
@@ -291,7 +351,8 @@ export default function App() {
         }}
       />
     );
-  if (!signedIn) return <SignInGate />;
+  if (!signedIn)
+    return <SignInGate hash={hash} file={file} onSelect={setFile} />;
   if (oauthTarget)
     return (
       <Status>
@@ -313,5 +374,5 @@ export default function App() {
       </Status>
     );
   // Remount per session so no state survives a change of identity.
-  return <Workspace key={signedIn} view={view} hash={hash} />;
+  return <Workspace key={signedIn} view={view} hash={hash} file={file} />;
 }

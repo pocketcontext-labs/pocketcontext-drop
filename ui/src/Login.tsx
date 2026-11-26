@@ -1,6 +1,13 @@
 import { useRef, useState, type ClipboardEvent, type FormEvent } from "react";
 import { api } from "./api";
 import Brand from "./Brand";
+import {
+  BetaLegalLinks,
+  betaPrivacy,
+  betaTerms,
+  betaTermsVersion,
+  betaEnrollmentOpen,
+} from "./BetaLegal";
 import { message } from "./errors";
 import {
   clearLoginReturn,
@@ -33,12 +40,15 @@ export default function Login({
   emailLink,
   onComplete,
   initialEmail = "",
+  betaEnrollment = false,
 }: {
   emailLink?: EmailLoginLink;
   onComplete?: () => void;
   /** The address of an invite's sign-in URL. */
   initialEmail?: string;
+  betaEnrollment?: boolean;
 }) {
+  const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [sentTo, setSentTo] = useState("");
@@ -61,6 +71,7 @@ export default function Login({
   };
   const email = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (betaEnrollment && betaEnrollmentOpen && !accepted) return;
     const form = new FormData(event.currentTarget);
     const value = String(form.get("email"));
     const hash = location.hash;
@@ -85,7 +96,9 @@ export default function Login({
     redeeming.current = true;
     void run(async () => {
       try {
-        await api.loginEmailCode(otpId, value);
+        if (accepted && betaEnrollmentOpen)
+          await api.loginEmailCode(otpId, value, betaTermsVersion);
+        else await api.loginEmailCode(otpId, value);
       } catch (e) {
         setCode("");
         throw e;
@@ -108,6 +121,7 @@ export default function Login({
     enterCode(event.clipboardData.getData("text"));
   };
   const newCode = () => {
+    setAccepted(false);
     setSentTo("");
     setOtpId("");
     setCode("");
@@ -117,20 +131,63 @@ export default function Login({
     void run(async () => {
       if (!link) return;
       try {
-        await api.loginEmail(link.otpId, link.password);
-      } catch {
+        if (accepted && betaEnrollmentOpen)
+          await api.loginEmail(link.otpId, link.password, betaTermsVersion);
+        else await api.loginEmail(link.otpId, link.password);
+      } catch (error) {
+        const code = (error as { response?: { code?: string } })?.response
+          ?.code;
+        if (code === "terms_required" || code === "beta_activation_closed") {
+          setLink(undefined);
+          setError(
+            code === "terms_required"
+              ? "Account activation requires the current Beta terms. Review them and request a new code."
+              : "New Beta activation is paused. Existing accounts can still sign in.",
+          );
+          return;
+        }
         setLinkFailed(true);
         return;
       }
       setLink(undefined);
       onComplete?.();
     });
+  const legal = betaEnrollmentOpen ? (
+    <>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={accepted}
+          onChange={(event) => setAccepted(event.target.checked)}
+        />
+        <span>
+          I accept the{" "}
+          <a href={betaTerms} target="_blank" rel="noreferrer">
+            Beta Terms of Service
+          </a>{" "}
+          for account activation.
+        </span>
+      </label>
+      <p className="hint">
+        The{" "}
+        <a href={betaPrivacy} target="_blank" rel="noreferrer">
+          Privacy Policy
+        </a>{" "}
+        explains how Drop uses your information.
+      </p>
+    </>
+  ) : betaEnrollment ? (
+    <p className="hint">
+      New Beta activation is paused. Existing accounts can still sign in.
+    </p>
+  ) : null;
   let body;
   if (link) {
     body =
       link.otpId && !linkFailed ? (
         <>
           <h1 id="sign-in-title">Log in to Drop</h1>
+          {legal}
           <button
             className="primary"
             autoFocus
@@ -224,7 +281,13 @@ export default function Login({
               defaultValue={address}
             />
           </label>
-          <button className="primary" disabled={busy}>
+          {legal}
+          <button
+            className="primary"
+            disabled={
+              busy || (betaEnrollment && betaEnrollmentOpen && !accepted)
+            }
+          >
             Email me a sign-in code
           </button>
         </form>
@@ -237,6 +300,7 @@ export default function Login({
       <section className="card" aria-labelledby="sign-in-title">
         <Brand />
         {body}
+        <BetaLegalLinks />
         {error && (
           <p role="alert" className="error">
             {error}

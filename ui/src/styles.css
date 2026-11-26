@@ -1,30 +1,30 @@
+:root { color-scheme: light dark; }
 :root {
-  color-scheme: light dark;
-  --bg: #f7f8fa;
-  --panel: #ffffff;
-  --field: #ffffff;
-  --border: #d8dee8;
-  --text: #1f2a37;
-  --muted: #536175;
-  --accent: #2f5b8f;
-  --accent-text: #ffffff;
-  --accent-soft: #2f5b8f14;
+  --bg: #f5f3ed;
   --danger: #a3302a;
-  --brand: #24364f;
+  --panel: #fffefa;
+  --field: #fffefa;
+  --text: #263b32;
+  --brand: #0d1712;
+  --muted: #56655c;
+  --border: #c7d0c5;
+  --accent: #2e493e;
+  --accent-text: #fff;
+  --accent-soft: #e9eee1;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #12161c;
-    --panel: #1a2029;
-    --field: #12161c;
-    --border: #313a47;
-    --text: #e4e9f0;
-    --muted: #a3afbf;
-    --accent: #8db4e8;
-    --accent-text: #0e1726;
-    --accent-soft: #8db4e81f;
-    --danger: #f19a92;
-    --brand: #e4e9f0;
+    --bg: #0d1712;
+    --danger: #ffb5a2;
+    --panel: #16241d;
+    --field: #0d1712;
+    --text: #f5f3ed;
+    --brand: #f5f3ed;
+    --muted: #afc1b3;
+    --border: #47594d;
+    --accent: #c8f169;
+    --accent-text: #0d1712;
+    --accent-soft: #28372b;
   }
 }
 * {
@@ -34,13 +34,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family:
-    ui-sans-serif,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    Roboto,
-    sans-serif;
+  font-family: Plex, Arial, sans-serif;
   font-size: 15px;
   line-height: 1.5;
 }
@@ -512,4 +506,81 @@ section > h3 {
 }
 .usage-hours th:first-child {
   text-align: left;
+}
+
+@font-face {
+  font-family: Plex;
+  src: url("./assets/fonts/ibm-plex-sans-400-latin.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: Plex;
+  src: url("./assets/fonts/ibm-plex-sans-700-latin.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Plex Mono";
+  src: url("./assets/fonts/ibm-plex-mono-400-latin.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+.product-brand { font-size: 20px; letter-spacing: -.6px; }
+.beta-ribbon {
+  padding: 4px 9px 4px 7px;
+  background: #c8f169;
+  color: #0d1712;
+  clip-path: polygon(0 0, 100% 0, 86% 50%, 100% 100%, 0 100%);
+  font: 11px/1 "Plex Mono", monospace;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.beta-landing {
+  min-height: 100svh;
+  background: radial-gradient(ellipse at 83% 23%, #243729 0%, transparent 45%), #0d1712;
+  color: #f5f3ed;
+}
+.beta-landing header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px max(5vw, 18px);
+  gap: 8px;
+  border-bottom: 1px solid #35473b;
+}
+.beta-landing .product-brand { color: #f5f3ed; }
+.beta-landing .secondary { color: #f5f3ed; border-color: #657168; }
+.beta-intro { width: min(100%, 820px); margin: auto; padding: clamp(44px, 8vh, 88px) 22px; }
+.beta-intro h1 { font-size: clamp(44px, 7vw, 82px); line-height: 1; letter-spacing: -.047em; margin: 0; }
+.beta-intro > p { font-size: 20px; color: #c6d3c8; max-width: 32em; }
+.beta-picker {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  padding: clamp(24px, 5vw, 54px) 14px;
+  border-radius: 20px;
+  text-align: center;
+  border: 2px dashed #748e72;
+  background: var(--accent-soft);
+}
+.beta-picker strong { font-size: clamp(18px, 3vw, 26px); }
+.beta-picker p { margin: 4px 0 22px; font: 13px "Plex Mono", monospace; }
+.beta-landing .beta-picker { background: #16241d; color: #f5f3ed; }
+.beta-landing .primary { background: #c8f169; color: #0d1712; }
+.beta-picker.dragging { border-style: solid; outline: 3px solid #74944c; }
+.beta-landing .error { color: #ffb5a2; }
+.beta-flow { width: min(100%, 720px); margin: 0 auto; padding: clamp(20px, 5vw, 44px); }
+.beta-flow h1 { font-size: clamp(32px, 5vw, 52px); line-height: 1.1; letter-spacing: -.04em; }
+.beta-flow select { width: fit-content; min-width: 95px; background: var(--field); color: var(--text); border: 1px solid var(--border); padding: 9px 12px; border-radius: 6px; font: inherit; }
+.beta-filename, .beta-url { overflow-wrap: anywhere; font: 14px/1.6 "Plex Mono", monospace; }
+.beta-resources { display: flex; flex-wrap: wrap; gap: 20px; padding: 16px 0; border-block: 1px solid var(--border); }
+.beta-resources dt { color: var(--muted); font-size: 13px; }
+.beta-resources dd { margin: 0; font-weight: 700; }
+.beta-actions, .beta-legal { display: flex; flex-wrap: wrap; gap: 12px; }
+.beta-legal { margin-top: 24px; font-size: 14px; }
+.beta-legal a { color: inherit; }
+@media (max-width: 440px) {
+  .beta-landing header { flex-wrap: wrap; }
+  .product-brand { font-size: 17px; gap: 6px; }
 }

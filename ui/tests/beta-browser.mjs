@@ -1,0 +1,295 @@
+// Hosted reader flow using synthetic server responses. Run with pnpm test:beta-browser.
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
+import { chromium } from "playwright";
+import { build, preview } from "vite";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+const ui = fileURLToPath(new URL("../", import.meta.url));
+const outDir = await mkdtemp(path.join(os.tmpdir(), "drop-beta-reader-"));
+await build({
+  root: ui,
+  build: { outDir },
+  logLevel: "silent",
+  define: {
+    "import.meta.env.VITE_DROP_TERMS_VERSION": JSON.stringify("test-1"),
+    "import.meta.env.VITE_DROP_TERMS_URL": JSON.stringify(
+      "https://terms.example.test/beta",
+    ),
+    "import.meta.env.VITE_DROP_PRIVACY_URL": JSON.stringify(
+      "https://privacy.example.test/beta",
+    ),
+  },
+});
+const server = await preview({
+  root: ui,
+  build: { outDir },
+  preview: { host: "127.0.0.1", port: 0 },
+});
+const origin = "http://127.0.0.1:" + server.httpServer.address().port;
+const bytes = Buffer.alloc(64);
+Buffer.from([0x7f, 69, 76, 70, 2, 1, 1]).copy(bytes);
+bytes.writeUInt16LE(2, 16);
+bytes.writeUInt16LE(62, 18);
+const digest = createHash("sha256").update(bytes).digest("hex");
+const binary = {
+  name: "crew",
+  mimeType: "application/octet-stream",
+  buffer: bytes,
+};
+const app = {
+  id: "app000000000001",
+  beta_managed: true,
+  name: "PocketContext Crew",
+  current_release: "rel000000000001",
+};
+const record = {
+  id: "user00000000001",
+  collectionName: "users",
+  email: "owner@example.test",
+};
+const auth = {
+  token:
+    "fixture." +
+    Buffer.from(JSON.stringify({ exp: 4102444800 })).toString("base64url") +
+    ".fixture",
+  record,
+};
+let browser;
+try {
+  browser = await chromium.launch();
+  for (const viewport of [
+    { width: 1200, height: 800 },
+    { width: 375, height: 812 },
+  ]) {
+    const context = await browser.newContext({ viewport });
+    const page = await context.newPage();
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    let allowed = false;
+    let firstDeployment = true;
+    let deployed = false;
+    let runtimeFailure = false;
+    let httpsReady = false;
+    const operations = [];
+    await page.route("**/api/**", async (route) => {
+      const request = route.request();
+      const path = new URL(request.url()).pathname;
+      const send = (json, status = 200) => route.fulfill({ json, status });
+      if (path === "/api/bundle/auth-mode") return send({ mode: "email" });
+      if (path.endsWith("/request-otp")) {
+        allowed = request.postDataJSON().email === record.email;
+        return send({ otpId: "testotp" });
+      }
+      if (path.endsWith("/auth-with-otp-code")) {
+        assert.equal(request.headers()["x-drop-accept-terms"], "test-1");
+        return allowed
+          ? send(auth)
+          : send({ message: "Invalid sign-in code" }, 400);
+      }
+      if (path.endsWith("/auth-refresh")) return send(auth);
+      if (path === "/api/realtime") return route.abort();
+      if (path.startsWith("/api/drop/upload/")) {
+        assert.equal(request.method(), "PUT");
+        assert.equal(
+          createHash("sha256").update(request.postDataBuffer()).digest("hex"),
+          digest,
+        );
+        return send({
+          release: { id: app.current_release },
+          created: true,
+          deployed: false,
+        });
+      }
+      assert.equal(path, "/api/drop/op");
+      assert.ok(allowed && request.headers().authorization);
+      const { op, input, idempotency_key } = request.postDataJSON();
+      operations.push(op);
+      switch (op) {
+        case "me":
+          return send({
+            result: { ...record, role: "user", admin: false, hosted: true },
+          });
+        case "beta.inspect":
+          return input.sha256 === digest
+            ? send({
+                result: {
+                  name: app.name,
+                  version: "fixture",
+                  multipliers: [4, 8],
+                },
+              })
+            : send({ code: "unsupported_binary" }, 409);
+        case "beta.prepare":
+          assert.equal(input.sha256, digest);
+          assert.equal(input.multiplier, 8);
+          assert.ok(idempotency_key);
+          return send({ result: { app } });
+        case "release.upload_link":
+          assert.equal(input.activate, false);
+          return send({ result: { path: "/api/drop/upload/fixture" } });
+        case "beta.deploy":
+          if (firstDeployment) {
+            firstDeployment = false;
+            return send({ code: "beta_no_capacity" }, 409);
+          }
+          deployed = true;
+          runtimeFailure = false;
+          return send({ result: { deployment_id: "d-1" } });
+        case "app.get":
+          return send({
+            result: {
+              app: {
+                ...app,
+                owner: record.id,
+                memory_mib: 2048,
+                beta_sha256: digest,
+                current_release: deployed ? app.current_release : "",
+              },
+              secrets: [],
+            },
+          });
+        case "release.list":
+          return send({
+            result: { releases: [{ id: app.current_release, sha256: digest }] },
+          });
+        case "status":
+          assert.equal(input.verify_url, true);
+
+          return send({
+            result: {
+              phase: runtimeFailure ? "failed" : "running",
+              deployment_id: "d-1",
+              reported_deployment_id: "d-1",
+              hostname: "crew.apps.example.test",
+              url_ready: httpsReady,
+            },
+          });
+        default:
+          throw new Error("Unexpected operation " + op);
+      }
+    });
+    await page.goto(origin);
+    await page.getByText("Beta", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Choose a file" }).focus();
+    assert.equal(
+      await page
+        .getByRole("button", { name: "Choose a file" })
+        .evaluate((node) => node === document.activeElement),
+      true,
+    );
+    assert.equal(
+      await page
+        .getByRole("link", { name: "Terms of Service" })
+        .getAttribute("href"),
+      "https://terms.example.test/beta",
+    );
+    assert.equal(
+      await page
+        .getByRole("link", { name: "Privacy Policy" })
+        .getAttribute("href"),
+      "https://privacy.example.test/beta",
+    );
+    await page
+      .locator("input[type=file]")
+      .setInputFiles({ ...binary, name: "crew.zip" });
+    await page
+      .getByRole("alert")
+      .filter({ hasText: "Extract the archive" })
+      .waitFor();
+    await page.locator(".beta-picker").evaluate((node) => {
+      const dt = new DataTransfer();
+      dt.items.add(new File(["one"], "one"));
+      dt.items.add(new File(["two"], "two"));
+      node.dispatchEvent(
+        new DragEvent("drop", { bubbles: true, dataTransfer: dt }),
+      );
+    });
+    await page.getByRole("alert").filter({ hasText: "exactly one" }).waitFor();
+    const modified = Buffer.from(bytes);
+    modified[60] = 1;
+    await page
+      .locator("input[type=file]")
+      .setInputFiles({ ...binary, buffer: modified });
+    await page
+      .getByLabel("Email", { exact: true })
+      .fill("uninvited@example.test");
+    assert.ok(
+      await page
+        .getByRole("button", { name: "Email me a sign-in code" })
+        .isDisabled(),
+    );
+    await page.getByRole("checkbox").check();
+    await page.getByRole("button", { name: "Email me a sign-in code" }).click();
+    await page.getByLabel("Code from the email").fill("000000");
+    await page.getByRole("alert").waitFor();
+    assert.equal(operations.length, 0);
+    await page
+      .getByRole("button", { name: "Request a new sign-in code" })
+      .click();
+    await page.getByLabel("Email", { exact: true }).fill(record.email);
+    await page.getByRole("checkbox").check();
+    await page.getByRole("button", { name: "Email me a sign-in code" }).click();
+    await page.getByLabel("Code from the email").fill("123456");
+    await page
+      .getByRole("alert")
+      .filter({ hasText: "not supported" })
+      .waitFor();
+    await page.getByRole("button", { name: "Choose another file" }).click();
+    await page.locator("input[type=file]").setInputFiles(binary);
+    await page.getByLabel("App size").selectOption("8");
+    assert.deepEqual(await page.locator("select option").allTextContents(), [
+      "4×",
+      "8×",
+    ]);
+    await page.getByText("2 vCPU", { exact: true }).waitFor();
+    await page.getByText("2048 MB", { exact: true }).waitFor();
+    await page.getByText("16 GB", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Deploy app" }).click();
+    await page.getByRole("alert").filter({ hasText: "no space" }).waitFor();
+    if (viewport.width === 375) {
+      // Reopen the prepared app after the tab loses all local upload state.
+      await page.goto(origin + "/#/apps/" + app.id);
+      await page.reload();
+      await page.getByRole("heading", { name: "Resume deployment" }).waitFor();
+      await page.getByRole("button", { name: "Deploy app" }).click();
+    } else {
+      await page.getByRole("button", { name: "Retry deployment" }).click();
+    }
+    await page.getByText("Checking the app address").waitFor();
+    assert.equal(await page.getByRole("link", { name: "Open app" }).count(), 0);
+    httpsReady = true;
+    const link = page.getByRole("link", { name: "Open app" });
+    await link.waitFor();
+    assert.equal(
+      await link.getAttribute("href"),
+      "https://crew.apps.example.test",
+    );
+    assert.equal(operations.filter((op) => op === "beta.prepare").length, 1);
+    assert.equal(
+      operations.filter((op) => op === "release.upload_link").length,
+      1,
+    );
+    assert.equal(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+      true,
+    );
+    runtimeFailure = true;
+    await page.reload();
+    await page.getByText("Your app could not start.").waitFor();
+    await page.getByRole("button", { name: "Retry deployment" }).click();
+    await page.getByRole("link", { name: "Open app" }).waitFor();
+    assert.deepEqual(errors, []);
+    await context.close();
+    console.log("Beta browser flow passed at " + viewport.width + "px");
+  }
+} finally {
+  await browser?.close();
+  await server.close();
+  await rm(outDir, { recursive: true, force: true });
+}

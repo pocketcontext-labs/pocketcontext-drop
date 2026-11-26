@@ -44,6 +44,7 @@ it("signs in by email on the hosted origin with the code from the email", async 
   vi.spyOn(api, "watchApps").mockResolvedValue(() => {});
   vi.spyOn(api, "refreshSession").mockResolvedValue();
   render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Sign in" }));
   fireEvent.change(await screen.findByLabelText("Email"), { target: { value: "owner@example.test" } });
   fireEvent.click(screen.getByRole("button", { name: "Email me a sign-in code" }));
   expect(await screen.findByRole("heading", { name: "Check your inbox" })).toBeInTheDocument();

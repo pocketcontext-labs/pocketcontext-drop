@@ -36,6 +36,13 @@ export const OPS = [
   "usage.get",
   "usage.set_limits",
   "usage.collect",
+  "beta.approve",
+  "beta.revoke",
+  "beta.claim",
+  "beta.complete",
+  "beta.inspect",
+  "beta.prepare",
+  "beta.deploy",
 ] as const;
 export type Op = (typeof OPS)[number];
 
@@ -81,6 +88,8 @@ export type HealthKind = "tcp" | "http";
 /** An app (internal/dropapi App). Env holds plain values only. */
 export interface App {
   kind: AppKind;
+  beta_managed?: boolean;
+  beta_sha256?: string;
   crew_owner_email?: string;
   sign_in_email_enabled: boolean;
   id: string;
@@ -205,6 +214,7 @@ export interface NodeSecret {
 }
 /** An app's runtime status (internal/dropapi Status). */
 export interface AppStatus {
+  url_ready?: boolean;
   app: string;
   phase: string;
   message: string;
@@ -282,11 +292,11 @@ export class OpError extends Error {
 }
 
 /** Call one operation and return its result. */
-export async function op<T>(name: Op, input: object = {}): Promise<T> {
+export async function op<T>(name: Op, input: object = {}, idempotencyKey?: string): Promise<T> {
   try {
     const body = await pb.send<{ result: T }>("/api/drop/op", {
       method: "POST",
-      body: { op: name, input },
+      body: { op: name, input, ...(idempotencyKey && { idempotency_key: idempotencyKey }) },
     });
     return body.result;
   } catch (error) {
@@ -438,8 +448,8 @@ function uploadRelease(
   });
 }
 
-async function appStatus(app: string): Promise<AppStatus> {
-  return op("status", { app });
+async function appStatus(app: string, verifyUrl = false): Promise<AppStatus> {
+  return op("status", { app, ...(verifyUrl && { verify_url: true }) });
 }
 async function listNodes(): Promise<DropNode[]> {
   return (await op<{ nodes: DropNode[] }>("node.list", { limit: 500 })).nodes;
@@ -524,7 +534,18 @@ async function clearPlacement(app: string): Promise<{ cleared_node: string }> {
   return op("placement.clear", { app });
 }
 
+export interface BetaRelease {
+  name: string;
+  version: string;
+  multipliers: number[];
+}
+
 export const dropApi = {
+  inspectBeta: (sha256: string) => op<BetaRelease>("beta.inspect", { sha256 }),
+  prepareBeta: (sha256: string, multiplier: number, key: string) =>
+    op<{ app: App }>("beta.prepare", { sha256, multiplier }, key),
+  deployBeta: (app: string, release: string) =>
+    op<{ deployment_id: string }>("beta.deploy", { app, release }),
   me,
   listUsers,
   setUser,

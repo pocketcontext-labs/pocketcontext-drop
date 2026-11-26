@@ -29,7 +29,7 @@ export function quotaText(quota: Quota): string {
 }
 
 /** The account's apps, newest first, with its quota. */
-export default function Apps() {
+export default function Apps({ beta = false }: { beta?: boolean }) {
   const [apps, setApps] = useState<App[] | null>(null);
   const [quota, setQuota] = useState<Quota | null>(null);
   const [archived, setArchived] = useState(false);
@@ -74,8 +74,8 @@ export default function Apps() {
         {full ? (
           <span className="quiet">Quota reached</span>
         ) : (
-          <a className="button primary" href={viewHashes["app-new"]}>
-            New app
+          <a className="button primary" href={beta ? viewHashes.deploy : viewHashes["app-new"]}>
+            {beta ? "Deploy an app" : "New app"}
           </a>
         )}
       </div>
