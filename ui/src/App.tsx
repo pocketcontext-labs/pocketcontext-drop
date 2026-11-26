@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { ACCOUNT_EMAIL, api, pb, type AuthMode } from "./api";
+import { ACCOUNT_EMAIL, api, pb, type SignInOptions } from "./api";
 import AdminNodes from "./AdminNodes";
 import AdminUsers from "./AdminUsers";
 import AppNew from "./AppNew";
@@ -59,35 +59,20 @@ function SignInGate({
   hash,
   file,
   onSelect,
+  options,
 }: {
+  options: SignInOptions;
   hash: string;
   file: File | null;
   onSelect: (file: File) => void;
 }) {
   const [login, setLogin] = useState(false);
-  const [mode, setMode] = useState<AuthMode | null>(null);
-  const [failed, setFailed] = useState(false);
-  const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    let active = true;
-    setFailed(false);
-    api.loginMode().then(
-      (value) => {
-        if (active) setMode(value);
-      },
-      () => {
-        if (active) setFailed(true);
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, [attempt]);
-  if (mode === "email") {
+  if (options.mode === "email") {
     const landing = ["", "#/", viewHashes.deploy].includes(hash);
     if (landing && !login && !file)
       return (
         <BetaLanding
+          documents={options.legal}
           onLogin={() => setLogin(true)}
           onSelect={(chosen) => {
             onSelect(chosen);
@@ -97,6 +82,7 @@ function SignInGate({
       );
     return (
       <Login
+        documents={options.legal}
         initialEmail={inviteEmailFromHash(hash)}
         betaEnrollment={
           !!file || hash === viewHashes.deploy || !!inviteEmailFromHash(hash)
@@ -104,26 +90,7 @@ function SignInGate({
       />
     );
   }
-  if (mode === "password") return <SignIn />;
-  return (
-    <Status>
-      {failed ? (
-        <>
-          <p role="alert" className="error">
-            Unable to load sign-in options. Please try again.
-          </p>
-          <button
-            className="primary"
-            onClick={() => setAttempt((value) => value + 1)}
-          >
-            Try again
-          </button>
-        </>
-      ) : (
-        <p role="status">Loading sign-in options…</p>
-      )}
-    </Status>
-  );
+  return <SignIn />;
 }
 
 function NotFound() {
@@ -256,6 +223,25 @@ function Workspace({
 }
 
 export default function App() {
+  const [options, setOptions] = useState<SignInOptions | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let active = true;
+    setFailed(false);
+    api.loginMode().then(
+      (value) => {
+        if (active) setOptions(value);
+      },
+      () => {
+        if (active) setFailed(true);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [attempt]);
+
   const [file, setFile] = useState<File | null>(null);
   const signedIn = useSyncExternalStore(subscribe, identity, () => "");
   useEffect(() => {
@@ -325,6 +311,27 @@ export default function App() {
       active = false;
     };
   }, [oauthTarget, signedIn, emailLink, checkAttempt]);
+  if (!options) {
+    return (
+      <Status>
+        {failed ? (
+          <>
+            <p role="alert" className="error">
+              Unable to load sign-in options. Please try again.
+            </p>
+            <button
+              className="primary"
+              onClick={() => setAttempt((value) => value + 1)}
+            >
+              Try again
+            </button>
+          </>
+        ) : (
+          <p role="status">Loading sign-in options…</p>
+        )}
+      </Status>
+    );
+  }
   if (returning)
     return (
       <Status>
@@ -336,6 +343,7 @@ export default function App() {
       <Login
         key={emailLink.otpId}
         emailLink={emailLink}
+        documents={options.legal}
         onComplete={() => {
           const target = takeLoginReturn();
           const oauth = target && oauthTargetFromHash(target);
@@ -352,7 +360,7 @@ export default function App() {
       />
     );
   if (!signedIn)
-    return <SignInGate hash={hash} file={file} onSelect={setFile} />;
+    return <SignInGate options={options} hash={hash} file={file} onSelect={setFile} />;
   if (oauthTarget)
     return (
       <Status>

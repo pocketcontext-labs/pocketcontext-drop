@@ -32,6 +32,7 @@ func Hooks() appserver.Hooks {
 			bindAccounts(app)
 			bindBetaTerms(app)
 			app.OnServe().BindFunc(func(e *core.ServeEvent) error {
+				registerLegalHeaders(e)
 				registerOpRoutes(e)
 				registerUploadRoute(e)
 				registerAgentRoutes(e)

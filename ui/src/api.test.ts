@@ -42,14 +42,14 @@ describe("requests", () => {
 });
 
 describe("connection", () => {
-  beforeEach(() => vi.spyOn(api, "loginMode").mockResolvedValue("email"));
+  beforeEach(() => vi.spyOn(api, "loginMode").mockResolvedValue({ mode: "email" }));
   it("reads the MCP endpoint from the protected resource document", async () => {
     const resource = `https://${location.host}/mcp`;
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(json({ resource }));
     expect(await connection()).toEqual({ kind: "mcp", url: resource });
   });
   it("is local on the password-only local server, without asking for MCP", async () => {
-    vi.spyOn(api, "loginMode").mockResolvedValue("password");
+    vi.spyOn(api, "loginMode").mockResolvedValue({ mode: "password" });
     const fetch = vi.spyOn(globalThis, "fetch");
     expect(await connection()).toEqual({ kind: "local" });
     expect(fetch).not.toHaveBeenCalled();

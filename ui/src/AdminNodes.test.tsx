@@ -15,6 +15,7 @@ const node: DropNode = {
 };
 
 beforeEach(() => {
+  vi.spyOn(api, "loginMode").mockResolvedValue({ mode: "email" });
   history.replaceState(null, "", "/#/admin/nodes");
   pb.authStore.save(token, user);
   vi.spyOn(api, "refreshSession").mockResolvedValue();

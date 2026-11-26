@@ -17,6 +17,7 @@ const app: DropApp = {
 };
 
 beforeEach(() => {
+  vi.spyOn(api, "loginMode").mockResolvedValue({ mode: "email" });
   pb.authStore.save(token, user);
   vi.spyOn(dropApi, "me").mockResolvedValue(member);
   vi.spyOn(api, "refreshSession").mockResolvedValue();

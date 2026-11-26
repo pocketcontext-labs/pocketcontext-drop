@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import Brand from "./Brand";
+import type { PublishedLegal } from "./api";
 import CopyButton from "./CopyButton";
 import { BetaLegalLinks } from "./BetaLegal";
 import {
@@ -119,11 +120,13 @@ function FilePicker({
 }
 
 export function BetaLanding({
+  documents,
   onSelect,
   onLogin,
 }: {
   onSelect: (file: File) => void;
   onLogin: () => void;
+  documents?: PublishedLegal;
 }) {
   return (
     <main className="beta-landing">
@@ -140,7 +143,7 @@ export function BetaLanding({
           required to deploy.
         </p>
         <FilePicker onSelect={onSelect} />
-        <BetaLegalLinks />
+        <BetaLegalLinks documents={documents} />
       </section>
     </main>
   );

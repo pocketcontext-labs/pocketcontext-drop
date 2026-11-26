@@ -11,6 +11,7 @@ const noApps = { apps: [], quota: { used: 0, limit: 3, unlimited: false }, has_m
 const member: Me = { id: user.id, email: user.email, role: "user", admin: false, owner: false, app_quota: 3 };
 beforeEach(() => {
   history.replaceState(null, "", "/");
+  vi.spyOn(api, "loginMode").mockResolvedValue({ mode: "email" });
   vi.spyOn(dropApi, "me").mockResolvedValue(member);
 });
 afterEach(() => {
@@ -21,7 +22,7 @@ afterEach(() => {
 });
 
 it("shows the password sign-in locally until a users session exists, then the reader, and signs out", async () => {
-  vi.spyOn(api, "loginMode").mockResolvedValue("password");
+  vi.spyOn(api, "loginMode").mockResolvedValue({ mode: "password" });
   vi.spyOn(dropApi, "listApps").mockResolvedValue(noApps);
   vi.spyOn(api, "watchApps").mockResolvedValue(() => {});
   const refresh = vi.spyOn(api, "refreshSession").mockResolvedValue();
@@ -37,7 +38,7 @@ it("shows the password sign-in locally until a users session exists, then the re
 });
 
 it("signs in by email on the hosted origin with the code from the email", async () => {
-  vi.spyOn(api, "loginMode").mockResolvedValue("email");
+  vi.spyOn(api, "loginMode").mockResolvedValue({ mode: "email" });
   const request = vi.spyOn(api, "requestEmailLogin").mockResolvedValue("otp000000000001");
   const redeem = vi.spyOn(api, "loginEmailCode").mockImplementation(async () => pb.authStore.save(token, user));
   vi.spyOn(dropApi, "listApps").mockResolvedValue(noApps);
@@ -56,6 +57,9 @@ it("signs in by email on the hosted origin with the code from the email", async 
 
 it("confirms an emailed link before redeeming it and clears it from the address", async () => {
   history.replaceState(null, "", "/#/login?otpId=otp000000000001&otp=12345678901234567890123456789012");
+  vi.spyOn(api, "loginMode").mockResolvedValue({ mode: "email", legal: {
+    termsURL: "https://docs.example.test/terms", privacyURL: "https://docs.example.test/privacy", termsVersion: "new-terms",
+  } });
   const redeem = vi.spyOn(api, "loginEmail").mockImplementation(async () => pb.authStore.save(token, user));
   vi.spyOn(dropApi, "listApps").mockResolvedValue(noApps);
   vi.spyOn(api, "watchApps").mockResolvedValue(() => {});
@@ -63,9 +67,10 @@ it("confirms an emailed link before redeeming it and clears it from the address"
   render(<App />);
   expect(location.hash).toBe("#/login");
   expect(redeem).not.toHaveBeenCalled();
+  fireEvent.click(await screen.findByRole("checkbox"));
   fireEvent.click(await screen.findByRole("button", { name: "Continue to Drop" }));
   expect(await screen.findByRole("heading", { name: "Your apps" })).toBeInTheDocument();
-  expect(redeem).toHaveBeenCalledWith("otp000000000001", "12345678901234567890123456789012");
+  expect(redeem).toHaveBeenCalledWith("otp000000000001", "12345678901234567890123456789012", "new-terms");
 });
 
 it("returns a signed-in browser to the OAuth consent request after checking the session", async () => {
@@ -103,7 +108,7 @@ it("opens the Connect page from its hash", async () => {
 });
 
 it("does not treat another collection's token as a reader session", async () => {
-  vi.spyOn(api, "loginMode").mockResolvedValue("password");
+  vi.spyOn(api, "loginMode").mockResolvedValue({ mode: "password" });
   render(<App />);
   act(() => pb.authStore.save(token, { ...user, collectionName: "_superusers" }));
   expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
@@ -140,7 +145,7 @@ it("shows admins the Users page and everyone else Not found there", async () => 
 
 it("fills in the address of an invite's sign-in URL", async () => {
   history.replaceState(null, "", "/#/invite?email=friend%40example.test");
-  vi.spyOn(api, "loginMode").mockResolvedValue("email");
+  vi.spyOn(api, "loginMode").mockResolvedValue({ mode: "email" });
   render(<App />);
   expect(await screen.findByLabelText("Email")).toHaveValue("friend@example.test");
 });

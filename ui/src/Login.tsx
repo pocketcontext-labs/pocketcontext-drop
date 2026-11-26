@@ -1,13 +1,7 @@
 import { useRef, useState, type ClipboardEvent, type FormEvent } from "react";
-import { api } from "./api";
+import { api, type PublishedLegal } from "./api";
 import Brand from "./Brand";
-import {
-  BetaLegalLinks,
-  betaPrivacy,
-  betaTerms,
-  betaTermsVersion,
-  betaEnrollmentOpen,
-} from "./BetaLegal";
+import { BetaLegalLinks } from "./BetaLegal";
 import { message } from "./errors";
 import {
   clearLoginReturn,
@@ -41,12 +35,14 @@ export default function Login({
   onComplete,
   initialEmail = "",
   betaEnrollment = false,
+  documents,
 }: {
   emailLink?: EmailLoginLink;
   onComplete?: () => void;
   /** The address of an invite's sign-in URL. */
   initialEmail?: string;
   betaEnrollment?: boolean;
+  documents?: PublishedLegal;
 }) {
   const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -71,7 +67,7 @@ export default function Login({
   };
   const email = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (betaEnrollment && betaEnrollmentOpen && !accepted) return;
+    if (betaEnrollment && documents && !accepted) return;
     const form = new FormData(event.currentTarget);
     const value = String(form.get("email"));
     const hash = location.hash;
@@ -96,8 +92,8 @@ export default function Login({
     redeeming.current = true;
     void run(async () => {
       try {
-        if (accepted && betaEnrollmentOpen)
-          await api.loginEmailCode(otpId, value, betaTermsVersion);
+        if (accepted && documents)
+          await api.loginEmailCode(otpId, value, documents.termsVersion);
         else await api.loginEmailCode(otpId, value);
       } catch (e) {
         setCode("");
@@ -131,8 +127,8 @@ export default function Login({
     void run(async () => {
       if (!link) return;
       try {
-        if (accepted && betaEnrollmentOpen)
-          await api.loginEmail(link.otpId, link.password, betaTermsVersion);
+        if (accepted && documents)
+          await api.loginEmail(link.otpId, link.password, documents.termsVersion);
         else await api.loginEmail(link.otpId, link.password);
       } catch (error) {
         const code = (error as { response?: { code?: string } })?.response
@@ -152,7 +148,7 @@ export default function Login({
       setLink(undefined);
       onComplete?.();
     });
-  const legal = betaEnrollmentOpen ? (
+  const legal = documents ? (
     <>
       <label className="check">
         <input
@@ -162,7 +158,7 @@ export default function Login({
         />
         <span>
           I accept the{" "}
-          <a href={betaTerms} target="_blank" rel="noreferrer">
+          <a href={documents.termsURL} target="_blank" rel="noreferrer">
             Beta Terms of Service
           </a>{" "}
           for account activation.
@@ -170,7 +166,7 @@ export default function Login({
       </label>
       <p className="hint">
         The{" "}
-        <a href={betaPrivacy} target="_blank" rel="noreferrer">
+        <a href={documents.privacyURL} target="_blank" rel="noreferrer">
           Privacy Policy
         </a>{" "}
         explains how Drop uses your information.
@@ -285,7 +281,7 @@ export default function Login({
           <button
             className="primary"
             disabled={
-              busy || (betaEnrollment && betaEnrollmentOpen && !accepted)
+              busy || (betaEnrollment && documents && !accepted)
             }
           >
             Email me a sign-in code
@@ -300,7 +296,7 @@ export default function Login({
       <section className="card" aria-labelledby="sign-in-title">
         <Brand />
         {body}
-        <BetaLegalLinks />
+        <BetaLegalLinks documents={documents} />
         {error && (
           <p role="alert" className="error">
             {error}

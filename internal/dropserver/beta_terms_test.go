@@ -94,3 +94,24 @@ func TestBetaPreservesVerifiedAccountSignIn(t *testing.T) {
 		t.Fatal("pre-existing owner denied")
 	}
 }
+
+func TestHostedLegalMetadata(t *testing.T) {
+	for _, legal := range []dropserver.BetaLegal{
+		{TermsURL: "https://docs.example.test/terms", PrivacyURL: "https://docs.example.test/privacy", TermsVersion: "test-2"},
+		{TermsURL: "https://docs.example.test/terms", TermsVersion: "test-2"},
+	} {
+		h := droptest.NewHosted(t, droptest.Options{BetaLegal: legal})
+		w := h.Request("GET", "/api/bundle/auth-mode", "", "")
+		if w.Code != 200 || w.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("auth-mode %d %v", w.Code, w.Header())
+		}
+		headers := w.Header()
+		want := legal
+		if legal.PrivacyURL == "" {
+			want = dropserver.BetaLegal{}
+		}
+		if headers.Get("X-Drop-Terms-URL") != want.TermsURL || headers.Get("X-Drop-Privacy-URL") != want.PrivacyURL || headers.Get("X-Drop-Terms-Version") != want.TermsVersion {
+			t.Fatal(headers)
+		}
+	}
+}

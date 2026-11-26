@@ -31,6 +31,22 @@ func (l BetaLegal) ready() bool {
 	return l.TermsURL != l.PrivacyURL
 }
 
+// Publish only the complete, approved settings used by the activation hook.
+func registerLegalHeaders(e *core.ServeEvent) {
+	e.Router.BindFunc(func(re *core.RequestEvent) error {
+		if re.Request.Method == http.MethodGet && re.Request.URL.Path == "/api/bundle/auth-mode" && accountsOf(re.App).hosted {
+			h := re.Response.Header()
+			h.Set("Cache-Control", "no-store")
+			if legal := servicesOf(re.App).BetaLegal; legal.ready() {
+				h.Set("X-Drop-Terms-URL", legal.TermsURL)
+				h.Set("X-Drop-Privacy-URL", legal.PrivacyURL)
+				h.Set("X-Drop-Terms-Version", legal.TermsVersion)
+			}
+		}
+		return re.Next()
+	})
+}
+
 func betaEnabled(app core.App) (bool, error) {
 	if len(servicesOf(app).BetaNodes) != 0 {
 		return true, nil

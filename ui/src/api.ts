@@ -216,17 +216,41 @@ export async function loginCode(input: string): Promise<void> {
   );
 }
 
-export type AuthMode = "email" | "password";
-/** How this server signs people in: email on the hosted origin, the password locally. */
-export async function loginMode(): Promise<AuthMode> {
-  const client = new PocketBase(pb.baseURL, new BaseAuthStore());
-  const result = await client.send<{ mode: AuthMode }>(
-    "/api/bundle/auth-mode",
-    { method: "GET" },
-  );
-  if (result.mode !== "email" && result.mode !== "password")
-    throw new Error("Unable to load sign-in options. Please try again.");
-  return result.mode;
+export interface PublishedLegal {
+  termsURL: string;
+  privacyURL: string;
+  termsVersion: string;
+}
+export interface SignInOptions {
+  mode: "email" | "password";
+  legal?: PublishedLegal;
+}
+
+function publishedLegal(headers: Headers): PublishedLegal | undefined {
+  const termsURL = headers.get("X-Drop-Terms-URL");
+  const privacyURL = headers.get("X-Drop-Privacy-URL");
+  const termsVersion = headers.get("X-Drop-Terms-Version");
+  if (!termsURL || !privacyURL || termsURL === privacyURL || !termsVersion ||
+      !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(termsVersion)) return;
+  try {
+    for (const value of [termsURL, privacyURL]) {
+      const url = new URL(value);
+      if (url.protocol !== "https:" || url.username || url.password) return;
+    }
+  } catch { return; }
+  return { termsURL, privacyURL, termsVersion };
+}
+
+/** Read the current published legal versions and login mode from the same response. */
+export async function loginMode(): Promise<SignInOptions> {
+  const response = await fetch("/api/bundle/auth-mode", {
+    cache: "no-store", credentials: "omit", redirect: "error",
+  });
+  if (!response.ok) throw new Error("Unable to load sign-in options. Please try again.");
+  const { mode } = await response.json();
+  if (mode === "password") return { mode };
+  if (mode !== "email") throw new Error("Unable to load sign-in options. Please try again.");
+  return { mode, legal: publishedLegal(response.headers) };
 }
 /** Returns the login request id that the emailed code is bound to. */
 export async function requestEmailLogin(email: string): Promise<string> {
@@ -269,7 +293,7 @@ export type Connection = { kind: "mcp"; url: string } | { kind: "local" };
  * other than this origin's /mcp proves nothing, so it throws.
  */
 export async function connection(): Promise<Connection> {
-  if ((await api.loginMode()) === "password") return { kind: "local" };
+  if ((await api.loginMode()).mode === "password") return { kind: "local" };
   const response = await fetch("/.well-known/oauth-protected-resource", {
     cache: "no-store",
     credentials: "omit",

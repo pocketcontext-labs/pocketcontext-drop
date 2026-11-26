@@ -1,34 +1,12 @@
-// Set both URLs when the owner has verified and published the documents.
-function publicLink(value?: string): string | undefined {
-  try {
-    const url = new URL(value ?? "");
-    if (url.protocol === "https:" && !url.username && !url.password)
-      return url.href;
-  } catch {
-    /* Unconfigured. */
-  }
-}
+import type { PublishedLegal } from "./api";
 
-export const betaTerms = publicLink(import.meta.env.VITE_DROP_TERMS_URL);
-export const betaPrivacy = publicLink(import.meta.env.VITE_DROP_PRIVACY_URL);
-
-export const betaTermsVersion =
-  typeof import.meta.env.VITE_DROP_TERMS_VERSION === "string"
-    ? import.meta.env.VITE_DROP_TERMS_VERSION.trim()
-    : "";
-export const betaEnrollmentOpen = !!(
-  betaTerms &&
-  betaPrivacy &&
-  betaTermsVersion
-);
-
-export function BetaLegalLinks() {
-  return betaTerms && betaPrivacy ? (
+export function BetaLegalLinks({ documents }: { documents?: PublishedLegal }) {
+  return documents ? (
     <footer className="beta-legal">
-      <a href={betaTerms} target="_blank" rel="noreferrer">
+      <a href={documents.termsURL} target="_blank" rel="noreferrer">
         Terms of Service
       </a>
-      <a href={betaPrivacy} target="_blank" rel="noreferrer">
+      <a href={documents.privacyURL} target="_blank" rel="noreferrer">
         Privacy Policy
       </a>
     </footer>

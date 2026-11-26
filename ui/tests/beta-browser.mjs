@@ -14,15 +14,6 @@ await build({
   root: ui,
   build: { outDir },
   logLevel: "silent",
-  define: {
-    "import.meta.env.VITE_DROP_TERMS_VERSION": JSON.stringify("test-1"),
-    "import.meta.env.VITE_DROP_TERMS_URL": JSON.stringify(
-      "https://terms.example.test/beta",
-    ),
-    "import.meta.env.VITE_DROP_PRIVACY_URL": JSON.stringify(
-      "https://privacy.example.test/beta",
-    ),
-  },
 });
 const server = await preview({
   root: ui,
@@ -79,7 +70,14 @@ try {
       const request = route.request();
       const path = new URL(request.url()).pathname;
       const send = (json, status = 200) => route.fulfill({ json, status });
-      if (path === "/api/bundle/auth-mode") return send({ mode: "email" });
+      if (path === "/api/bundle/auth-mode") return route.fulfill({
+        json: { mode: "email" },
+        headers: {
+          "X-Drop-Terms-Version": "test-1",
+          "X-Drop-Terms-URL": "https://terms.example.test/beta",
+          "X-Drop-Privacy-URL": "https://privacy.example.test/beta",
+        },
+      });
       if (path.endsWith("/request-otp")) {
         allowed = request.postDataJSON().email === record.email;
         return send({ otpId: "testotp" });
