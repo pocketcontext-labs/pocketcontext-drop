@@ -87,7 +87,11 @@ func betaPlacement(c *Ctx, a *core.Record) error {
 	if err != nil {
 		return err
 	}
-	names := servicesOf(c.App).BetaNodes
+	services := servicesOf(c.App)
+	names := services.BetaNodes
+	if c.Owner && c.Auth.Id == a.GetString("owner") {
+		names = slices.Concat(services.BetaOwnerNodes, names)
+	}
 	state := agentStateOf(c.App)
 	for _, name := range names {
 		node, err := c.findNode(name)

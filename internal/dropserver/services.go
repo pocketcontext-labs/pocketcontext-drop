@@ -37,7 +37,7 @@ type Services struct {
 	// <slug>.<AppDomain> (DROP_APP_DOMAIN); empty leaves new apps without a
 	// hostname.
 	BetaLegal                    BetaLegal
-	BetaNodes                    []string
+	BetaNodes, BetaOwnerNodes    []string
 	AppDomain                    string
 	CrewReplicaBucket, AWSRegion string
 	// Usage reads the replica bucket's access logs and inventory and manages

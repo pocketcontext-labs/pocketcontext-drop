@@ -53,3 +53,16 @@ func TestServeServicesHandOverTheWriteSide(t *testing.T) {
 		t.Fatalf("plain serve has no secret store: %+v %v", s, err)
 	}
 }
+
+func TestBetaNodePoolsAreDisjoint(t *testing.T) {
+	env := map[string]string{"DROP_BETA_NODES": "public-node", "DROP_BETA_OWNER_NODES": "private-node"}
+	read := func(key string) string { return env[key] }
+	s, err := serveServices(&args{}, false, "127.0.0.1:0", read)
+	if err != nil || len(s.BetaOwnerNodes) != 1 || s.BetaOwnerNodes[0] != "private-node" || len(s.BetaNodes) != 1 || s.BetaNodes[0] != "public-node" {
+		t.Fatalf("unexpected node pools: %v, %v, %v", s.BetaOwnerNodes, s.BetaNodes, err)
+	}
+	env["DROP_BETA_NODES"] = "private-node"
+	if _, err := serveServices(&args{}, false, "127.0.0.1:0", read); err == nil {
+		t.Fatal("accepted the same node in both pools")
+	}
+}

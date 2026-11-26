@@ -26,13 +26,20 @@ const EnvReleaseMaxBytes = "DROP_RELEASE_MAX_BYTES"
 func serveServices(a *args, hosted bool, listenAddr string, getenv func(string) string) (dropserver.Services, error) {
 	s := dropserver.Services{CrewReplicaBucket: getenv("DROP_CREW_REPLICA_BUCKET"), AWSRegion: getenv(awsx.EnvRegion)}
 	s.BetaLegal = dropserver.BetaLegal{TermsURL: getenv("DROP_TERMS_URL"), PrivacyURL: getenv("DROP_PRIVACY_URL"), TermsVersion: getenv("DROP_TERMS_VERSION")}
-	if names := getenv("DROP_BETA_NODES"); names != "" {
-		for _, name := range strings.Split(names, ",") {
-			name = strings.TrimSpace(name)
-			if !dropapi.NodeNamePattern.MatchString(name) {
-				return s, fail(2, "DROP_BETA_NODES requires comma-separated node names")
+	assigned := map[string]bool{}
+	for _, pool := range []struct {
+		variable string
+		nodes    *[]string
+	}{{"DROP_BETA_NODES", &s.BetaNodes}, {"DROP_BETA_OWNER_NODES", &s.BetaOwnerNodes}} {
+		if raw := getenv(pool.variable); raw != "" {
+			for _, entry := range strings.Split(raw, ",") {
+				name := strings.TrimSpace(entry)
+				if !dropapi.NodeNamePattern.MatchString(name) || assigned[name] {
+					return s, fail(2, "%s requires distinct node names, each in only one Beta pool", pool.variable)
+				}
+				assigned[name] = true
+				*pool.nodes = append(*pool.nodes, name)
 			}
-			s.BetaNodes = append(s.BetaNodes, name)
 		}
 	}
 	if domain := getenv(EnvAppDomain); domain != "" {

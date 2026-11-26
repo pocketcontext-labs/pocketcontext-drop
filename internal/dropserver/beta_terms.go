@@ -48,7 +48,8 @@ func registerLegalHeaders(e *core.ServeEvent) {
 }
 
 func betaEnabled(app core.App) (bool, error) {
-	if len(servicesOf(app).BetaNodes) != 0 {
+	services := servicesOf(app)
+	if len(services.BetaNodes) != 0 || len(services.BetaOwnerNodes) != 0 {
 		return true, nil
 	}
 	var enabled bool
