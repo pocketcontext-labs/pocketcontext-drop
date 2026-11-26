@@ -12,12 +12,13 @@ import (
 	"ganigeorgiev.com/pocketbase/pocketbase/core"
 	"ganigeorgiev.com/pocketbase/pocketbase/tools/security"
 
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/appspec"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
 )
 
 // Bump the contract when changes to the guest probe or validation require
 // reinspection. Approval of the content digest is independent of the cache.
-const betaProbeContract = 1
+const betaProbeContract = 2
 const betaProbeLease = 5 * time.Minute
 const maxBetaManifest = 16 << 10
 
@@ -29,6 +30,7 @@ func init() {
 	register("beta.revoke", betaRevoke)
 	register("beta.claim", betaClaim)
 	register("beta.complete", betaComplete)
+	register("beta.probe_upload", betaProbeUpload)
 	register("beta.inspect", betaInspect)
 	register("beta.prepare", betaPrepare)
 	register("beta.deploy", betaDeploy)
@@ -36,12 +38,15 @@ func init() {
 
 func betaApproved(app core.App, digest string) error {
 	if !betaDigestPattern.MatchString(digest) {
-		return Invalid("sha256", "Select a supported PocketContext binary.")
+		return Invalid("sha256", "Select a file with a lowercase SHA-256 digest.")
 	}
 	var approved int
 	err := app.DB().NewQuery("SELECT approved FROM drop_beta_catalog WHERE digest={:digest}").Bind(dbx.Params{"digest": digest}).Row(&approved)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && approved != 1) {
-		return Conflict("unsupported_binary", "This binary is not an approved PocketContext release.")
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err == nil && approved != 1 {
+		return Conflict("unsupported_binary", "This release was revoked by the operator.")
 	}
 	return err
 }
@@ -60,7 +65,7 @@ func betaRevoke(c *Ctx, in *dropapi.BetaDigest) (any, error) {
 		return nil, err
 	}
 	p := dbx.Params{"d": in.SHA256}
-	if _, err := c.App.DB().NewQuery("UPDATE drop_beta_catalog SET approved=0 WHERE digest={:d}").Bind(p).Execute(); err != nil {
+	if _, err := c.App.DB().NewQuery("INSERT INTO drop_beta_catalog(digest,approved) VALUES ({:d},0) ON CONFLICT(digest) DO UPDATE SET approved=0").Bind(p).Execute(); err != nil {
 		return nil, err
 	}
 	// Fence unfinished probes even if this digest is subsequently reapproved.
@@ -100,6 +105,9 @@ func betaClaim(c *Ctx, in *dropapi.BetaDigest) (any, error) {
 	if err := betaApproved(c.App, in.SHA256); err != nil {
 		return nil, err
 	}
+	if err := waitExec(c.App, "INSERT INTO drop_beta_catalog(digest,approved) VALUES ({:digest},1) ON CONFLICT DO NOTHING", dbx.Params{"digest": in.SHA256}); err != nil {
+		return nil, err
+	}
 	probe, err := getBetaProbe(c.App, in.SHA256)
 	if err != nil {
 		return nil, err
@@ -123,14 +131,23 @@ func betaClaim(c *Ctx, in *dropapi.BetaDigest) (any, error) {
 
 func parseBetaManifest(raw []byte) (dropapi.BetaManifest, error) {
 	var m dropapi.BetaManifest
-	if len(raw) > maxBetaManifest || decodeStrict(raw, &m) != nil || m.Schema != "drop.manifest/v1" || m.App != "crew" || !betaVersionPattern.MatchString(m.Version) ||
-		m.HTTPPort != 8080 || m.HookPort != 8081 || m.Health != "tcp" || m.Minimum.MemoryMiB < 1 || m.Minimum.CPUQuarters < 1 || m.Minimum.DiskMiB < 1 {
+	if len(raw) > maxBetaManifest || decodeStrict(raw, &m) != nil || m.Schema != "drop.manifest/v1" || !slugPattern.MatchString(m.App) || !betaVersionPattern.MatchString(m.Version) ||
+		m.HTTPPort < appspec.MinPort || m.HTTPPort > appspec.MaxPort || !appspec.ValidHookPort(m.HookPort, m.HTTPPort) || m.Health != "tcp" || m.Minimum.MemoryMiB < 1 || m.Minimum.CPUQuarters < 1 || m.Minimum.DiskMiB < 1 {
 		return m, Invalid("manifest", "The manifest is incompatible with this Drop runtime.")
 	}
 	slices.Sort(m.Hooks)
-	slices.Sort(m.Requires)
-	if !slices.Equal(m.Hooks, []string{"resume", "suspend", "terminate"}) || !slices.Equal(m.Requires, []string{"persistent_volume", "s3_replica", "sign_in_email", "verified_owner_email"}) {
-		return m, Invalid("manifest", "The manifest requests unsupported runtime features.")
+	if (m.HookPort == 0 && len(m.Hooks) != 0) || (m.HookPort != 0 && !slices.Equal(m.Hooks, []string{"resume", "suspend", "terminate"})) {
+		return m, Invalid("manifest", "The lifecycle hooks must match the hook listener.")
+	}
+	seen := make(map[string]bool)
+	for _, feature := range slices.Concat(m.Requires, m.Optional) {
+		if seen[feature] || !slices.Contains([]string{"persistent_volume", "s3_replica", "sign_in_email", "verified_owner_email"}, feature) {
+			return m, Invalid("manifest", "Unsupported or duplicate runtime feature.")
+		}
+		seen[feature] = true
+	}
+	if (seen["sign_in_email"] || seen["s3_replica"]) && !seen["verified_owner_email"] {
+		return m, Invalid("manifest", "Sign-in email and S3 require a verified owner.")
 	}
 	return m, nil
 }
@@ -188,7 +205,7 @@ func betaRelease(app core.App, digest string) (dropapi.BetaManifest, error) {
 	case "valid":
 		return parseBetaManifest([]byte(p.Manifest))
 	case "invalid":
-		return m, Conflict("unsupported_binary", "This release cannot run on Drop Beta.")
+		return m, nil
 	default:
 		return m, Conflict("probe_pending", "This release is being prepared. Try again later.")
 	}

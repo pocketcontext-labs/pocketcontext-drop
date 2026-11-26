@@ -14,11 +14,18 @@ import {
 } from "./dropApi";
 import { appHash, viewHashes } from "./routes";
 
+const serviceNames: Record<string,string> = {
+  persistent_volume: "Local disk",
+  s3_replica: "Platform S3 (credits required)",
+  sign_in_email: "Sign-in email",
+  verified_owner_email: "Verified owner email",
+};
+
 function explain(e: unknown, fallback: string) {
   if (e instanceof OpError) {
     const messages: Record<string, string> = {
       unsupported_binary:
-        "This app file is not supported. Choose one from an approved PocketContext app release.",
+        "This app file is not supported. Choose a different Linux (amd64) app file.",
       probe_pending: "Drop is checking this app file. Try again in a moment.",
       beta_no_capacity:
         "There is no space for this deployment right now. Please retry later.",
@@ -62,7 +69,7 @@ function FilePicker({
       else if (chosen.size > MAX_RELEASE_BYTES)
         problem = "Choose an app file of 90 MiB or less.";
       else if (await releaseFileProblem(chosen))
-        problem = "Choose a Linux (amd64) app file from an approved PocketContext app release.";
+        problem = "Choose a Linux (amd64) app file for Linux (amd64).";
     } catch {
       problem = "The app file could not be read. Please choose it again.";
     }
@@ -90,7 +97,7 @@ function FilePicker({
         onDrop={drop}
       >
         <strong>Drop your app file here</strong>
-        <p>Approved Linux (amd64) app files, up to 90 MiB</p>
+        <p>Linux (amd64) app files, up to 90 MiB</p>
         <button
           className="primary"
           onClick={() => input.current?.click()}
@@ -277,6 +284,15 @@ export function BetaStatus({
           </a>
         </div>
       )}
+      {status?.log_tail && <details open={!!failed}><summary>Recent app output</summary><pre>{status.log_tail}</pre></details>}
+      {failed && status && <details>
+        <summary>Deployment diagnostics</summary>
+        <p>{status.message}</p>
+        <dl><dt>Restarts</dt><dd>{status.restart_count}</dd>
+          {status.last_exit_code != null && <><dt>Last exit code</dt><dd>{status.last_exit_code}</dd></>}
+          <dt>Last observed</dt><dd>{status.observed_at || "Waiting for a report"}</dd>
+        </dl>
+      </details>}
       {failed && release && (
         <button
           className="primary"
@@ -317,6 +333,7 @@ export default function BetaDeploy({
   const [file, setFile] = useState(initialFile);
   const [hostname, setHostname] = useState(prepared?.hostname ?? "");
   const [product, setProduct] = useState<BetaRelease>();
+  const [port, setPort] = useState(8080);
   const [digest, setDigest] = useState("");
   const [size, setSize] = useState(0);
   const [error, setError] = useState("");
@@ -365,7 +382,17 @@ export default function BetaDeploy({
             sha = selected;
           }
           if (!active) return;
-          const info = await dropApi.inspectBeta(sha);
+          let info: BetaRelease;
+          try {
+            info = await dropApi.inspectBeta(sha);
+          } catch (err) {
+            if (!file || !(err instanceof OpError) || err.code !== "probe_pending") throw err;
+            const {path} = await dropApi.probeUpload(sha);
+            if (!active) return;
+            const inspected = await fetch(path, {method: "PUT", credentials:"omit", redirect:"error", body:file});
+            if (!inspected.ok) throw new Error("Drop could not inspect the file.");
+            info = await dropApi.inspectBeta(sha);
+          }
           if (!active) return;
           if (prepared) {
             const { releases } = await dropApi.listReleases(prepared.id);
@@ -413,7 +440,7 @@ export default function BetaDeploy({
     setError("");
     setLocked(true);
     const draft = attempt.current;
-    const storageKey = ["drop.beta.prepare", account, digest, size].join(".");
+    const storageKey = ["drop.beta.prepare", account, digest, size, product.generic ? port : "manifest"].join(".");
     try {
       // Reuse the preparation key if the connection or tab closes after creating the app.
       if (!draft.key && !draft.app) {
@@ -431,7 +458,7 @@ export default function BetaDeploy({
       }
       setAction("Preparing deployment…");
       if (!draft.app) {
-        const { app } = await dropApi.prepareBeta(digest, size, draft.key);
+        const { app } = await dropApi.prepareBeta(digest, size, draft.key, product.generic ? port : undefined);
         draft.app = app.id;
         if (mounted.current) setHostname(app.hostname);
       }
@@ -516,6 +543,15 @@ export default function BetaDeploy({
           </h2>
           {product.multipliers.length ? (
             <>
+              {!product.generic && product.http_port && <p>HTTP port {product.http_port}.</p>}
+              {!!product.requires?.length && <p>Required services: {product.requires.map(x => serviceNames[x]).join(", ")}.</p>}
+              {!!product.optional?.length && <p>Optional services: {product.optional.map(x => serviceNames[x]).join(", ")}.</p>}
+              <p>Local disk is a cache. Your app is responsible for backups.</p>
+              {product.generic && <>
+                <p>This app has no valid Drop manifest. There is no guarantee it will start. It receives no platform S3 or email.</p>
+                <label>HTTP port<input type="number" min="1" max="65535" disabled={locked || !!prepared}
+                    value={prepared?.http_port ?? port} onChange={e => setPort(Number(e.target.value))} /></label>
+              </>}
               <label>
                 App size
                 <select
@@ -547,7 +583,7 @@ export default function BetaDeploy({
               <button
                 className="primary"
                 disabled={
-                  busy ||
+                  busy || (product.generic && (!Number.isInteger(port) || port < 1 || port > 65535)) ||
                   (!file && !stagedRelease) ||
                   !product.multipliers.includes(size)
                 }

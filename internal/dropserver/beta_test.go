@@ -22,7 +22,7 @@ func TestBetaProbeLeasesAndDeployment(t *testing.T) {
 	for _, op := range []string{"beta.approve", "beta.revoke", "beta.claim", "beta.complete"} {
 		wantError(t, h.Op(alice, op, ref), 403, dropapi.CodeForbidden)
 	}
-	wantError(t, h.Op(alice, "beta.inspect", ref), 409, "unsupported_binary")
+	wantError(t, h.Op(alice, "beta.inspect", ref), 409, "probe_pending")
 	h.MustOp(admin, "beta.approve", ref)
 	wantError(t, h.Op(alice, "app.create", map[string]any{"name": "Alternate", "slug": "alternate"}), 403, dropapi.CodeForbidden)
 	wantError(t, h.Op(alice, "beta.inspect", ref), 409, "probe_pending")
@@ -152,7 +152,20 @@ func TestBetaConcurrentInspectionAndNegativeCache(t *testing.T) {
 	if r := h.MustOp(admin, "beta.claim", ref); r["cached"] != true || r["state"] != "invalid" {
 		t.Fatal(r)
 	}
-	wantError(t, h.Op(admin, "beta.inspect", ref), 409, "unsupported_binary")
+	if result := h.MustOp(admin, "beta.inspect", ref); result["generic"] != true {
+		t.Fatal(result)
+	}
+	_, user := h.User("generic@example.test", "user")
+	args := map[string]any{"sha256": ref["sha256"], "multiplier": 1, "http_port": 4000}
+	app := appOf(t, h.MustOp(user, "beta.prepare", args))
+	if app["kind"] != "ordinary" || num(app["http_port"]) != 4000 || app["sign_in_email_enabled"] != false || app["crew_owner_email"] != nil {
+		t.Fatal(app)
+	}
+	if app["env"].(map[string]any)["PORT"] != "4000" {
+		t.Fatal(app)
+	}
+	args["http_port"] = 65536
+	wantError(t, h.Op(user, "beta.prepare", args), 400, dropapi.CodeInvalidInput)
 }
 
 func TestBetaSuggestionUsesReleaseProfile(t *testing.T) {

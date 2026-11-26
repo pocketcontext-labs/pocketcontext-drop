@@ -184,6 +184,7 @@ func (c *AwakeCounter) Valid() bool {
 }
 
 type AppReport struct {
+	LogTail      string        `json:"logTail,omitempty"`
 	AwakeCounter *AwakeCounter `json:"awakeCounter,omitempty"`
 	LastHook     *HookResult   `json:"lastHook,omitempty"`
 	AppID        string        `json:"appId"`
@@ -193,6 +194,7 @@ type AppReport struct {
 	RestartCount int           `json:"restartCount"`
 	LastExitCode *int          `json:"lastExitCode"`
 	ConvergedAt  string        `json:"convergedAt"`
+
 	// Usage is the host services proxy's counters of the app's deployment
 	// (hostservices.go), when the app used it.
 	Usage *HostUsage `json:"usage,omitempty"`

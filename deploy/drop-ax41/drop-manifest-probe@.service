@@ -1,0 +1,11 @@
+[Unit]
+Description=Inspect a Drop app in a NibRunner microVM
+
+[Service]
+ExecStart=/usr/local/bin/drop agent manifest-probe
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+RuntimeMaxSec=90
+PrivateTmp=yes
+UMask=0077

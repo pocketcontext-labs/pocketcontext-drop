@@ -66,6 +66,7 @@ type Options struct {
 	Releases        awsx.BlobWriter
 	NoReleases      bool
 	ReleaseMaxBytes int64
+	ProbeSocket     string
 	// Usage turns usage metering on with an in-memory store (Hosted.Usage)
 	// and UsageConfig.
 	Usage bool
@@ -153,6 +154,7 @@ func NewHosted(t *testing.T, opts Options) *Hosted {
 		services.Releases = h.Releases
 	}
 	services.ReleaseMaxBytes = opts.ReleaseMaxBytes
+	services.ProbeSocket = opts.ProbeSocket
 	if opts.Usage {
 		h.Usage = awsx.NewMemUsageStore()
 		services.Usage, services.UsageConfig = h.Usage, UsageConfig

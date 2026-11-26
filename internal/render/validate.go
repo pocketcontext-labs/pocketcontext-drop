@@ -110,6 +110,9 @@ func validateApp(app App, lim Limits) *AppError {
 	if !deploymentIDOK(app.AppID, app.DeploymentID) {
 		return fail("deploymentId", "must be <appId>-dep-<1 to 9 digits>")
 	}
+	if app.GenericBeta && (app.ManagedCrew || app.CrewOwnerEmail != "" || app.SignInEmailEnabled || app.HostS3 || app.HookPort != 0 || len(app.Secrets) > 0 || len(app.Args) > 0 || len(app.Env) != 1 || app.Env["PORT"] != fmt.Sprint(app.HTTPPort)) {
+		return fail("genericBeta", "generic apps accept only the selected HTTP port")
+	}
 	if (app.CrewOwnerEmail != "" || app.SignInEmailEnabled) && (!appspec.ValidSignInMailbox(app.CrewOwnerEmail) || strings.ToLower(app.CrewOwnerEmail) != app.CrewOwnerEmail) {
 		return fail("crewOwnerEmail", "must be a canonical verified mailbox for a Crew app")
 	}

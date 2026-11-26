@@ -234,6 +234,9 @@ func checkReport(r *dropapi.Report) error {
 		if err := checkHostUsage(a, field); err != nil {
 			return err
 		}
+		if len(a.LogTail) > 1024 {
+			return reportInvalid(field+".logTail", "A log tail is at most 1024 bytes.")
+		}
 		a.Message = cleanMessage(a.Message)
 	}
 	return nil
@@ -327,6 +330,9 @@ func ingestApps(app core.App, nodeID string, reports []dropapi.AppReport, now ti
 			out.ignored = append(out.ignored, r.AppID)
 			continue
 		}
+		if !appRecord.GetBool("generic_beta") || r.DeploymentID != deploymentID(appRecord) {
+			r.LogTail = ""
+		}
 		out.accepted++
 		billed, err := meterReport(app, nodeID, appRecord, r, sampleAt, apply)
 		if err != nil {
@@ -356,6 +362,7 @@ func ingestApps(app core.App, nodeID string, reports []dropapi.AppReport, now ti
 		row.Set("deployment_id", r.DeploymentID)
 		row.Set("phase", r.Phase)
 		row.Set("message", r.Message)
+		row.Set("log_tail", r.LogTail)
 		row.Set("restart_count", r.RestartCount)
 		row.Set("has_exit_code", r.LastExitCode != nil)
 		row.Set("last_exit_code", 0)
@@ -394,6 +401,6 @@ func storedHook(row *core.Record) *dropapi.HookResult {
 func sameReport(row *core.Record, r dropapi.AppReport) bool {
 	exitSame := row.GetBool("has_exit_code") == (r.LastExitCode != nil) && (r.LastExitCode == nil || row.GetInt("last_exit_code") == *r.LastExitCode)
 	return reflect.DeepEqual(storedHook(row), r.LastHook) && exitSame && row.GetString("deployment_id") == r.DeploymentID && row.GetString("phase") == r.Phase &&
-		row.GetString("message") == r.Message && row.GetInt("restart_count") == r.RestartCount &&
+		row.GetString("log_tail") == r.LogTail && row.GetString("message") == r.Message && row.GetInt("restart_count") == r.RestartCount &&
 		row.GetString("converged_at") == r.ConvergedAt
 }

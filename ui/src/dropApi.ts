@@ -50,6 +50,7 @@ export const OPS = [
   "beta.revoke",
   "beta.claim",
   "beta.complete",
+  "beta.probe_upload",
   "beta.inspect",
   "beta.prepare",
   "beta.deploy",
@@ -224,6 +225,7 @@ export interface NodeSecret {
 }
 /** An app's runtime status (internal/dropapi Status). */
 export interface AppStatus {
+  log_tail?: string;
   url_ready?: boolean;
   app: string;
   phase: string;
@@ -545,6 +547,10 @@ async function clearPlacement(app: string): Promise<{ cleared_node: string }> {
 }
 
 export interface BetaRelease {
+  generic?: boolean;
+  requires?: string[];
+  optional?: string[];
+  http_port?: number;
   name: string;
   version: string;
   multipliers: number[];
@@ -570,8 +576,9 @@ export const dropApi = {
   changeWaitlist: (action: "invite" | "resend" | "revoke", id: string) =>
     op<{ok: boolean}>(`waitlist.${action}`, {id}),
   inspectBeta: (sha256: string) => op<BetaRelease>("beta.inspect", { sha256 }),
-  prepareBeta: (sha256: string, multiplier: number, key: string) =>
-    op<{ app: App }>("beta.prepare", { sha256, multiplier }, key),
+  probeUpload: (sha256:string) => op<{path:string}>("beta.probe_upload",{sha256}),
+  prepareBeta: (sha256: string, multiplier: number, key: string, http_port?: number) =>
+    op<{ app: App }>("beta.prepare", { sha256, multiplier, http_port }, key),
   deployBeta: (app: string, release: string) =>
     op<{ deployment_id: string }>("beta.deploy", { app, release }),
   me,

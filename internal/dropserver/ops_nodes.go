@@ -443,6 +443,9 @@ func appStatus(c *Ctx, in *dropapi.StatusInput) (any, error) {
 	row := rows[0]
 	out.Phase, out.Message = row.GetString("phase"), row.GetString("message")
 	out.ReportedDeploymentID = row.GetString("deployment_id")
+	if app.GetBool("generic_beta") && out.ReportedDeploymentID == out.DeploymentID && app.GetString("owner") == c.Auth.Id {
+		out.LogTail = row.GetString("log_tail")
+	}
 	out.RestartCount = row.GetInt("restart_count")
 	if row.GetBool("has_exit_code") {
 		code := row.GetInt("last_exit_code")
@@ -457,9 +460,13 @@ func appStatus(c *Ctx, in *dropapi.StatusInput) (any, error) {
 	case out.ReportedDeploymentID != out.DeploymentID && !failurePhases[out.Phase]:
 		out.Phase, out.Message = dropapi.PhaseDeploying, "Rolling out deployment "+out.DeploymentID+"."
 	}
-	if in.VerifyURL && app.GetString("crew_owner_email") != "" && out.ReportedDeploymentID == out.DeploymentID &&
+	if in.VerifyURL && out.ReportedDeploymentID == out.DeploymentID &&
 		(out.Phase == "running" || out.Phase == "sleeping") {
-		out.URLReady = crewURLReady(c.Request.Context(), servicesOf(c.App).AppDomain, app.GetString("slug"), out.Hostname, readinessClient)
+		if app.GetString("beta_digest") != "" && (app.GetString("executable_name") != "crew" || app.GetBool("generic_beta") || app.GetString("crew_owner_email") == "") {
+			out.URLReady = betaURLReady(c.Request.Context(), servicesOf(c.App).AppDomain, app.GetString("slug"), out.Hostname, readinessClient)
+		} else if app.GetString("crew_owner_email") != "" {
+			out.URLReady = crewURLReady(c.Request.Context(), servicesOf(c.App).AppDomain, app.GetString("slug"), out.Hostname, readinessClient)
+		}
 	}
 
 	return out, nil

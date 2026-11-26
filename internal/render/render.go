@@ -51,6 +51,7 @@ type Input struct {
 
 // App is one resolved app as the agent hands it to Render.
 type App struct {
+	GenericBeta         bool   `json:"genericBeta,omitempty"`
 	AppID               string `json:"appId"`        // ^d-[a-z0-9]{15}$
 	DeploymentID        string `json:"deploymentId"` // <appId>-dep-<n>
 	LocalOnly           bool   `json:"localOnly,omitempty"`
@@ -380,7 +381,9 @@ func renderEnvironment(app App) map[string]string {
 	}
 	env[envHost] = envHostRef
 	env["NIBRUN_DATA_DIR"] = dataDir
-	env["HOME"] = dataDir
+	if !app.GenericBeta {
+		env["HOME"] = dataDir
+	}
 	return env
 }
 

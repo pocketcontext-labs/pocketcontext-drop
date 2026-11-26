@@ -198,17 +198,18 @@ Each successful mutating operation writes one `events` row in its transaction: `
 
 ## Beta release admission and deployment
 
-Only a Drop admin may admit a digest obtained from an independently approved PocketContext release. All Beta operations use the existing authenticated operation route. Approval is separate from the guest's self-description. A completed probe certifies the manifest format and supported features of those exact bytes, not authorship.
+Invited users may submit static Linux amd64 executables up to 90 MiB. Drop inspects the bytes in an isolated NibRunner microVM and caches the outcome by SHA-256. An administrator can revoke a specific digest.
 
 | Operation | Input | Result |
 |---|---|---|
-| `beta.approve` (admin) | `{sha256}` | Admits the lowercase SHA-256 for probing. |
+| `beta.approve` (admin) | `{sha256}` | Re-enables a revoked digest. |
 | `beta.claim` (admin) | `{sha256}` | Returns `attempt` and `expires_at` for a five-minute inspection lease, or `{cached:true,state}` after completed inspection. An overlapping claim returns `probe_busy`. |
 | `beta.complete` (admin) | `{sha256,attempt,outcome,manifest?}` | Records `success` with a validated manifest, `invalid` for a definitively incompatible binary, or `retry` after a temporary failure. Expiration or revocation fences earlier attempts. |
 | `beta.revoke` (admin) | `{sha256}` | Revokes the admission and stops its Beta apps in the same transaction. Reapproval does not automatically restart them. |
-| `beta.inspect` | `{sha256}` | Returns product name, version, `multipliers` and `suggested_multiplier`. Only an approved, inspected release qualifies. |
-| `beta.prepare` | `{sha256,multiplier}` | Creates one quota-counted managed app. Reuse the same operation idempotency key when retrying a request with an uncertain result. |
-| `beta.deploy` | `{app,release}` | Validates the app's recorded digest, current approval, inspection, size and quota. Places the app on an eligible node and starts the selected release in one transaction. |
+| `beta.inspect` | `{sha256}` | Returns product name, version, `multipliers` and `suggested_multiplier`. A completed incompatible probe yields a generic profile. A cache miss returns `probe_pending`. |
+| `beta.probe_upload` | `{sha256}` | Returns a one-time PUT path for a digest-bound probe upload. The server revalidates the ELF and digest before starting inspection. |
+| `beta.prepare` | `{sha256,multiplier,http_port?}` | Creates one quota-counted managed app. Reuse the same operation idempotency key when retrying a request with an uncertain result. |
+| `beta.deploy` | `{app,release}` | Validates the app's recorded digest, revocation status, inspection, size and quota. Places the app on an eligible node and starts the selected release in one transaction. |
 
 Crew is the first supported runtime. Its manifest requires HTTP 8080, TCP health checks, hooks on 8081 for suspend, resume and terminate, persistent volume and replica storage, a verified owner address and managed sign-in email. Each Beta size unit allocates 256 MiB, one quarter vCPU and 2 GiB. Crew offers sizes 1× through 8×. Drop suggests the smallest size that satisfies all three resource values in the manifest, up to 8×. The released Crew profile suggests 4×. Owners can choose a smaller or larger allocation. A fractional size reserves the next whole number of guest vCPUs and applies an exact quarter-core host CPU quota. Placement for those sizes requires a node reporting support for quarter-core quotas. Normal users cannot override a managed app's runtime settings.
 
@@ -216,20 +217,25 @@ After preparation, request an ordinary `release.upload_link` with `activate:fals
 
 The first catalog admission or a configured Beta node list makes direct `app.create` an admin-only workflow. Existing operator-managed apps keep their release operations. Catalog and probe records stay out of account queries and the public route table.
 
-On a dedicated inspection host, take the SHA-256 from the approved PocketContext release checksum and admit it with `drop op beta.approve '{"sha256":"…"}'`. With the matching executable locally available, run:
+Install `deploy/drop-ax41/drop-manifest-probe.socket` and `drop-manifest-probe@.service` in the systemd unit directory on the NibRunner host serving Drop. Set the socket's owner to the Drop service account. Run `systemctl daemon-reload` and `systemctl enable --now drop-manifest-probe.socket`. Drop passes only validated bytes and their digest over the private socket. The worker calls `nibrunnerd probe-manifest` with the host's `/etc/nibrunner/config.toml`. NibRunner uses an isolated, time-limited microVM for `--drop-manifest`. The guest receives no account credentials, network or app volume. Infrastructure failures are retriable.
 
-```sh
-python3 scripts/probe_release.py --db "$DROP_PROJECT" --config "$INSPECTION_CONFIG" \
-  --sha256 "$APPROVED_SHA256" ./pocketcontext-crew-drop-linux-amd64
+#### Public manifest interface
+
+When invoked with `--drop-manifest`, print one JSON object of at most 16 KiB to stdout and exit. Example:
+
+```json
+{"schema":"drop.manifest/v1","app":"sample","version":"1.0","http_port":8080,"hook_port":0,"health":"tcp","hooks":[],"requires":["persistent_volume"],"optional":[],"minimum":{"memory_mib":256,"cpu_quarters":1,"disk_mib":2048}}
 ```
 
-The helper uses the Drop CLI's authenticated connection and requires NibRunner with the `probe-manifest` command. Use `--url` for an authenticated loopback forward instead of a local project. It checks the input digest before claiming a lease. A warm valid result skips the VM, a cached rejection fails, and an interrupted probe can be reclaimed after its lease expires. The guest receives no Drop credentials. A retry never approves a revoked release.
+Use a lowercase app slug (3–32 characters), an alphanumeric release version that may include periods, hyphens and plus signs, a TCP port from 1 through 65535, and positive resource minima. Declare all three lifecycle hooks (`suspend`, `resume`, `terminate`) when a distinct hook port is supplied. Runtime features are `persistent_volume`, `verified_owner_email`, `sign_in_email` and `s3_replica`. Sign-in email and S3 also require verified owner email. Declare optional replication when the binary can start without S3. Drop grants platform S3 through the metered host proxy. The local volume is an unguaranteed cache.
+
+Executables without a compatible manifest use the advanced form, with an explicit port and size, `PORT` and NibRunner's guest environment. The owner can read up to 1 KiB of the current deployment's stdout and stderr in the app view. They receive no email or platform S3. A completed negative probe is cached. Rejected ELF headers and oversized files are refused before inspection.
 
 For a pending Beta invitation, both the six-digit code and emailed-link redemption requests carry `X-Drop-Accept-Terms` with the current immutable version after the user explicitly accepts the terms. Sending an email address or opening a link creates no receipt. A valid credential without the current acceptance receives `428 terms_required`; unpublished or incomplete operator legal configuration receives `409 beta_activation_closed`. Neither response issues a session. The user may request another code after reviewing the documents. Managed app results include `beta_sha256`, allowing a returning owner to resume a prepared upload with the original bytes and selected size.
 
 ### Verified waitlist
 
-The hosted reader posts an email and the accepted waitlist document version (`2026-11-26-waitlist`) to `/api/drop/waitlist/request`. A valid request returns 202 even when the address is already enrolled or delivery is limited. When a person accepts the waitlist terms at the shared email entry, the reader also requests an ordinary sign-in code. Existing accounts and addresses with an open invitation use sign-in. Other addresses receive the waitlist verification email with a six-digit code valid for ten minutes. A returning waitlist member can reconfirm without changing the original verification date. POST the email and code to `/api/drop/waitlist/verify` to join. Verification creates a queue entry. The account and hosting terms are handled separately at invited sign-in. The email also includes a withdrawal link. POST its token to `/api/drop/waitlist/leave` to remove the entry and close an outstanding invitation. An activated account retains its hosting access.
+For a deploy-time access lookup, POST `{email,check_access:true}` to `/api/drop/waitlist/request`. This deliberately discloses whether the address has access and does not enqueue email or create an entry. For enrollment, the hosted reader posts an email and the accepted waitlist document version (`2026-11-26-waitlist`) to `/api/drop/waitlist/request`. A valid request returns 202 even when the address is already enrolled or delivery is limited. When a person accepts the waitlist terms at the shared email entry, the reader also requests an ordinary sign-in code. Existing accounts and addresses with an open invitation use sign-in. Other addresses receive the waitlist verification email with a six-digit code valid for ten minutes. A returning waitlist member can reconfirm without changing the original verification date. POST the email and code to `/api/drop/waitlist/verify` to join. Verification creates a queue entry. The account and hosting terms are handled separately at invited sign-in. The email also includes a withdrawal link. POST its token to `/api/drop/waitlist/leave` to remove the entry and close an outstanding invitation. An activated account retains its hosting access.
 
 Admins use `waitlist.list` with an optional case-insensitive email substring (`search`), `limit` and `offset`. Only verified addresses appear, ordered by verification time, oldest first. `waitlist.invite`, `waitlist.resend` and `waitlist.revoke` take an entry `id`. Inviting records a regular user invitation and queues its welcome email in the same transaction. A repeated invite reuses the existing invitation. Resend queues another welcome for an open invitation after a one-minute cooldown. Use `user.set` to suspend or restore an active account. Restoring queues an email to the verified address.
 

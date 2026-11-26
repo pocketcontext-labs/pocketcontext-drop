@@ -164,11 +164,12 @@ var specs = []Spec{
 		Summary: "Run the usage collector once: read new S3 access logs and the latest inventory, update usage, check limits."},
 	{Name: "beta.approve", Role: RoleAdmin, Input: &BetaDigest{}, Summary: "Admit an exact release digest for inspection."},
 	{Name: "beta.revoke", Role: RoleAdmin, Input: &BetaDigest{}, Summary: "Revoke a release digest and stop its Beta apps."},
-	{Name: "beta.claim", Role: RoleAdmin, OnceResult: true, Input: &BetaDigest{}, Summary: "Lease inspection of an approved binary."},
+	{Name: "beta.claim", Role: RoleAdmin, OnceResult: true, Input: &BetaDigest{}, Summary: "Lease inspection of a binary."},
 	{Name: "beta.complete", Role: RoleAdmin, Input: &BetaCompleteInput{}, Summary: "Finish a leased manifest inspection."},
+	{Name: "beta.probe_upload", Role: RoleUser, OnceResult: true, Input: &BetaDigest{}, Summary: "Issue an upload link for isolated manifest inspection."},
 	{Name: "beta.inspect", Role: RoleUser, Read: true, Input: &BetaDigest{}, Summary: "Look up the supported release and its available sizes."},
-	{Name: "beta.prepare", Role: RoleUser, Input: &BetaPrepareInput{}, Summary: "Prepare an app for an approved binary at the selected size."},
-	{Name: "beta.deploy", Role: RoleUser, Input: &ReleaseDeployInput{}, Summary: "Place and deploy an uploaded, approved release."},
+	{Name: "beta.prepare", Role: RoleUser, Input: &BetaPrepareInput{}, Summary: "Prepare an app for an inspected binary at the selected size."},
+	{Name: "beta.deploy", Role: RoleUser, Input: &ReleaseDeployInput{}, Summary: "Place and deploy an inspected release."},
 }
 
 func init() {

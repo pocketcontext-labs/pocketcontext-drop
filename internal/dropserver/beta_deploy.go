@@ -3,6 +3,7 @@ package dropserver
 import (
 	"errors"
 	"slices"
+	"strconv"
 
 	"ganigeorgiev.com/pocketbase/pocketbase/core"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
@@ -20,12 +21,22 @@ func suggestedCrewSize(m dropapi.BetaManifest) int {
 	return crewBetaSizes[len(crewBetaSizes)-1]
 }
 
+func betaDisplayName(m dropapi.BetaManifest) string {
+	if m.App == "crew" {
+		return "PocketContext Crew"
+	}
+	if m.App == "" {
+		return "Generic Linux app"
+	}
+	return m.App
+}
+
 func betaInspect(c *Ctx, in *dropapi.BetaDigest) (any, error) {
 	m, err := betaRelease(c.App, in.SHA256)
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"name": "PocketContext Crew", "version": m.Version, "multipliers": crewBetaSizes, "suggested_multiplier": suggestedCrewSize(m)}, nil
+	return map[string]any{"name": betaDisplayName(m), "generic": m.Schema == "", "version": m.Version, "requires": m.Requires, "optional": m.Optional, "http_port": m.HTTPPort, "multipliers": crewBetaSizes, "suggested_multiplier": suggestedCrewSize(m)}, nil
 }
 
 func betaPrepare(c *Ctx, in *dropapi.BetaPrepareInput) (any, error) {
@@ -40,10 +51,29 @@ func betaPrepare(c *Ctx, in *dropapi.BetaPrepareInput) (any, error) {
 	if servicesOf(c.App).Releases == nil {
 		return nil, releasesUnavailable()
 	}
+	generic := m.Schema == ""
+	features := slices.Concat(m.Requires, m.Optional)
+	kind := "ordinary"
+	if slices.Contains(features, "verified_owner_email") {
+		kind = "crew"
+	}
+	port := m.HTTPPort
+	if generic {
+		port = in.HTTPPort
+	} else if in.HTTPPort != 0 && in.HTTPPort != port {
+		return nil, Invalid("http_port", "The port is declared by the manifest.")
+	}
+	slug := m.App
+	if slug == "" {
+		slug = "app"
+	}
+	if len(slug) > 12 {
+		slug = slug[:12]
+	}
 	result, err := appCreate(c, &dropapi.AppCreateInput{
-		Name: "PocketContext Crew", Slug: "crew-" + core.GenerateDefaultRandomId(), Kind: m.App,
-		VCPU: &cpu, MemoryMiB: &mem, DiskMiB: &disk,
-		HTTPPort: &m.HTTPPort, HookPort: &m.HookPort, HealthKind: m.Health,
+		Name: betaDisplayName(m), Slug: slug + "-" + core.GenerateDefaultRandomId(), Kind: kind, ExecutableName: m.App,
+		VCPU: &cpu, MemoryMiB: &mem, DiskMiB: &disk, Env: map[string]string{"PORT": strconv.Itoa(port)},
+		HTTPPort: &port, HookPort: &m.HookPort, HealthKind: "tcp",
 	})
 	if err != nil {
 		return nil, err
@@ -52,7 +82,13 @@ func betaPrepare(c *Ctx, in *dropapi.BetaPrepareInput) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	app.Set("generic_beta", generic)
 	app.Set("beta_digest", in.SHA256)
+	app.Set("sign_in_email_enabled", slices.Contains(features, "sign_in_email"))
+	if !slices.Contains(features, "s3_replica") {
+		app.Set("crew_enrollment", "")
+		app.Set("replica_sync_seconds", 0)
+	}
 	if err := c.App.Save(app); err != nil {
 		return nil, err
 	}

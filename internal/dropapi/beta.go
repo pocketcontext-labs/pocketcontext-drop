@@ -13,6 +13,7 @@ type BetaCompleteInput struct {
 }
 type BetaPrepareInput struct {
 	SHA256     string `json:"sha256"`
+	HTTPPort   int    `json:"http_port,omitempty"`
 	Multiplier int    `json:"multiplier"`
 }
 type BetaManifest struct {
@@ -23,6 +24,7 @@ type BetaManifest struct {
 	HookPort int      `json:"hook_port"`
 	Health   string   `json:"health"`
 	Hooks    []string `json:"hooks"`
+	Optional []string `json:"optional,omitempty"`
 	Requires []string `json:"requires"`
 	Minimum  struct {
 		MemoryMiB   int `json:"memory_mib"`

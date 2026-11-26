@@ -168,6 +168,7 @@ const (
 // when the node first reported this phase; LastSeen when it last reported at
 // all.
 type Status struct {
+	LogTail              string      `json:"log_tail,omitempty"`
 	URLReady             bool        `json:"url_ready,omitempty"`
 	App                  string      `json:"app"`
 	Phase                string      `json:"phase"`

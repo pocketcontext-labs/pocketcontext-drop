@@ -436,7 +436,7 @@ func (a *Agent) reconcile(ctx context.Context) (wrote bool, err error) {
 		if app.HostS3 && !revokedS3[id] {
 			hostApps[id] = app
 		}
-		intents = append(intents, appIntent{AppID: id, DeploymentID: app.DeploymentID})
+		intents = append(intents, appIntent{GenericBeta: app.GenericBeta, AppID: id, DeploymentID: app.DeploymentID})
 		phases[id] = StateApp{AppID: id, DeploymentID: app.DeploymentID, Phase: "rendered"}
 	}
 	a.secrets.Forget(used)
@@ -533,6 +533,19 @@ func (a *Agent) report(ctx context.Context) error {
 	}
 	body := buildReport(a.hostID, a.version, a.appliedSeq, a.intents, rep, a.writtenRevision, a.now())
 	body.Deleted = confirmedVolumeRemovals(a.deleted, rep, a.hostID, a.writtenRevision)
+	logs := filepath.Join(filepath.Dir(a.cfg.Reported), "logs")
+	for _, intent := range a.intents {
+		if !intent.GenericBeta {
+			continue
+		}
+		for i := range body.Apps {
+			app := &body.Apps[i]
+			if app.AppID == intent.AppID && app.DeploymentID == intent.DeploymentID {
+				app.LogTail = genericLogTail(logs, app.AppID, app.DeploymentID)
+				break
+			}
+		}
+	}
 	if usage := hostUsage(filepath.Join(a.cfg.StateDir, HostServicesUsageFile)); len(usage) > 0 {
 		for i := range body.Apps {
 			if u := usage[body.Apps[i].DeploymentID]; u != nil && body.Apps[i].DeploymentID != "" {

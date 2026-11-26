@@ -151,6 +151,7 @@ func hostReport(r *nibReported) *dropapi.HostReport {
 
 // appIntent is what the agent wanted for one app at the last reconcile.
 type appIntent struct {
+	GenericBeta  bool
 	AppID        string
 	DeploymentID string
 	// AgentPhase is set when the agent itself failed the app

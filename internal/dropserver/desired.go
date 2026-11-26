@@ -115,6 +115,7 @@ func desiredApp(app core.App, record *core.Record, services Services) (dropapi.D
 	}
 	nibAppID := record.GetString("nib_app_id")
 	a := dropapi.DesiredApp{App: render.App{
+		GenericBeta:        record.GetBool("generic_beta"),
 		CrewOwnerEmail:     record.GetString("crew_owner_email"),
 		SignInEmailEnabled: record.GetBool("sign_in_email_enabled"),
 

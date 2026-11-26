@@ -33,6 +33,8 @@ type Services struct {
 	// ReleaseMaxBytes caps one release upload: dropapi.MaxReleaseBytes when
 	// zero, and never more (DROP_RELEASE_MAX_BYTES may only lower it).
 	ReleaseMaxBytes int64
+	// ProbeSocket connects to the local isolated inspection service.
+	ProbeSocket string
 	// AppDomain is the domain under which apps get their hostname,
 	// <slug>.<AppDomain> (DROP_APP_DOMAIN); empty leaves new apps without a
 	// hostname.
@@ -76,6 +78,9 @@ func SetServices(app core.App, s Services) {
 }
 
 func (s Services) withDefaults() Services {
+	if s.ProbeSocket == "" {
+		s.ProbeSocket = "/run/drop-manifest-probe.sock"
+	}
 	if s.SSMPrefix == "" {
 		s.SSMPrefix = awsx.DefaultSSMPrefix
 	}

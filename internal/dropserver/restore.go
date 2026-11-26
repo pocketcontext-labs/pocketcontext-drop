@@ -26,6 +26,9 @@ func InvalidateNodeTokens(app core.App) error {
 				return err
 			}
 		}
+		if err := waitExec(tx, "DELETE FROM drop_manifest_uploads", nil); err != nil {
+			return err
+		}
 		if _, err := tx.DB().NewQuery("DELETE FROM upload_links WHERE used_at = ''").Execute(); err != nil {
 			return err
 		}

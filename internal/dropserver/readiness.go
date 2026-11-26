@@ -37,3 +37,19 @@ func crewURLReady(ctx context.Context, domain, slug, hostname string, client *ht
 	}
 	return err == nil && len(body) <= limit && json.Unmarshal(body, &mode) == nil && mode.Mode == "email"
 }
+
+func betaURLReady(ctx context.Context, domain, slug, hostname string, client *http.Client) bool {
+	if !ValidAppDomain(domain) || !slugPattern.MatchString(slug) || hostname != slug+"."+domain {
+		return false
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, "https://"+hostname+"/", nil)
+	if err != nil {
+		return false
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode >= 200 && resp.StatusCode < 500
+}

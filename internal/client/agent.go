@@ -49,6 +49,8 @@ func runAgent(a *args) error {
 		return fail(2, "--socket is an option of `drop agent host-services`")
 	}
 	switch sub {
+	case "manifest-probe":
+		return agent.ManifestProbe(os.Stdin, os.Stdout)
 	case "host-services":
 		cfg, err := agent.LoadHostServicesConfig(os.Getenv, o)
 		if err != nil {

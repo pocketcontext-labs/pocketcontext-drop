@@ -28,6 +28,9 @@ Buffer.from([0x7f, 69, 76, 70, 2, 1, 1]).copy(bytes);
 bytes.writeUInt16LE(2, 16);
 bytes.writeUInt16LE(62, 18);
 const digest = createHash("sha256").update(bytes).digest("hex");
+const genericBytes = Buffer.from(bytes);
+genericBytes[61] = 2;
+const genericDigest = createHash("sha256").update(genericBytes).digest("hex");
 const binary = {
   name: "crew",
   mimeType: "application/octet-stream",
@@ -66,6 +69,7 @@ try {
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
     let allowed = false;
+    let inspectedGeneric = false;
     const waitlistRequests = [];
     let firstDeployment = true;
     let deployed = false;
@@ -111,6 +115,12 @@ try {
       }
       if (path.endsWith("/auth-refresh")) return send(auth);
       if (path === "/api/realtime") return route.abort();
+      if (path === "/api/drop/upload/inspection") {
+        assert.equal(request.method(), "PUT");
+        assert.deepEqual(request.postDataBuffer(), genericBytes);
+        inspectedGeneric = true;
+        return send({inspected:true});
+      }
       if (path.startsWith("/api/drop/upload/")) {
         assert.equal(request.method(), "PUT");
         assert.equal(
@@ -132,7 +142,12 @@ try {
           return send({
             result: { ...record, role: "user", admin: false, hosted: true },
           });
+        case "beta.probe_upload":
+          assert.equal(input.sha256, genericDigest);
+          return send({result:{path:"/api/drop/upload/inspection"}});
         case "beta.inspect":
+          if (input.sha256 === genericDigest)
+            return inspectedGeneric ? send({ result: {generic: true, name:"Generic Linux app",version:"",multipliers:[1,2],suggested_multiplier:1} }) : send({code:"probe_pending"},409);
           return input.sha256 === digest
             ? send({
                 result: {
@@ -291,6 +306,13 @@ try {
       .filter({ hasText: "not supported" })
       .waitFor();
     await page.getByRole("button", { name: "Choose another app file" }).click();
+    await page.getByLabel("App file", { exact: true }).setInputFiles({...binary,buffer:genericBytes});
+    await page.getByText(/no guarantee it will start/).waitFor();
+    await page.getByLabel("HTTP port").fill("65536");
+    assert.ok(await page.getByRole("button",{name:"Deploy app"}).isDisabled());
+    await page.getByLabel("HTTP port").fill("4000");
+    assert.ok(await page.getByRole("button",{name:"Deploy app"}).isEnabled());
+    await page.getByRole("button", {name:"Choose another app file"}).click();
     await page.getByLabel("App file", { exact: true }).setInputFiles(binary);
     await page.getByLabel("App size").waitFor();
     assert.equal(await page.getByLabel("App size").inputValue(), "4");
