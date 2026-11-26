@@ -88,8 +88,16 @@ try {
       await page.locator('input[type=file]').setInputFiles(crew);
       await page.getByLabel('Email', {exact:true}).fill(email);
       await page.getByRole('checkbox', {name:/Beta Terms of Service/}).check();
-      await page.getByRole('button', {name:'Email me a sign-in code'}).click();
+      if (name === 'mobile') {
+        await page.getByRole('checkbox', {name:/Waitlist Terms/i}).check();
+        await page.getByRole('button', {name:'Email me a verification code'}).click();
+      } else {
+        await page.getByRole('button', {name:'Email me a sign-in code'}).click();
+      }
       await page.getByLabel('Code from the email').fill(await readCode(path.join(directory, email)));
+      if (name === 'mobile') {
+        await page.getByRole('button', {name:'Verify and join the waitlist'}).click();
+      }
       const sizePicker = page.getByLabel('App size');
       await sizePicker.waitFor();
       assert.equal(await sizePicker.inputValue(), '4');
