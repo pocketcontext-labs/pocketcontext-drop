@@ -77,7 +77,7 @@ export function OfficialCatalog() {
   return (
     <section className="panel wide official-page">
       <h2>
-        {product ? "Create a " + names[product] + " workspace" : "Catalog"}
+        {product ? ("Create " + (product === "atlas" ? "an " : "a ") + names[product] + " workspace") : "Catalog"}
       </h2>
       {product ? (
         <form
@@ -153,7 +153,7 @@ export function OfficialCatalog() {
                 className="primary"
                 onClick={() => {
                   setProduct(r.product);
-                  setName("");
+                  setName("My " + names[r.product]);
                   setSize(Math.max(4, r.minimum_multiplier || 1));
                   resetKey();
                 }}
