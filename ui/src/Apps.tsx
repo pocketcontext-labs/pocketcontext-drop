@@ -28,7 +28,7 @@ export const stateLabels: Record<App["desired_state"], string> = {
 
 export function quotaText(quota: Quota): string {
   const gib = (mib: number) => (mib / 1024).toLocaleString(undefined, {maximumFractionDigits: 2});
-  return quota.unlimited ? `${gib(quota.used)} GiB retained` : `${gib(quota.used)} of ${gib(quota.limit)} GiB retained`;
+  return quota.unlimited ? `${gib(quota.used)} GiB of app disk reserved` : `${gib(quota.used)} of ${gib(quota.limit)} GiB of app disk reserved`;
 }
 
 /** The account's apps, newest first, with its quota. */
@@ -84,7 +84,7 @@ export default function Apps({ beta = false, official=false, developer=false, ad
           </div>
         )}
       </div>
-      {quota && <p className="quiet">{quotaText(quota)} <HelpTip topic="app storage">This is the space set aside for your apps. Stopping an app keeps its files and still counts toward this total.</HelpTip></p>}
+      {quota && <p className="quiet">{quotaText(quota)} <HelpTip topic="app storage">Each app reserves its full disk size, even when its files use less space. Suspended and archived apps keep their reservation. Permanently deleting an app frees its space for another app.</HelpTip></p>}
       {quota && !quota.unlimited && quota.limit > 0 && <progress aria-label="Storage used" value={quota.used} max={quota.limit} />}
       {error && (
         <p role="alert" className="error">
