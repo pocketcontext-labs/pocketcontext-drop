@@ -89,6 +89,7 @@ code {
   overflow-wrap: anywhere;
 }
 .product-brand {
+  text-decoration: none;
   display: inline-flex;
   align-items: center;
   gap: 10px;

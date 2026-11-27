@@ -14,9 +14,7 @@ export function LegalDocument({ html }: { html: string }) {
   return (
     <div className="beta-legal-page">
       <header>
-        <a href="#/">
-          <Brand />
-        </a>
+        <Brand />
       </header>
       <main dangerouslySetInnerHTML={{ __html: html }} />
       <footer>
