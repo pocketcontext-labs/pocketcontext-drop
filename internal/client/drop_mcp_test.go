@@ -35,7 +35,7 @@ import (
 var (
 	ticketUserWrites  = []string{"workspace.create", "workspace.resize", "workspace.upgrade", "app.set", "app.start", "app.stop", "secret.set", "secret.delete"}
 	ticketAdminWrites = []string{"invite.create", "invite.revoke", "user.set", "node.create", "node.rotate_secret", "node.set_state", "placement.set", "placement.clear"}
-	ticketUserReads   = []string{"me", "apps", "app", "releases", "secrets", "status", "usage", "events", "catalog", "shared"} // usage: owner decision 6 of S3 metering (Phase 1)
+	ticketUserReads   = []string{"me", "apps", "app", "releases", "secrets", "status", "usage", "events", "catalog"} // usage: owner decision 6 of S3 metering (Phase 1)
 	ticketAdminReads  = []string{"users", "invites", "nodes"}
 )
 
