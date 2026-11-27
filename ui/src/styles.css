@@ -852,3 +852,29 @@ button.help-tip {
   line-height: 1.5;
 }
 #workspace-size { display: block; }
+
+.connect-guide { background: transparent; border: 0; padding: 0; }
+.connect-setup {
+  margin-top: 20px;
+  padding: clamp(16px, 4vw, 28px);
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  max-width: 44rem;
+}
+.connect-setup ol { padding-inline-start: 1.5em; margin: 0; }
+.connect-setup ol li { padding-inline-start: 4px; margin-bottom: 28px; }
+.connect-setup li > strong { font-size: 1.1rem; }
+.connect-setup ol p { color: var(--muted); margin: 10px 0; }
+.connect-address {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+.connect-address code { flex: 1 1 8rem; min-width: 0; overflow-wrap: anywhere; }
+.connect-address button { border-radius: 24px; min-height: 44px; }
+.connect-setup > section { border-top: 1px solid var(--border); padding-top: 12px; }

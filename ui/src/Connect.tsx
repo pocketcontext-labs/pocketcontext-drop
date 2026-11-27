@@ -91,7 +91,7 @@ export default function Connect() {
     };
   }, []);
   return (
-    <section className="panel" aria-labelledby="connect-title">
+    <section className="panel connect-guide" aria-labelledby="connect-title">
       <h2 id="connect-title">Connect an assistant</h2>
       {!connection && !failed && (
         <p role="status" className="quiet">
@@ -110,17 +110,28 @@ export default function Connect() {
         </p>
       )}
       {connection?.kind === "mcp" && (
-        <>
-          <p>
-            Add this address wherever your assistant asks for an MCP server,
-            then approve the connection with your Drop account. <HelpTip topic="connecting an assistant">You can use Drop without an assistant. To connect one, open its settings, look for connectors or MCP servers, and paste the address below. You can remove its access under Connected apps.</HelpTip>
-          </p>
-          <div className="row">
-            <code className="endpoint">{connection.url}</code>
-            <CopyButton text={connection.url} />
-          </div>
+        <div className="connect-setup">
+          <ol>
+            <li>
+              <strong>Add this address to your assistant</strong>{" "}
+              <HelpTip topic="the MCP address">Open your assistant’s settings and look for connectors or MCP servers. Choose the option to add a server, then paste this address.</HelpTip>
+              <p>Use it wherever your assistant asks for an MCP server.</p>
+              <div className="connect-address">
+                <code>{connection.url}</code>
+                <CopyButton text={connection.url} />
+              </div>
+            </li>
+            <li>
+              <strong>Approve the connection</strong>
+              <p>Your assistant will open Drop. Sign in with the account you want to use, then approve access.</p>
+            </li>
+            <li>
+              <strong>Try it in your assistant</strong>
+              <p>Go back to your chat and ask, “Which Drop workspaces do I have?”</p>
+            </li>
+          </ol>
           <ConnectedApps />
-        </>
+        </div>
       )}
     </section>
   );
