@@ -292,11 +292,11 @@ export function BetaStatus({
   );
   return (
     <section className="panel beta-flow">
-      <a href={viewHashes.apps}>{officialDigest ? "← Workspaces" : "Your apps"}</a>
+      <a href={viewHashes.apps}>{officialDigest ? "← Apps" : "Your apps"}</a>
       <h1>{name}</h1>
       <p role="status">
         {url
-          ? (officialDigest ? "Your workspace is ready." : "Your app is live.")
+          ? (officialDigest ? "Your app is ready." : "Your app is live.")
           : failed
             ? "Your app could not start."
             : phase === "archived"
@@ -307,7 +307,7 @@ export function BetaStatus({
       {url && (
         <div className="beta-actions">
           <a className="button primary" href={url} target="_blank" rel="noreferrer">
-            {officialDigest ? "Open workspace" : "Open app"}
+            Open app
           </a>
           {!activeSetup && (
             <button className="secondary" onClick={() => setRefresh(x => x + 1)}>Refresh deployment status</button>

@@ -164,7 +164,7 @@ export default function UserDirectory({
           [
             ["status", "Status", statuses],
             ["role", "Role", ["user", "admin"]],
-            ["workspaces", "Has workspaces", ["yes", "no"]],
+            ["workspaces", "Has apps", ["yes", "no"]],
             ["credits", "Has credits", ["yes", "no"]],
           ] as const
         ).map(([key, label, options]) => (
@@ -340,7 +340,7 @@ export default function UserDirectory({
                       "Account",
                       "Status",
                       "Role",
-                      "Workspaces",
+                      "Apps",
                       "Credits",
                       "Joined",
                     ].map((h) => (

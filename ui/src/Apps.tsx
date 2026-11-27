@@ -68,16 +68,16 @@ export default function Apps({ beta = false, official=false }: { beta?: boolean;
   return (
     <section className={"panel wide" + (official ? " workspace-list" : "")} aria-labelledby="apps-title">
       <div className="row heading">
-        <h2 id="apps-title">{official?"Your workspaces":"Your apps"}</h2>
+        <h2 id="apps-title">Your apps</h2>
         {full ? (
           <span className="quiet">Quota reached</span>
         ) : (
           <a className="button primary" href={official?viewHashes.catalog:beta ? viewHashes.deploy : viewHashes["app-new"]}>
-            {official?"Create workspace":beta ? "Deploy an app" : "New app"}
+            {official?"Create app":beta ? "Deploy an app" : "New app"}
           </a>
         )}
       </div>
-      {quota && <p className="quiet">{quotaText(quota)} <HelpTip topic="workspace storage">This is the space set aside for your workspaces. Stopping a workspace keeps its files and still counts toward this total.</HelpTip></p>}
+      {quota && <p className="quiet">{quotaText(quota)} <HelpTip topic="app storage">This is the space set aside for your apps. Stopping an app keeps its files and still counts toward this total.</HelpTip></p>}
       {error && (
         <p role="alert" className="error">
           {error}
@@ -87,7 +87,7 @@ export default function Apps({ beta = false, official=false }: { beta?: boolean;
         !error && <p className="quiet">Loading apps…</p>
       ) : apps.length === 0 ? (
         <p className="empty">
-          {official ? "No workspaces yet." : "No apps yet. Create the first one."}
+          {official ? "No apps yet." : "No apps yet. Create the first one."}
         </p>
       ) : (
         <ol className="apps" aria-label="Apps, newest first">

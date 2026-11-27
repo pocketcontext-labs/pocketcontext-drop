@@ -33,7 +33,7 @@ export default function DeleteSlider({
       <div
         className="delete-slider"
         role="slider"
-        aria-label="Slide to delete workspace"
+        aria-label="Slide to delete app"
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.round(position)}

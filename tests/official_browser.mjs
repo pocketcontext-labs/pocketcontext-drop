@@ -82,9 +82,9 @@ try {
     await row.getByText(/Published/).waitFor();
   }
   await admin
-    .getByRole("button", { name: "Enable official workspace catalog" })
+    .getByRole("button", { name: "Enable official app catalog" })
     .click();
-  await admin.getByText("The official workspace catalog is active.").waitFor();
+  await admin.getByText("The official app catalog is active.").waitFor();
   await admin.getByRole("link", { name: "Users", exact: true }).click();
   await admin
     .getByRole("combobox", { name: /^Status/ })
@@ -105,7 +105,7 @@ try {
   await account.waitFor();
   await admin.getByRole("button", { name: "Clear filters" }).click();
   await admin.getByRole("combobox", { name: /^Role/ }).selectOption("user");
-  await admin.getByLabel("Has workspaces").selectOption("yes");
+  await admin.getByLabel("Has apps").selectOption("yes");
   await admin.getByLabel("Has credits").selectOption("no");
   await admin.getByRole("button", { name: "browser@example.test" }).waitFor();
   await admin.setViewportSize({ width: 390, height: 844 });
@@ -128,13 +128,13 @@ try {
     assert.equal(await resources.inputValue(), "4");
     assert.equal(await resources.getByRole("option").count(), 8);
     await resources.selectOption(String(size));
-    await page.getByLabel("Workspace name").fill("Hosted " + product);
+    await page.getByLabel("App name").fill("Hosted " + product);
     const creation = page.waitForResponse(
       (r) =>
         r.url().endsWith("/api/drop/op") &&
         r.request().postDataJSON()?.op === "workspace.create",
     );
-    await page.getByRole("button", { name: "Create workspace" }).click();
+    await page.getByRole("button", { name: "Create app" }).click();
     const result = await (await creation).json();
     assert.equal(
       result.result?.app?.memory_mib,
@@ -154,7 +154,7 @@ try {
     assert.equal(await slider.getAttribute("aria-valuenow"), "0");
     await drag(page, mobile, x, end, y);
     await page
-      .getByRole("heading", { name: "Your workspaces" })
+      .getByRole("heading", { name: "Your apps" })
       .waitFor();
     const denied = await page.request.post(origin + "/api/drop/op", {
       headers: { Authorization: fixture.customer },

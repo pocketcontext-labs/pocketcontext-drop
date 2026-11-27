@@ -16,7 +16,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   history.replaceState(null, "", "/");
 });
-it("offers the same resource units for Atlas and creates the named workspace", async () => {
+it("offers the same resource units for Atlas and creates the named app", async () => {
   const ops = vi
     .spyOn(api, "op")
     .mockResolvedValueOnce({
@@ -32,10 +32,10 @@ it("offers the same resource units for Atlas and creates the named workspace", a
   expect(size).toHaveValue("4");
   expect(screen.getAllByRole("option")).toHaveLength(8);
   fireEvent.change(size, { target: { value: "8" } });
-  fireEvent.change(screen.getByLabelText("Workspace name"), {
+  fireEvent.change(screen.getByLabelText("App name"), {
     target: { value: "Research" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Create workspace" }));
+  fireEvent.click(screen.getByRole("button", { name: "Create app" }));
   await waitFor(() =>
     expect(ops).toHaveBeenCalledWith(
       "workspace.create",
@@ -96,7 +96,7 @@ it("keeps the combined directory paginated and sends selected filters to the ser
     />,
   );
   expect(
-    await screen.findByRole("columnheader", { name: "Workspaces" }),
+    await screen.findByRole("columnheader", { name: "Apps" }),
   ).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "Next" }));
   await waitFor(() =>

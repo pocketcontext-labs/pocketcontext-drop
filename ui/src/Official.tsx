@@ -29,7 +29,7 @@ function Size({
   return (
     <div>
       <label className="size-label" htmlFor="workspace-size">Resources</label>{" "}
-      <HelpTip topic="workspace size">The size sets how much memory and processing power your workspace gets. A larger size uses more credits while running. You can change it later in Workspace settings.</HelpTip>
+      <HelpTip topic="app size">The size sets how much memory and processing power your app gets. A larger size uses more credits while running. You can change it later in App settings.</HelpTip>
       <select id="workspace-size" value={value} onChange={(e) => onChange(Number(e.target.value))}>
         {Array.from({ length: 9 - minimum }, (_, i) => i + minimum).map((n) => (
           <option value={n} key={n}>
@@ -77,7 +77,7 @@ export function OfficialCatalog() {
   return (
     <section className="panel wide official-page">
       <h2>
-        {product ? ("Create " + (product === "atlas" ? "an " : "a ") + names[product] + " workspace") : "Catalog"}
+        {product ? ("Create " + (product === "atlas" ? "an " : "a ") + names[product] + " app") : "Catalog"}
       </h2>
       {product ? (
         <form
@@ -102,7 +102,7 @@ export function OfficialCatalog() {
           }}
         >
           <label>
-            Workspace name
+            App name
             <input
               required
               maxLength={80}
@@ -126,7 +126,7 @@ export function OfficialCatalog() {
           />
           <div className="row">
             <button className="primary" disabled={busy}>
-              Create workspace
+              Create app
             </button>
             <button
               type="button"
@@ -296,7 +296,7 @@ export function OfficialReleases({ onActivated }: { onActivated?: () => void }) 
                   onClick={() =>
                     void act(async () => {
                       await op("catalog.publish", { sha256: r.sha256 });
-                      return "Release published. Existing workspaces keep their installed versions.";
+                      return "Release published. Existing apps keep their installed versions.";
                     })
                   }
                 >
@@ -322,11 +322,11 @@ export function OfficialReleases({ onActivated }: { onActivated?: () => void }) 
             void act(async () => {
               await op("catalog.activate");
               onActivated?.();
-              return "The official workspace catalog is active.";
+              return "The official app catalog is active.";
             })
           }
         >
-          Enable official workspace catalog
+          Enable official app catalog
         </button>
       )}
     </section>
@@ -372,7 +372,7 @@ export function OfficialWorkspace({
         officialDigest={app.beta_sha256}
       />
       <section className="panel official-page">
-        <h2>Workspace settings</h2>
+        <h2>App settings</h2>
         <p>
           Installed · {names[app.official_product!]}{" "}
           {app.installed_version || "· awaiting first healthy deployment"}
@@ -387,7 +387,7 @@ export function OfficialWorkspace({
             <div>
               <p>
                 Install {names[latest.product]} {latest.version} at{" "}
-                {app.hostname}? Your workspace will restart on its existing
+                {app.hostname}? Your app will restart on its existing
                 volume.
               </p>
               <button

@@ -124,7 +124,7 @@ export default function Connect() {
             </li>
             <li>
               <strong>Try it in your assistant</strong>
-              <p>Go back to your chat and ask, “Which Drop workspaces do I have?”</p>
+              <p>Go back to your chat and ask, “Which Drop apps do I have?”</p>
             </li>
           </ol>
           <ConnectedApps />

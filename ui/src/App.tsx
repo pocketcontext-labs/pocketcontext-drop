@@ -211,7 +211,7 @@ function Workspace({
                 : undefined
             }
           >
-            <NavIcon path="M3 10l9-7 9 7v10h-6v-7H9v7H3z" />{me.official_catalog?"Workspaces":"Apps"}
+            <NavIcon path="M3 10l9-7 9 7v10h-6v-7H9v7H3z" />Apps
           </a>}
           {me.hosted && !hostedAdmin && (
             <a href={viewHashes.catalog} aria-current={view === "catalog" ? "page" : undefined}><NavIcon path="M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z" />Catalog</a>
@@ -275,7 +275,7 @@ function Workspace({
       </header>
       <main className="content">
         {view !== "credits" && me.trial_remaining_seconds !== undefined && <p className="panel" role="status">
-          {Math.ceil(me.trial_remaining_seconds / 60)} shared awake minutes left. Workspaces run locally until the buffer runs out, then stop with their data retained. A top-up resets the buffer to 60 minutes. <a href={viewHashes.credits}>Manage credits</a>
+          {Math.ceil(me.trial_remaining_seconds / 60)} shared awake minutes left. Apps run locally until the buffer runs out, then stop with their data retained. A top-up resets the buffer to 60 minutes. <a href={viewHashes.credits}>Manage credits</a>
         </p>}
         {page}
       </main>
