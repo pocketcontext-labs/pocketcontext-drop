@@ -44,7 +44,7 @@ Every operation on these lists is registered (`node.create` and `node.rotate_sec
 ### Test a private app
 
 1. Call `drop_read` with `{"what":"me"}`. Check that the account role is `developer`.
-2. For a local executable, call `developer.build_upload {}` and PUT the bytes to the one-time URL outside the conversation. For a public HTTPS download, call `developer.build_import {"url":"…"}`.
+2. For a local executable or a tar.gz archive containing one Linux amd64 executable, call `developer.build_upload {}` and PUT the bytes to the one-time URL outside the conversation. For a public HTTPS download, call `developer.build_import {"url":"…"}`. Both paths inspect the executable inside the archive and return its digest for creation. The executable must implement `--drop-manifest`.
 3. Read the inspected product, version, minimum multiplier and SHA-256. Select a size from the minimum through 8×. Drop obtains the runtime settings from the executable’s `--drop-manifest`.
 4. Call `developer.build_create {"sha256":"DIGEST","name":"Upgrade test","multiplier":4}` with a stable idempotency key. Read the returned app ID and hostname. The private instance has a generated `dev-` prefix. Use `drop_read` with `{"what":"status","app":"APP_ID"}` to follow deployment.
 5. Use `private.grant` and `private.revoke` to manage who can open the running app. A collaborator can find their invitations with `drop_read` and `{"what":"shared"}`. Access to the running app grants no rights to download the binary, deploy a release, or manage collaborators.
