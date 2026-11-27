@@ -200,7 +200,7 @@ function Workspace({
   else page = <Apps beta={me.hosted === true} official={me.official_catalog} />;
   return (
     <div className="app">
-      <header className="topbar">
+      <header className="navbar-surface"><div className="topbar">
         <Brand />
         <nav className="nav" aria-label="Pages">
           {!hostedAdmin && <a
@@ -272,7 +272,7 @@ function Workspace({
             <button type="button" className="secondary" onClick={() => api.logout()}>Sign out</button>
           </div>
         )}
-      </header>
+      </div></header>
       <main className="content">
         {view !== "credits" && me.trial_remaining_seconds !== undefined && <p className="panel" role="status">
           {Math.ceil(me.trial_remaining_seconds / 60)} shared awake minutes left. Apps run locally until the buffer runs out, then stop with their data retained. A top-up resets the buffer to 60 minutes. <a href={viewHashes.credits}>Manage credits</a>

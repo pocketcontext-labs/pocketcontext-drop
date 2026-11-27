@@ -925,9 +925,11 @@ button.connect-address { width: 100%; min-height: 48px; text-align: start; paddi
 
 :root { --page-width: 960px; --page-gutter: 24px; }
 html { scrollbar-gutter: stable; }
-.topbar { padding-inline: max(var(--page-gutter), calc((100% - var(--page-width)) / 2 + var(--page-gutter))); }
-.content { padding-inline: var(--page-gutter); }
-.app-dashboard progress { display: block; width: min(100%, 240px); height: 4px; accent-color: var(--accent); margin-bottom: 20px; }
+.navbar-surface { background: var(--panel); border-bottom: 1px solid var(--border); }
+.topbar, .content { width: min(100%, var(--page-width)); padding-inline: var(--page-gutter); margin-inline: auto; }
+.topbar { border-bottom: 0; }
+.topbar .account button { padding-block: 5px; }
+.app-dashboard progress { display: block; width: min(100%, 240px); appearance: none; border: 0; height: 6px; border-radius: 6px; overflow: hidden; background: var(--border); margin-bottom: 20px; }
 .app-dashboard .dashboard-row { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 16px; background: var(--panel); }
 .dashboard-row:hover, .dashboard-row:focus-within { border-color: var(--muted); }
 .dashboard-identity, .dashboard-meta, .dashboard-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -940,3 +942,13 @@ html { scrollbar-gutter: stable; }
 .dashboard-actions { position: relative; }
 .dashboard-actions button { display: grid; place-items: center; }
 @media (max-width: 640px) { :root { --page-gutter: 16px; } }
+
+.app-dashboard > .quiet { margin: 8px 0 2px; }
+.app-dashboard progress::-webkit-progress-bar { background: var(--border); }
+.app-dashboard progress::-webkit-progress-value { background: var(--primary, #30493f); border-radius: 6px; }
+.app-dashboard progress::-moz-progress-bar { background: var(--primary, #30493f); border-radius: 6px; }
+@media (prefers-color-scheme: light) { .app-dashboard .dashboard-row { background: #fff; } }
+.dashboard-identity .slug { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.dashboard-meta time::before { content: "·"; margin-inline-end: 8px; }
+.dashboard-actions :is(button, a.button) { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 36px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 6px; background: transparent; }
+.dashboard-actions :is(button, a.button):hover { background: var(--accent-soft); }
