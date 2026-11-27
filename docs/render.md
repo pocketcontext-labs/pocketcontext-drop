@@ -27,7 +27,7 @@ out, err := render.Render(render.Input{HostID, DesiredSeq, Apps, Keep, Previous,
 - **Bad apps fail alone** (`Rejected`, with field names, never values): the
   previous entry is kept unchanged, or the app is left out. `Keep` carries an
   app's previous entry over unchanged, for failed staging or secret
-  resolution. A placed volume cannot change size. A malformed input (host id,
+  resolution. A size change on a placed volume requires an explicit request matching its source size and node capability. While the request is pending, replay preserves its ID, and a matching local receipt is required before applying the new size or returning to the original. A malformed input (host id,
   limits, duplicate ids or hostnames) refuses the whole document.
 - **Validation (plan 7.3)** runs on the node: appId `^d-[a-z0-9]{15}$`,
   deploymentId `<appId>-dep-<1–9 digits>`, volumeId `<appId>-vol`, sha256 and
@@ -55,7 +55,7 @@ A configured hook port becomes `config.hooks.port`. With zero, Drop omits the ho
 
 ## Vendored schema
 
-`internal/render/schema/desired.schema.json` is the byte-for-byte copy of the PocketContext NibRunner lifecycle hooks, sign-in email and host services contract at `crates/protocol/schema/desired.schema.json` (SHA-256 `d320df49cbf83ab0977f4bd00c01a14fc04f418ec04ec87c92adcc0d85af2df5`). This runner requires new writers to set volume `storage: null` for host storage. Drop accepts its own earlier files with the field absent and refuses custom storage backends. `ValidateSchema` is a focused JSON Schema
+`internal/render/schema/desired.schema.json` is the byte-for-byte copy of the PocketContext NibRunner lifecycle hooks, sign-in email and host services contract at `crates/protocol/schema/desired.schema.json` (SHA-256 `a0d8ed0a2d50b3fbcbbf66be6f341a09ad6d0dc3bb6293c33e31ce6fb83972b8`). This runner requires new writers to set volume `storage: null` for host storage. Drop accepts its own earlier files with the field absent and refuses custom storage backends. `ValidateSchema` is a focused JSON Schema
 2020-12 evaluator for exactly the keywords that file uses; it refuses a schema
 with any other keyword, and runs the one lookahead pattern (guest paths) as
 hand-written code. To bump nibrunner: copy the new file, update the digest in

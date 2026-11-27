@@ -9,6 +9,7 @@ import (
 
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/appspec"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/render"
 )
 
 // nibReported is the part of nibrunner's reported.json the agent reads.
@@ -25,10 +26,12 @@ type nibReported struct {
 	Allocatable      json.RawMessage `json:"allocatable"`
 	Versions         json.RawMessage `json:"versions"`
 	Volumes          []struct {
-		AppID    string               `json:"appId"`
-		VolumeID string               `json:"volumeId"`
-		Usage    *dropapi.VolumeUsage `json:"usage"`
-		State    string               `json:"state"`
+		AppID       string                `json:"appId"`
+		VolumeID    string                `json:"volumeId"`
+		Usage       *dropapi.VolumeUsage  `json:"usage"`
+		SizeBytes   int64                 `json:"sizeBytes"`
+		LocalResize *render.ResizeReceipt `json:"localResize"`
+		State       string                `json:"state"`
 	} `json:"volumes"`
 	Instances []nibInstance `json:"instances"`
 }
@@ -113,6 +116,9 @@ func sanitizeVersions(raw json.RawMessage) map[string]any {
 		return nil
 	}
 	out := map[string]any{}
+	if v["localVolumeResize"] == true {
+		out["localVolumeResize"] = true
+	}
 	if v["cpuQuarterQuota"] == true {
 		out["cpuQuarterQuota"] = true
 	}
@@ -193,10 +199,14 @@ func nibPhase(state string) string {
 func appReports(intents []appIntent, r *nibReported, writtenRevision string, now time.Time) []dropapi.AppReport {
 	byApp := map[string]nibInstance{}
 	usageByApp := map[string]*dropapi.VolumeUsage{}
+	resizeByApp := map[string]*dropapi.ResizeObservation{}
 	stale := true
 	accepted := ""
 	if r != nil {
 		for _, v := range r.Volumes {
+			if v.VolumeID == appspec.VolumeID(v.AppID) && v.LocalResize != nil && v.LocalResize.Valid() {
+				resizeByApp[v.AppID] = &dropapi.ResizeObservation{ResizeReceipt: *v.LocalResize, SizeBytes: v.SizeBytes}
+			}
 			if v.VolumeID == appspec.VolumeID(v.AppID) && v.State == "ready" && v.Usage.Fresh(now) {
 				usageByApp[v.AppID] = v.Usage
 			}
@@ -213,6 +223,12 @@ func appReports(intents []appIntent, r *nibReported, writtenRevision string, now
 	for _, in := range intents {
 		// deploymentId is the deployment nibrunner runs (empty until it runs one).
 		rep := dropapi.AppReport{AppID: in.AppID}
+		if !stale && accepted == writtenRevision && writtenRevision != "" {
+			rep.LocalResize = resizeByApp[in.AppID]
+			if rep.LocalResize != nil {
+				rep.LocalResize.DeploymentID = in.DeploymentID
+			}
+		}
 		inst, seen := byApp[in.AppID]
 		switch {
 		case in.AgentPhase != "":

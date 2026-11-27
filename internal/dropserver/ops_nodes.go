@@ -286,8 +286,12 @@ func nodeMemoryRoom(app core.App, node, placed *core.Record) (int, error) {
 		VCPU   int `db:"vcpu"`
 		Memory int `db:"memory"`
 	}
-	err := app.DB().NewQuery(`SELECT COALESCE(SUM(a.vcpu), 0) AS vcpu, COALESCE(SUM(a.memory_mib), 0) AS memory
-		FROM placements p JOIN apps a ON a.id = p.app
+	err := app.DB().NewQuery(`SELECT COALESCE(SUM(MAX(a.vcpu, (reservation + 3) / 4)), 0) AS vcpu,
+		COALESCE(SUM(MAX(a.memory_mib, reservation * 256)), 0) AS memory
+		FROM placements p JOIN (
+			SELECT apps.*, CASE WHEN json_extract(NULLIF(local_resize,''),'$.outcome') = 'pending'
+				THEN json_extract(local_resize,'$.target') ELSE 0 END AS reservation FROM apps
+		) a ON a.id = p.app
 		WHERE p.node = {:node} AND p.app != {:app} AND a.archived = FALSE`).
 		Bind(dbx.Params{"node": node.Id, "app": placed.Id}).One(&used)
 	if err != nil {
@@ -304,6 +308,9 @@ func placementSet(c *Ctx, in *dropapi.PlacementSetInput) (any, error) {
 	app, err := c.findApp(in.App, false)
 	if err != nil {
 		return nil, err
+	}
+	if pendingDiskRequest(app) {
+		return nil, resizeBusy()
 	}
 	if accountsOf(c.App).hosted {
 		owner, err := c.App.FindRecordById("users", app.GetString("owner"))
@@ -380,6 +387,9 @@ func placementClear(c *Ctx, in *dropapi.PlacementClearInput) (any, error) {
 	app, err := c.findApp(in.App, false)
 	if err != nil {
 		return nil, err
+	}
+	if pendingDiskRequest(app) {
+		return nil, resizeBusy()
 	}
 	placement, err := placementOf(c.App, app.Id)
 	if err != nil {

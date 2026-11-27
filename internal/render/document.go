@@ -23,6 +23,7 @@ type document struct {
 }
 
 type volume struct {
+	LocalResize *LocalResize `json:"localResize,omitempty"`
 	// The current runner requires an explicit null to select host storage.
 	// Keep raw input so we can refuse foreign volume backends in previous files.
 	Storage json.RawMessage `json:"storage"`

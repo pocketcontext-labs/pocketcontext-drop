@@ -65,6 +65,9 @@ func deleteApp(c *Ctx, in *dropapi.AppDeleteInput) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	if pendingDiskRequest(a) {
+		return nil, resizeBusy()
+	}
 	if in.ConfirmSlug != a.GetString("slug") {
 		return nil, Invalid("confirm_slug", "Type the app slug exactly.")
 	}

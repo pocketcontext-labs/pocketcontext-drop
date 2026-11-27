@@ -111,6 +111,10 @@ func serveReport(re *core.RequestEvent, state *agentState) error {
 				}
 			}
 			if !writeNode {
+				if outcome.resizeFinished {
+					_, err := syncNode(tx, fresh)
+					return err
+				}
 				return nil
 			}
 			allocatableBefore := normalizedValue(fresh.Get("allocatable"))
@@ -119,7 +123,7 @@ func serveReport(re *core.RequestEvent, state *agentState) error {
 				return err
 			}
 			// A new allocatable can change which apps pass the check.
-			if string(allocatableBefore) != string(normalizedValue(fresh.Get("allocatable"))) {
+			if outcome.resizeFinished || string(allocatableBefore) != string(normalizedValue(fresh.Get("allocatable"))) {
 				_, err = syncNode(tx, fresh)
 			}
 			return err
@@ -237,6 +241,9 @@ func checkReport(r *dropapi.Report) error {
 		if a.LastExitCode != nil && (*a.LastExitCode < -1<<31 || *a.LastExitCode > 1<<31-1) {
 			return reportInvalid(field+".lastExitCode", "lastExitCode is out of range.")
 		}
+		if r := a.LocalResize; r != nil && (!r.Valid() || !appspec.DeploymentIDOK(a.AppID, r.DeploymentID) || r.SizeBytes < 0 || r.SizeBytes > int64(appspec.MaxDiskMiB)*appspec.MiB) {
+			return reportInvalid(field+".localResize", "Invalid disk resize receipt.")
+		}
 		if a.VolumeUsage != nil && !a.VolumeUsage.Valid() {
 			return reportInvalid(field+".volumeUsage", "Invalid guest filesystem measurement.")
 		}
@@ -315,6 +322,7 @@ func (f nodeFields) apply(node *core.Record, now time.Time) {
 }
 
 type reportOutcome struct {
+	resizeFinished    bool
 	accepted, changes int
 	ignored           []string
 }
@@ -328,9 +336,11 @@ func ingestApps(app core.App, nodeID string, reports []dropapi.AppReport, now ti
 		return out, err
 	}
 	placed := map[string]*core.Record{} // nib_app_id -> apps record
+	byAppPlacement := map[string]*core.Record{}
 	for _, p := range placements {
 		if a, err := app.FindRecordById("apps", p.GetString("app")); err == nil {
 			placed[a.GetString("nib_app_id")] = a
+			byAppPlacement[a.Id] = p
 		}
 	}
 	rows, err := app.FindRecordsByFilter("node_reports", "node = {:node}", "", 0, 0, dbx.Params{"node": nodeID})
@@ -350,6 +360,12 @@ func ingestApps(app core.App, nodeID string, reports []dropapi.AppReport, now ti
 		if appRecord == nil {
 			out.ignored = append(out.ignored, r.AppID)
 			continue
+		}
+		if changed, err := applyDiskReceipt(app, appRecord, byAppPlacement[appRecord.Id], r.LocalResize, apply); err != nil {
+			return out, err
+		} else if changed {
+			out.changes++
+			out.resizeFinished = true
 		}
 		privateOutput := appRecord.GetBool("generic_beta") && r.DeploymentID == deploymentID(appRecord)
 		if !privateOutput {

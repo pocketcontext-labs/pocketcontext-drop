@@ -107,9 +107,15 @@ type App struct {
 }
 
 // Volume is the app's data volume. VolumeID must be <appId>-vol.
+type LocalResize struct {
+	RequestID string `json:"requestId"`
+	FromBytes int64  `json:"fromBytes"`
+}
+
 type Volume struct {
-	VolumeID  string `json:"volumeId"`
-	SizeBytes int64  `json:"sizeBytes"` // whole MiB, 256–16384 MiB
+	LocalResize *LocalResize `json:"localResize,omitempty"`
+	VolumeID    string       `json:"volumeId"`
+	SizeBytes   int64        `json:"sizeBytes"` // whole MiB, 256–16384 MiB
 }
 
 // Release is the staged executable. The agent stores it under its sha256, so
@@ -152,7 +158,9 @@ type Secret struct {
 
 // Limits are the node-local bounds of the validation.
 type Limits struct {
-	CPUQuarterQuota bool `json:"cpuQuarterQuota,omitempty"`
+	LocalVolumeResize bool                      `json:"localVolumeResize,omitempty"`
+	ResizeReceipts    map[string]ObservedResize `json:"-"`
+	CPUQuarterQuota   bool                      `json:"cpuQuarterQuota,omitempty"`
 	// AllowedHostSuffix, for example ".bigconfig.space"; every hostname must
 	// end with it.
 	AllowedHostSuffix string `json:"allowedHostSuffix"`
@@ -275,13 +283,13 @@ func Render(in Input) (*Output, error) {
 			keepPrevious(app.AppID)
 			continue
 		}
-		if old, ok := prev.volumes[app.AppID]; ok && old.SizeBytes != app.Volume.SizeBytes {
+		if old, ok := prev.volumes[app.AppID]; ok && !volumeTransitionOK(old, app.Volume, in.Limits.ResizeReceipts[old.VolumeID]) {
 			out.Rejected = append(out.Rejected, AppError{AppID: app.AppID, Code: CodeVolumeResize, Field: "volume.sizeBytes", Message: "a placed volume cannot change size"})
 			keepPrevious(app.AppID)
 			continue
 		}
 		instances[app.AppID] = renderInstance(app)
-		volumes[app.AppID] = volume{VolumeID: app.Volume.VolumeID, AppID: app.AppID, SizeBytes: app.Volume.SizeBytes, DesiredState: "present"}
+		volumes[app.AppID] = volume{LocalResize: app.Volume.LocalResize, VolumeID: app.Volume.VolumeID, AppID: app.AppID, SizeBytes: app.Volume.SizeBytes, DesiredState: "present"}
 	}
 	for _, id := range in.Keep {
 		_, hasInst := prev.instances[id]
@@ -295,6 +303,10 @@ func Render(in Input) (*Output, error) {
 	// Tombstones: previous apps the input no longer names.
 	for id, inst := range prev.instances {
 		if _, ok := instances[id]; ok || inputNames(in, id) {
+			continue
+		}
+		if vol := prev.volumes[id]; vol.LocalResize != nil && !resizeSettled(vol, in.Limits.ResizeReceipts[vol.VolumeID]) {
+			keepPrevious(id)
 			continue
 		}
 		inst.DesiredState = "stopped"
@@ -315,6 +327,12 @@ func Render(in Input) (*Output, error) {
 	// Re-emit absent only while the control plane explicitly authorizes it.
 	for _, id := range in.Deleted {
 		if vol, ok := prev.volumes[id]; ok {
+			if vol.LocalResize != nil && !resizeSettled(vol, in.Limits.ResizeReceipts[vol.VolumeID]) {
+				out.Rejected = append(out.Rejected, AppError{AppID: id, Code: CodeVolumeResize, Field: "volume.localResize", Message: "the volume is being resized"})
+				keepPrevious(id)
+				continue
+			}
+			vol.LocalResize = nil
 			vol.DesiredState = "absent"
 			volumes[id] = vol
 			delete(instances, id)

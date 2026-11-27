@@ -294,6 +294,25 @@ func workspaceResize(c *Ctx, in *dropapi.WorkspaceResize) (any, error) {
 	if in.Multiplier < a.GetInt("official_minimum") {
 		return nil, Invalid("multiplier", "The installed workspace requires a larger size. Upgrade it first to use smaller sizes.")
 	}
+	if r := workspaceDiskRequest(a); r != nil && r.Outcome == "pending" {
+		if r.Target == in.Multiplier {
+			return dropapi.AppResult{App: c.appOut(a, nil)}, nil
+		}
+		return nil, resizeBusy()
+	}
+	if in.Multiplier*2048 != a.GetInt("disk_mib") {
+		p, err := placementOf(c.App, a.Id)
+		if err != nil {
+			return nil, err
+		}
+		supported, err := nodeSupportsResize(c.App, p)
+		if err != nil {
+			return nil, err
+		}
+		if supported {
+			return startDiskResize(c, a, p, in.Multiplier)
+		}
+	}
 	if in.Multiplier*256 < a.GetInt("memory_mib") && in.Multiplier*2048 < a.GetInt("disk_mib") {
 		return nil, volumeDowngradeError(c, a, in.Multiplier*2048)
 	}

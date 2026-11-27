@@ -33,20 +33,38 @@ func newVolumeMeasurement(row *core.Record, u *dropapi.VolumeUsage, now time.Tim
 	return measured.After(previous)
 }
 
-func volumeDowngradeError(c *Ctx, a *core.Record, targetMiB int) error {
+func freshDiskUsage(c *Ctx, a *core.Record) (*dropapi.VolumeUsage, error) {
 	rows, err := c.App.FindRecordsByFilter("node_reports", "app = {:app}", "", 1, 0, dbx.Params{"app": a.Id})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(rows) > 0 && rows[0].GetString("deployment_id") == deploymentID(a) {
 		u := storedVolumeUsage(rows[0])
 		if u.Fresh(agentStateOf(c.App).clock()) {
-			if *u.UsedBytes > int64(targetMiB)<<20 {
-				usedMiB := (*u.UsedBytes + (1 << 20) - 1) >> 20
-				return Conflict(dropapi.CodeDiskLocked, fmt.Sprintf("Your files use %d MiB. This size provides %d MiB of disk. Choose a larger size.", usedMiB, targetMiB))
-			}
-			return Conflict(dropapi.CodeDiskLocked, "Measured disk usage is within this tier. This node cannot yet shrink an existing disk.")
+			return u, nil
 		}
+	}
+	return nil, nil
+}
+
+func overDiskLimit(u *dropapi.VolumeUsage, targetMiB int) error {
+	if u != nil && *u.UsedBytes > int64(targetMiB)<<20 {
+		usedMiB := (*u.UsedBytes + (1 << 20) - 1) >> 20
+		return Conflict(dropapi.CodeDiskLocked, fmt.Sprintf("Your files use %d MiB. This size provides %d MiB of disk. Choose a larger size.", usedMiB, targetMiB))
+	}
+	return nil
+}
+
+func volumeDowngradeError(c *Ctx, a *core.Record, targetMiB int) error {
+	u, err := freshDiskUsage(c, a)
+	if err != nil {
+		return err
+	}
+	if err = overDiskLimit(u, targetMiB); err != nil {
+		return err
+	}
+	if u != nil {
+		return Conflict(dropapi.CodeDiskLocked, "Measured disk usage is within this tier. This node cannot yet shrink an existing disk.")
 	}
 	return Conflict(dropapi.CodeDiskLocked, "Current disk usage is unavailable. This node cannot yet shrink an existing disk.")
 }

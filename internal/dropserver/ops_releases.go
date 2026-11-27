@@ -67,6 +67,9 @@ func cleanNote(note string) (string, error) {
 // deployment when that changes it (the caller saves the app). It reports
 // whether the deployment went up.
 func setCurrentRelease(tx core.App, app, release *core.Record) (bool, error) {
+	if pendingDiskRequest(app) {
+		return false, resizeBusy()
+	}
 	if app.GetString("current_release") == release.Id {
 		var needsStorage bool
 		err := tx.DB().NewQuery("SELECT EXISTS(SELECT 1 FROM drop_credit_local_deploy l JOIN drop_credit_accounts c ON c.owner={:owner} WHERE l.app={:app} AND l.seq={:seq} AND c.balance>0)").Bind(dbx.Params{"owner": app.GetString("owner"), "app": app.Id, "seq": app.GetInt("deployment_seq")}).Row(&needsStorage)

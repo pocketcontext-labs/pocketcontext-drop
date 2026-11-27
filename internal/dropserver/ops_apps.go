@@ -66,6 +66,9 @@ func (c *Ctx) writableApp(ref string) (*core.Record, error) {
 	if err != nil {
 		return nil, err
 	}
+	if pendingDiskRequest(app) && c.Spec.Name != "workspace.resize" {
+		return nil, resizeBusy()
+	}
 	if c.Admin && accountsOf(c.App).hosted && c.Spec.PrivateOwnerWrite() && !app.GetBool("developer_private") {
 		return nil, Forbidden("Developer changes are restricted to your private apps.")
 	}
@@ -135,7 +138,12 @@ func (c *Ctx) appOut(r *core.Record, emails map[string]string) dropapi.App {
 	if official := r.GetString("official_target"); official != "" {
 		digest = official
 	}
+	var resizing *dropapi.WorkspaceDiskResize
+	if r := workspaceDiskRequest(r); r != nil && r.Outcome != "applied" {
+		resizing = &dropapi.WorkspaceDiskResize{Multiplier: r.Target, Outcome: r.Outcome}
+	}
 	return dropapi.App{
+		DiskResize:        resizing,
 		DeveloperPrivate:  r.GetBool("developer_private"),
 		MinimumMultiplier: r.GetInt("official_minimum"), InstalledVersion: r.GetString("official_version"), OfficialProduct: r.GetString("official_product"),
 		BetaSHA256:          digest,
@@ -224,6 +232,16 @@ func appGet(c *Ctx, in *dropapi.AppGetInput) (any, error) {
 		return nil, err
 	}
 	detail := dropapi.AppDetail{App: c.appOut(app, nil), Secrets: secrets}
+	if app.GetString("official_product") != "" {
+		p, err := placementOf(c.App, app.Id)
+		if err != nil {
+			return nil, err
+		}
+		detail.App.DiskResizeSupported, err = nodeSupportsResize(c.App, p)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if in.DeletionInventory {
 		inventory := dropapi.DeletionInventory{ReplicaMode: "none"}
 		if err := c.App.DB().NewQuery("SELECT COUNT(*) FROM releases WHERE app={:app}").Bind(dbx.Params{"app": app.Id}).Row(&inventory.ReleaseCount); err != nil {

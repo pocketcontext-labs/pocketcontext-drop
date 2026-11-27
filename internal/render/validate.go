@@ -144,6 +144,12 @@ func validateApp(app App, lim Limits) *AppError {
 	if s := app.Volume.SizeBytes; s%mib != 0 || s < minDiskMib*mib || s > maxDiskMib*mib {
 		return fail("volume.sizeBytes", "must be whole MiB, %d–%d MiB", minDiskMib, maxDiskMib)
 	}
+	if req := app.Volume.LocalResize; req != nil {
+		if !lim.LocalVolumeResize || !ValidResizeID(req.RequestID) || req.FromBytes == app.Volume.SizeBytes ||
+			req.FromBytes%mib != 0 || req.FromBytes < minDiskMib*mib || req.FromBytes > maxDiskMib*mib {
+			return fail("volume.localResize", "requires node support, a valid request ID and a different valid source size")
+		}
+	}
 	if !reSHA256.MatchString(app.Release.SHA256) {
 		return fail("release.sha256", "must be 64 lowercase hex")
 	}

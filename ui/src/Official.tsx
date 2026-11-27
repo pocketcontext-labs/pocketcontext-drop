@@ -444,6 +444,7 @@ export function OfficialWorkspace({
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [review, setReview] = useState(false);
+  const resizing = app.disk_resize?.outcome === "pending";
   const latest = catalog?.releases.find(
     (r) => r.product === app.official_product,
   );
@@ -479,7 +480,7 @@ export function OfficialWorkspace({
           {app.installed_version || "· awaiting first healthy deployment"}
         </p>
         {latest &&
-          latest.sha256 !== app.beta_sha256 &&
+          latest.sha256 !== app.beta_sha256 && !resizing &&
           (!review ? (
             <button className="secondary" onClick={() => setReview(true)}>
               Review upgrade to {latest.version}
@@ -516,15 +517,17 @@ export function OfficialWorkspace({
             Upgrade to a release with a lower minimum to select smaller sizes.
           </p>
         )}
+        {resizing && <p role="status">Resizing the disk for {app.disk_resize?.multiplier}× resources. Your current configuration stays in effect until the node confirms the change.</p>}
+        {app.disk_resize?.outcome === "refused" && <p role="alert">The node could not resize the disk for {app.disk_resize.multiplier}× resources. Your original disk and resources are intact.</p>}
         <Size
           value={size}
           minimum={app.minimum_multiplier}
-          diskMiB={app.disk_mib}
+          diskMiB={app.disk_resize_supported ? undefined : app.disk_mib}
           onChange={setSize}
         />
         <button
           className="secondary"
-          disabled={busy || size === app.memory_mib / 256}
+          disabled={busy || resizing || (size === app.memory_mib / 256 && (!app.disk_resize_supported || size * 2048 === app.disk_mib))}
           onClick={() =>
             void mutate(() =>
               op("workspace.resize", { app: app.id, multiplier: size }),
@@ -534,7 +537,7 @@ export function OfficialWorkspace({
           Save resources
         </button>
         {(error || loadError) && <p role="alert">{error || loadError}</p>}
-        <div className="workspace-delete"><DeleteApp app={app} /></div>
+        {!resizing && <div className="workspace-delete"><DeleteApp app={app} /></div>}
       </section>
     </div>
   );

@@ -32,18 +32,25 @@ const (
 // <nib_app_id>-dep-<deployment_seq>; the deployment number goes up whenever
 // the instance configuration changes (see docs/ops.md). Env holds plain values
 // only: secrets are listed by name with secret.list and never returned.
+type WorkspaceDiskResize struct {
+	Multiplier int    `json:"multiplier"`
+	Outcome    string `json:"outcome"`
+}
+
 type App struct {
-	DeveloperPrivate    bool   `json:"developer_private,omitempty"`
-	MinimumMultiplier   int    `json:"minimum_multiplier,omitempty"`
-	InstalledVersion    string `json:"installed_version,omitempty"`
-	OfficialProduct     string `json:"official_product,omitempty"`
-	GenericBeta         bool   `json:"generic_beta,omitempty"`
-	BetaSHA256          string `json:"beta_sha256,omitempty"`
-	BetaManaged         bool   `json:"beta_managed,omitempty"`
-	Kind                string `json:"kind"`
-	CrewOwnerEmail      string `json:"crew_owner_email,omitempty"`
-	SignInEmailEnabled  bool   `json:"sign_in_email_enabled"`
-	CrewFreshEnrollment bool   `json:"crew_fresh_enrollment,omitempty"`
+	DiskResize          *WorkspaceDiskResize `json:"disk_resize,omitempty"`
+	DiskResizeSupported bool                 `json:"disk_resize_supported,omitempty"`
+	DeveloperPrivate    bool                 `json:"developer_private,omitempty"`
+	MinimumMultiplier   int                  `json:"minimum_multiplier,omitempty"`
+	InstalledVersion    string               `json:"installed_version,omitempty"`
+	OfficialProduct     string               `json:"official_product,omitempty"`
+	GenericBeta         bool                 `json:"generic_beta,omitempty"`
+	BetaSHA256          string               `json:"beta_sha256,omitempty"`
+	BetaManaged         bool                 `json:"beta_managed,omitempty"`
+	Kind                string               `json:"kind"`
+	CrewOwnerEmail      string               `json:"crew_owner_email,omitempty"`
+	SignInEmailEnabled  bool                 `json:"sign_in_email_enabled"`
+	CrewFreshEnrollment bool                 `json:"crew_fresh_enrollment,omitempty"`
 	// ReplicaSyncInterval is a Crew app's Litestream sync interval ("10s");
 	// empty on ordinary apps and on Crew apps that keep the guest's default.
 	ReplicaSyncInterval string `json:"replica_sync_interval,omitempty"`

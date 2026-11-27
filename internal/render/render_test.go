@@ -839,3 +839,40 @@ func TestPrivateRecipientDoesNotExposeOwnerAddress(t *testing.T) {
 		t.Fatal("undeclared email service")
 	}
 }
+
+func TestVolumeResizeRequiresMatchingLocalOutcome(t *testing.T) {
+	in := loadInput(t, "crew-dev.input.json")
+	source := mustRender(t, in)
+	v := &in.Apps[0].Volume
+	fromBytes := v.SizeBytes
+	request := &LocalResize{RequestID: "0123456789abcdef0123456789abcdef", FromBytes: fromBytes}
+	in.Previous = source.Document
+	v.LocalResize = request
+	v.SizeBytes = 8192 * mib
+	if len(mustRender(t, in).Rejected) != 1 {
+		t.Fatal("accepted unsupported runner")
+	}
+	in.Limits.LocalVolumeResize = true
+	sent := mustRender(t, in)
+	if len(sent.Rejected) != 0 {
+		t.Fatal(sent.Rejected)
+	}
+	in.Previous = sent.Document
+	if len(mustRender(t, in).Rejected) != 0 {
+		t.Fatal("request replay failed")
+	}
+	v.LocalResize = nil
+	v.SizeBytes = fromBytes
+	if len(mustRender(t, in).Rejected) != 1 {
+		t.Fatal("cleared without receipt")
+	}
+	in.Limits.ResizeReceipts = map[string]ObservedResize{v.VolumeID: {ResizeReceipt: ResizeReceipt{RequestID: request.RequestID, Outcome: "refused"}, SizeBytes: fromBytes}}
+	if len(mustRender(t, in).Rejected) != 0 {
+		t.Fatal("confirmed refusal failed to restore old target")
+	}
+	in.Limits.ResizeReceipts[v.VolumeID] = ObservedResize{ResizeReceipt: ResizeReceipt{RequestID: request.RequestID, Outcome: "applied"}, SizeBytes: 8192 * mib}
+	v.SizeBytes = 8192 * mib
+	if len(mustRender(t, in).Rejected) != 0 {
+		t.Fatal("applied disk cannot finish")
+	}
+}

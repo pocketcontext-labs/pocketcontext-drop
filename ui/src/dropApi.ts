@@ -146,6 +146,8 @@ export interface App {
   vcpu: number;
   memory_mib: number;
   disk_mib: number;
+  disk_resize_supported?: boolean;
+  disk_resize?: { multiplier: number; outcome: "pending" | "refused" };
   http_port: number;
   hook_port: number;
   executable_name: string;

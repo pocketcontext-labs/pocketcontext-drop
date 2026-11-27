@@ -192,19 +192,26 @@ func (c *AwakeCounter) Valid() bool {
 	return c == nil || c.MeasuredSeconds >= 0 && c.MeasuredSeconds <= 1<<32 && c.BillableSeconds >= 0 && c.BillableSeconds <= c.MeasuredSeconds
 }
 
+type ResizeObservation struct {
+	DeploymentID string `json:"deploymentId"`
+	render.ResizeReceipt
+	SizeBytes int64 `json:"sizeBytes"`
+}
+
 type AppReport struct {
-	VolumeUsage  *VolumeUsage  `json:"volumeUsage,omitempty"`
-	FirstRun     *FirstRun     `json:"firstRun,omitempty"`
-	LogTail      string        `json:"logTail,omitempty"`
-	AwakeCounter *AwakeCounter `json:"awakeCounter,omitempty"`
-	LastHook     *HookResult   `json:"lastHook,omitempty"`
-	AppID        string        `json:"appId"`
-	DeploymentID string        `json:"deploymentId"`
-	Phase        string        `json:"phase"`
-	Message      string        `json:"message"`
-	RestartCount int           `json:"restartCount"`
-	LastExitCode *int          `json:"lastExitCode"`
-	ConvergedAt  string        `json:"convergedAt"`
+	LocalResize  *ResizeObservation `json:"localResize,omitempty"`
+	VolumeUsage  *VolumeUsage       `json:"volumeUsage,omitempty"`
+	FirstRun     *FirstRun          `json:"firstRun,omitempty"`
+	LogTail      string             `json:"logTail,omitempty"`
+	AwakeCounter *AwakeCounter      `json:"awakeCounter,omitempty"`
+	LastHook     *HookResult        `json:"lastHook,omitempty"`
+	AppID        string             `json:"appId"`
+	DeploymentID string             `json:"deploymentId"`
+	Phase        string             `json:"phase"`
+	Message      string             `json:"message"`
+	RestartCount int                `json:"restartCount"`
+	LastExitCode *int               `json:"lastExitCode"`
+	ConvergedAt  string             `json:"convergedAt"`
 
 	// Usage is the host services proxy's counters of the app's deployment
 	// (hostservices.go), when the app used it.

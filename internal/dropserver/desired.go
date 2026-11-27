@@ -57,12 +57,15 @@ func buildDesired(app core.App, node *core.Record) (*dropapi.Desired, error) {
 			return nil, err
 		}
 		if ok {
+			if err := renderDiskRequest(record, &desired.Volume, node.Id, p.GetInt("generation")); err != nil {
+				return nil, err
+			}
 			apps = append(apps, desired)
 		}
 	}
 	slices.SortFunc(apps, func(a, b dropapi.DesiredApp) int { return strings.Compare(a.AppID, b.AppID) })
 
-	limits := render.Limits{CPUQuarterQuota: jsonMap(node, "versions")["cpuQuarterQuota"] == true, AllowedHostSuffix: fallbackHostSuffix, SSMPrefix: services.SSMPrefix}
+	limits := render.Limits{LocalVolumeResize: jsonMap(node, "versions")["localVolumeResize"] == true, CPUQuarterQuota: jsonMap(node, "versions")["cpuQuarterQuota"] == true, AllowedHostSuffix: fallbackHostSuffix, SSMPrefix: services.SSMPrefix}
 	if ValidAppDomain(services.AppDomain) {
 		limits.AllowedHostSuffix = "." + services.AppDomain
 	}

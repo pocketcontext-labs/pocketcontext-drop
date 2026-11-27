@@ -103,7 +103,7 @@ var specs = []Spec{
 	{Name: "catalog.publish", Role: RoleAdmin, Input: &BetaDigest{}, Summary: "Publish a checked candidate for new workspaces."},
 	{Name: "catalog.activate", Role: RoleAdmin, Input: &MeInput{}, Summary: "Switch hosted customer deployment to the official catalog."},
 	{Name: "workspace.create", Role: RoleUser, Input: &WorkspaceCreate{}, MCP: true, Summary: "Provision an official workspace at a selected size."},
-	{Name: "workspace.resize", Role: RoleUser, Input: &WorkspaceResize{}, MCP: true, Summary: "Change workspace compute resources while keeping its disk."},
+	{Name: "workspace.resize", Role: RoleUser, Input: &WorkspaceResize{}, MCP: true, Summary: "Change workspace resources and resize the disk on a supported node."},
 	{Name: "workspace.upgrade", Role: RoleUser, Input: &WorkspaceUpgrade{}, MCP: true, Summary: "Install the reviewed current official release on one workspace."},
 	{Name: "user.directory", Role: RoleAdmin, Input: &DirectoryInput{}, Read: true, Summary: "Search users and access requests with filters and pagination."},
 
