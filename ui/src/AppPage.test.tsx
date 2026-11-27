@@ -46,6 +46,18 @@ it("lists the apps and links each to its page", async () => {
   expect(screen.getByRole("link", { name: "Create app" })).toHaveAttribute("href", "#/catalog");
 });
 
+it("offers developers one create action leading to both destinations", async () => {
+  vi.spyOn(dropApi, "me").mockResolvedValue({ ...member, role: "developer" });
+  vi.spyOn(dropApi, "listApps").mockResolvedValue({ apps: [], quota: { used: 0, limit: 10240, unlimited: false }, has_more: false });
+  render(<App />);
+  const create = await screen.findByRole("link", { name: "Create app" });
+  expect(create).toHaveAttribute("href", "#/apps/create");
+  expect(screen.queryByRole("link", { name: /private app/i })).toBeNull();
+  fireEvent.click(create);
+  expect(await screen.findByRole("link", { name: "Choose a catalog app" })).toHaveAttribute("href", "#/catalog");
+  expect(screen.getByRole("link", { name: "Create a private app" })).toHaveAttribute("href", "#/private/new");
+});
+
 it("keeps creation available at the former account limit", async () => {
   vi.spyOn(dropApi, "listApps").mockResolvedValue({ apps: [app, app, app].map((a, i) => ({ ...a, id: `app00000000000${i}` })), quota: { used: 3, limit: 3, unlimited: false }, has_more: false });
   render(<App />);

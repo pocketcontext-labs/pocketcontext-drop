@@ -186,6 +186,16 @@ function Workspace({
   if(hostedAdmin&&view==="admin-releases")page=<OfficialReleases onActivated={()=>setMe({...me,official_catalog:true})}/>;
   else if(hostedAdmin&&me.official_catalog&&(defaultPage||view==="admin-waitlist"||view==="admin-users"))page=<UserDirectory me={me} waiting={view==="admin-waitlist"}/>;
   else if(view==="admin-releases")page=<NotFound/>;
+  else if (view === "app-create") page = developer ? (
+    <section className="panel">
+      <a className="back-link" href={viewHashes.apps}>← Your apps</a>
+      <h1>Create app</h1>
+      <div className="row">
+        <a className="button primary" href={viewHashes.catalog}>Choose a catalog app</a>
+        <a className="button secondary" href={viewHashes["private-new"]}>Create a private app</a>
+      </div>
+    </section>
+  ) : <NotFound admin={hostedAdmin} />;
   else if (view === "private-new") page = developer ? <AppNew hosted privateApp appDomain={me.app_domain} /> : <NotFound admin={hostedAdmin} />;
   else if (view === "credits") page = <Credits admin={me.admin} />;
   else if (hostedAdmin && (defaultPage || view === "admin-waitlist"))
@@ -211,7 +221,7 @@ function Workspace({
           {!hostedAdmin && <a
             href={viewHashes.apps}
             aria-current={
-              view === "apps" || view === "app" || (view === "app-new" || view === "private-new")
+              view === "apps" || view === "app-create" || view === "app" || (view === "app-new" || view === "private-new")
                 ? "page"
                 : undefined
             }

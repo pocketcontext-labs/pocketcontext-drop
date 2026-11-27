@@ -14,6 +14,7 @@ export type View =
   | "catalog"
   | "deploy"
   | "apps"
+  | "app-create"
   | "private-new"
   | "app-new"
   | "app"
@@ -28,6 +29,7 @@ export const viewHashes: Record<Exclude<View, "app">, string> = {
   deploy: "#/deploy",
   apps: "#/apps",
   "app-new": "#/apps/new",
+  "app-create": "#/apps/create",
   "private-new": "#/private/new",
   credits: "#/credits",
   connect: "#/connect",
@@ -64,6 +66,7 @@ export function viewFromHash(hash: string): View {
   if (/^#\/admin\/nodes(?:\?.*)?$/.test(hash)) return "admin-nodes";
   if (hash === viewHashes.catalog) return "catalog";
   if (hash === viewHashes.deploy || hash.startsWith("#/deploy?")) return "deploy";
+  if (hash === viewHashes["app-create"]) return "app-create";
   if (hash === viewHashes["private-new"]) return "private-new";
   if (hash === viewHashes["app-new"]) return "app-new";
   if (appRouteFromHash(hash)) return "app";
