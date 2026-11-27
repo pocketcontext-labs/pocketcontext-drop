@@ -124,6 +124,14 @@ func testPrivateBuild(t *testing.T, archive bool) {
 	if !strings.HasPrefix(app["slug"].(string), "dev-") || app["developer_private"] != true || app["kind"] == "crew" || app["executable_name"] != "field-notes" || num(app["http_port"]) != 8040 || num(app["memory_mib"]) != 256 || num(app["disk_mib"]) != 2048 {
 		t.Fatal(app)
 	}
+	detail := appOf(t, h.MustOp(dev, "app.get", map[string]any{"app": app["id"]}))
+	if detail["private_tiered"] != true || detail["installed_version"] != "1.2.3" {
+		t.Fatal(detail)
+	}
+	resized := appOf(t, h.MustOp(dev, "workspace.resize", map[string]any{"app": app["id"], "multiplier": 2}))
+	if num(resized["memory_mib"]) != 512 || resized["developer_private"] != true {
+		t.Fatal(resized)
+	}
 	r, err := h.App.FindRecordById("apps", app["id"].(string))
 	if err != nil {
 		t.Fatal(err)

@@ -340,8 +340,8 @@ func workspaceResize(c *Ctx, in *dropapi.WorkspaceResize) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if a.GetString("official_product") == "" {
-		return nil, Invalid("app", "Select an official workspace.")
+	if a.GetString("official_product") == "" && !(a.GetBool("developer_private") && a.GetBool("private_tiered")) {
+		return nil, Invalid("app", "Select an app with resource tiers.")
 	}
 	if !slices.Contains(crewBetaSizes, in.Multiplier) {
 		return nil, Invalid("multiplier", "Choose a resource multiplier from 1 to 8.")

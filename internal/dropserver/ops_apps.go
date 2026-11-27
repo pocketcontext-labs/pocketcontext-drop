@@ -143,10 +143,20 @@ func (c *Ctx) appOut(r *core.Record, emails map[string]string) dropapi.App {
 	if r := workspaceDiskRequest(r); r != nil && r.Outcome != "applied" {
 		resizing = &dropapi.WorkspaceDiskResize{Multiplier: r.Target, Outcome: r.Outcome}
 	}
+	installedVersion := r.GetString("official_version")
+	if c.Spec.Name == "app.get" && r.GetBool("developer_private") && r.GetString("current_release") != "" {
+		if rel, err := c.App.FindRecordById("releases", r.GetString("current_release")); err == nil {
+			var manifest dropapi.BetaManifest
+			if rel.UnmarshalJSONField("private_manifest", &manifest) == nil {
+				installedVersion = manifest.Version
+			}
+		}
+	}
 	return dropapi.App{
+		PrivateTiered:     r.GetBool("private_tiered"),
 		DiskResize:        resizing,
 		DeveloperPrivate:  r.GetBool("developer_private"),
-		MinimumMultiplier: r.GetInt("official_minimum"), InstalledVersion: r.GetString("official_version"), OfficialProduct: r.GetString("official_product"),
+		MinimumMultiplier: r.GetInt("official_minimum"), InstalledVersion: installedVersion, OfficialProduct: r.GetString("official_product"),
 		BetaSHA256:          digest,
 		BetaManaged:         r.GetString("beta_digest") != "",
 		GenericBeta:         r.GetBool("generic_beta"),

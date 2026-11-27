@@ -40,6 +40,7 @@ type WorkspaceDiskResize struct {
 type App struct {
 	DiskResize          *WorkspaceDiskResize `json:"disk_resize,omitempty"`
 	DiskResizeSupported bool                 `json:"disk_resize_supported,omitempty"`
+	PrivateTiered       bool                 `json:"private_tiered,omitempty"`
 	DeveloperPrivate    bool                 `json:"developer_private,omitempty"`
 	MinimumMultiplier   int                  `json:"minimum_multiplier,omitempty"`
 	InstalledVersion    string               `json:"installed_version,omitempty"`
