@@ -318,8 +318,8 @@ func TestExistingManagedCrewEntersTrial(t *testing.T) {
 	if err := h.App.DB().NewQuery("SELECT COUNT(*) FROM drop_credit_holds WHERE app={:a}").Bind(dbx.Params{"a": id}).Row(&holds); err != nil || holds != 0 {
 		t.Fatalf("holds after top-up: %d, %v", holds, err)
 	}
-	legacy, _ := desired(t, h, agent)
-	if legacy.Apps[0].DesiredState != "stopped" || legacy.Apps[0].DeferUntilRequest {
+	legacy, raw := desired(t, h, agent)
+	if legacy.Apps[0].DesiredState != "stopped" || strings.Contains(raw, `"deferUntilRequest"`) {
 		t.Fatal("legacy node must retain the stopped app")
 	}
 	heartbeat = reportOf(hostA)

@@ -45,7 +45,7 @@ type hostServices struct {
 }
 
 type instance struct {
-	DeferUntilRequest bool          `json:"deferUntilRequest,omitempty"`
+	DeferUntilRequest bool          `json:"deferUntilRequest,omitzero"`
 	SignInEmail       *signInEmail  `json:"signInEmail,omitempty"`
 	HostServices      *hostServices `json:"hostServices,omitempty"`
 

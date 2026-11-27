@@ -88,7 +88,7 @@ type App struct {
 	HostS3 bool `json:"hostS3,omitzero"`
 	// DesiredState is running, on-request or stopped.
 	DesiredState      string `json:"desiredState"`
-	DeferUntilRequest bool   `json:"deferUntilRequest,omitempty"`
+	DeferUntilRequest bool   `json:"deferUntilRequest,omitzero"`
 	// IdleTimeoutMs is the traffic-idle sleep timeout of an on-request app,
 	// 60000–86400000; ignored for running and stopped apps.
 	IdleTimeoutMs  int64       `json:"idleTimeoutMs,omitempty"`
@@ -159,7 +159,7 @@ type Secret struct {
 
 // Limits are the node-local bounds of the validation.
 type Limits struct {
-	DeferUntilRequest bool                      `json:"deferUntilRequest,omitempty"`
+	DeferUntilRequest bool                      `json:"deferUntilRequest,omitzero"`
 	LocalVolumeResize bool                      `json:"localVolumeResize,omitempty"`
 	ResizeReceipts    map[string]ObservedResize `json:"-"`
 	CPUQuarterQuota   bool                      `json:"cpuQuarterQuota,omitempty"`
