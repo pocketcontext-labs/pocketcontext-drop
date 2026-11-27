@@ -1,3 +1,4 @@
+import OpenArrow from "./OpenArrow";
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import Brand from "./Brand";
 import ArchiveImport from "./ArchiveImport";
@@ -299,7 +300,7 @@ export function BetaStatus({
           {url && <span className="ready-pill" role="status">Ready</span>}
         </div>
         {url && <a className="button primary" href={url} target="_blank" rel="noreferrer">
-          Open app <span aria-hidden="true">↗</span>
+          Open app <OpenArrow />
         </a>}
       </header>
       {!url && <p role="status">{failed ? "Your app could not start."

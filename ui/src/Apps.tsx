@@ -1,3 +1,4 @@
+import OpenArrow from "./OpenArrow";
 import { OpenPrivateApp } from "./PrivateApps";
 import HelpTip from "./HelpTip";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -116,7 +117,7 @@ export default function Apps({ beta = false, official=false, developer=false, ad
                 ? <div className="dashboard-actions"><OpenPrivateApp app={app.id} hostname={app.hostname} disabled={!app.current_release || app.archived}/></div>
                 : url && <div className="dashboard-actions">
                 <CopyButton text={url} icon label="Copy app URL" />
-                <a className="button secondary" href={url} target="_blank" rel="noreferrer">Open <span aria-hidden="true">↗</span></a>
+                <a className="button secondary" href={url} target="_blank" rel="noreferrer">Open <OpenArrow /></a>
               </div>}
             </li>;
           })}
