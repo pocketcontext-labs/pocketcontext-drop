@@ -32,3 +32,8 @@ type BetaManifest struct {
 		DiskMiB     int `json:"disk_mib"`
 	} `json:"minimum"`
 }
+
+type ImportURLInput struct {
+	URL    string `json:"url"`
+	SHA256 string `json:"sha256,omitempty"`
+}

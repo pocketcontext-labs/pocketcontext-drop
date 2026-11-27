@@ -850,3 +850,18 @@ func TestCrewSignInProvisioning(t *testing.T) {
 		}
 	}
 }
+
+func TestLinkedReleaseEntryAndImportAccess(t *testing.T) {
+	h := droptest.NewHosted(t, droptest.Options{})
+	raw := "name=pocketbase&binary=https%3A%2F%2Fexample.test%2Fpb.zip&port=8090&arg=%5B%22serve%22%5D&minimal=true"
+	r := h.Request("GET", "/deploy?"+raw, "", "")
+	if r.Code != http.StatusFound || r.Header().Get("Location") != "/#/deploy?"+raw {
+		t.Fatalf("GET deploy returned %d location %q", r.Code, r.Header().Get("Location"))
+	}
+	wantError(t, h.Op("", "beta.import_url", map[string]any{"url": "https://example.test/"}), 401, "unauthenticated")
+	_, token := h.User("linked-release@example.test", "user")
+	result := h.Op(token, "beta.import_url", map[string]any{"url": "https://127.0.0.1/test.tgz"})
+	if result.Status != http.StatusBadRequest {
+		t.Errorf("nonpublic release returned %d", result.Status)
+	}
+}

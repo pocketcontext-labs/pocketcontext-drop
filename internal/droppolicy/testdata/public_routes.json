@@ -36,6 +36,41 @@
  },
  {
   "method": "DELETE",
+  "path": "/deploy",
+  "allow": false
+ },
+ {
+  "method": "GET",
+  "path": "/deploy",
+  "allow": true
+ },
+ {
+  "method": "HEAD",
+  "path": "/deploy",
+  "allow": true
+ },
+ {
+  "method": "OPTIONS",
+  "path": "/deploy",
+  "allow": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/deploy",
+  "allow": false
+ },
+ {
+  "method": "POST",
+  "path": "/deploy",
+  "allow": false
+ },
+ {
+  "method": "PUT",
+  "path": "/deploy",
+  "allow": false
+ },
+ {
+  "method": "DELETE",
   "path": "/index.html",
   "allow": false
  },

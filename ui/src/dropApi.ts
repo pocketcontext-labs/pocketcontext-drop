@@ -52,6 +52,7 @@ export const OPS = [
   "beta.complete",
   "beta.probe_upload",
   "beta.inspect",
+  "beta.import_url",
   "beta.prepare",
   "beta.deploy",
 ] as const;
@@ -573,6 +574,8 @@ export interface WaitlistEntry {
 }
 
 export const dropApi = {
+  importURL: (url: string, sha256?: string) =>
+    op<{ content_base64: string; sha256: string }>("beta.import_url", { url, sha256 }),
   listWaitlist: (search: string, offset: number, limit: number) =>
     op<{entries: WaitlistEntry[]; has_more: boolean}>("waitlist.list", {search, offset, limit}),
   changeWaitlist: (action: "invite" | "resend" | "revoke", id: string) =>

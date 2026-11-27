@@ -168,6 +168,7 @@ var specs = []Spec{
 	{Name: "beta.complete", Role: RoleAdmin, Input: &BetaCompleteInput{}, Summary: "Finish a leased manifest inspection."},
 	{Name: "beta.probe_upload", Role: RoleUser, OnceResult: true, Input: &BetaDigest{}, Summary: "Issue an upload link for isolated manifest inspection."},
 	{Name: "beta.inspect", Role: RoleUser, Read: true, Input: &BetaDigest{}, Summary: "Look up the supported release and its available sizes."},
+	{Name: "beta.import_url", Role: RoleUser, Read: true, Input: &ImportURLInput{}, Summary: "Download a bounded public HTTPS release for inspection."},
 	{Name: "beta.prepare", Role: RoleUser, Input: &BetaPrepareInput{}, Summary: "Prepare an app for an inspected binary at the selected size."},
 	{Name: "beta.deploy", Role: RoleUser, Input: &ReleaseDeployInput{}, Summary: "Place and deploy an inspected release."},
 }

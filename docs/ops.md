@@ -256,3 +256,17 @@ The Credits page and these operations use integer microcredits (1,000,000 per cr
 | `credits.configure` | Admin | Supply integer `pack`, `cap`, `starting` in whole credits, `euro_micros_per_credit`, `eur_per_usd_ppm` and `markup_ppm`. The initial values are 500, 10000, 0, 10000, 1000000 and 1250000 respectively. EUR/USD is a configurable simulation rate. |
 
 Retained disk includes every app volume owned by the account, including archived volumes. The app listing's `quota.used` and `quota.limit` are MiB. A volume increase and a new app share the same 10 GiB check. Trial expiry archives all apps without deleting data. A top-up restores apps archived by the trial and resumes those stopped for depleted funds. Manually archived apps stay archived.
+
+### Linked release imports
+
+A public GET to `/deploy` forwards the supplied query to the reader. The link can
+specify `name`, an HTTPS `binary` URL (including ZIP or tar.gz), an archive
+`sha256`, an HTTP `port`, a JSON array of literal arguments in `arg`, and
+`minimal=true`. Opening the link does not reserve a slug, download code or spend
+an invitation. The signed-in deployment form reviews the release and settings.
+
+The reader uses `beta.import_url` to download the selected release once.
+It accepts a public IPv4 HTTPS origin on port 443, follows up to five HTTPS
+redirects and checks the optional SHA-256 against the exact downloaded bytes.
+The response contains the digest and base64 content. The control plane limits
+downloads to 90 MiB, two concurrent imports, and two minutes per download.

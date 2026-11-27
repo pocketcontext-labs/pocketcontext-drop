@@ -29,7 +29,7 @@ func PublicRoute(method, p string) bool {
 	read := method == http.MethodGet || method == http.MethodHead
 	if read {
 		switch p {
-		case "/", "/api/bundle/auth-mode", "/api/bundle/version", "/api/realtime", "/api/drop/me":
+		case "/", "/deploy", "/api/bundle/auth-mode", "/api/bundle/version", "/api/realtime", "/api/drop/me":
 			return true
 		// A node's desired document: node tokens only (agent_routes.go).
 		case dropapi.AgentDesiredRoute:

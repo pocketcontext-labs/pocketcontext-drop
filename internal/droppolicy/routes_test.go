@@ -29,7 +29,7 @@ var routeMethods = []string{"DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST",
 // every Drop collection planned so far, so a route that becomes public shows
 // up as a reviewed change of the table.
 var routePaths = []string{
-	"/", "/index.html", "/assets/index-AbCd1234.js", "/assets/index-AbCd1234.css", "/assets/logo-AbCd1234.svg",
+	"/", "/deploy", "/index.html", "/assets/index-AbCd1234.js", "/assets/index-AbCd1234.css", "/assets/logo-AbCd1234.svg",
 	"/assets/..%2fsecret", "/assets/", "/assets/sub/index.js", "/favicon.ico", "/robots.txt",
 	"/bundle/login", "/bundle/login.js", "/_", "/_/", "/up", "/mcp",
 	"/.well-known/oauth-protected-resource", "/.well-known/oauth-authorization-server",
@@ -140,6 +140,7 @@ func TestPublicRouteDeniesLocalReads(t *testing.T) {
 // pass; a new public route needs the owner's review (AGENTS.md).
 var frozenAllowed = []string{
 	"GET /", "HEAD /",
+	"GET /deploy", "HEAD /deploy",
 	"GET /assets/index-AbCd1234.js", "HEAD /assets/index-AbCd1234.js",
 	"GET /assets/index-AbCd1234.css", "HEAD /assets/index-AbCd1234.css",
 	"GET /assets/logo-AbCd1234.svg", "HEAD /assets/logo-AbCd1234.svg",

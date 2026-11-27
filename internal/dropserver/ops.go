@@ -91,6 +91,16 @@ func register[In any](name string, run func(c *Ctx, in *In) (any, error)) {
 
 // registerOpRoutes adds POST /api/drop/op and GET /api/drop/me.
 func registerOpRoutes(e *core.ServeEvent) {
+	// A shareable deploy link opens the reader. Only the authenticated
+	// deployment flow may create an app or consume an invitation.
+	e.Router.GET("/deploy", func(re *core.RequestEvent) error {
+		target := "/#/deploy"
+		if query := re.Request.URL.RawQuery; query != "" {
+			target += "?" + query
+		}
+		re.Response.Header().Set("Referrer-Policy", "no-referrer")
+		return re.Redirect(http.StatusFound, target)
+	})
 	var keys sync.Mutex // serializes calls that carry an idempotency key
 	e.Router.POST(dropapi.Route, func(re *core.RequestEvent) error {
 		return serveOp(re, &keys)
