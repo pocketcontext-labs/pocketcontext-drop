@@ -935,7 +935,6 @@ html { scrollbar-gutter: stable; }
 .dashboard-identity, .dashboard-meta, .dashboard-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .dashboard-title { font-size: 18px; font-weight: 700; text-decoration: none; overflow-wrap: anywhere; }
 .dashboard-title::after { content: ""; position: absolute; inset: 0; }
-.dashboard-title:hover { text-decoration: underline; }
 .dashboard-meta { margin-top: 8px; color: var(--muted); font-size: 13px; }
 .dashboard-state, .dashboard-tier { padding: 2px 8px; border-radius: 16px; background: var(--accent-soft); color: var(--text); }
 .dashboard-tier { background: var(--bg); }
