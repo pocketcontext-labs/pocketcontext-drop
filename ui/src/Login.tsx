@@ -1,7 +1,6 @@
 import { useRef, useState, type ClipboardEvent, type FormEvent } from "react";
 import { api, type PublishedLegal } from "./api";
 import Waitlist, {
-  InvalidWaitlistCode,
   legalBase,
   submitWaitlist,
   waitlistVersion,
@@ -27,6 +26,13 @@ export function isStandaloneApp(): boolean {
     return false;
   }
 }
+function validSignInAddress(input: HTMLInputElement): boolean {
+  const address = input.value;
+  const local = address.split("@", 1)[0];
+  return input.validity.valid && /^[\x21-\x7e]{1,254}$/.test(address)
+    && !local.startsWith(".") && !local.endsWith(".") && !local.includes("..");
+}
+
 const codeLength = 6;
 const codeDigits = (value: string) =>
   value.replace(/\D/g, "").slice(0, codeLength);
@@ -54,9 +60,18 @@ export default function Login({
 }) {
   const [access, setAccess] = useState<"unknown" | "admitted" | "uninvited" | "join">("unknown");
   const [accepted, setAccepted] = useState(false);
-  const [waitlist, setWaitlist] = useState(false);
+  const waitlist = !deployAccess && access === "uninvited";
+  const [needsConsent, setNeedsConsent] = useState(false);
+  const [validEmail, setValidEmail] = useState(() => {
+    const input = document.createElement("input");
+    input.type = "email";
+    input.required = true;
+    input.value = initialEmail;
+    return validSignInAddress(input);
+  });
+  const [emailTouched, setEmailTouched] = useState(false);
+  const [resent, setResent] = useState(false);
   const [joined, setJoined] = useState(false);
-  const consent = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [sentTo, setSentTo] = useState("");
@@ -77,40 +92,43 @@ export default function Login({
       setBusy(false);
     }
   };
+  async function sendCode(value: string, joinWaitlist: boolean) {
+    if (joinWaitlist) {
+      await submitWaitlist("request", { email: value, terms_version: waitlistVersion });
+    } else {
+      const hash = location.hash;
+      const id = await api.requestEmailLogin(value);
+      const target = loginReturnHash(hash);
+      if (target) rememberLoginReturn(target);
+      else if (!hash.startsWith("#/login")) clearLoginReturn();
+      setOtpId(id);
+    }
+    setCode("");
+    setSentTo(value);
+  }
   const email = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (betaEnrollment && documents && !accepted && !waitlist && (!deployAccess || access === "admitted")) return;
-    const form = new FormData(event.currentTarget);
-    const value = String(form.get("email")).trim();
-    const hash = location.hash;
-    setAddress(value);
+    if (busy || !validEmail) return;
+    const value = address.trim();
     void run(async () => {
-      if (deployAccess && access === "unknown") {
+      if (access === "unknown") {
         const reply = await fetch("/api/drop/waitlist/request", {
           method: "POST", credentials: "omit", redirect: "error",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: value, check_access: true }),
+          body: JSON.stringify({ email: value, check_access: true, ...(!deployAccess && { login_flow: true }) }),
         });
-        if (!reply.ok) throw new Error(reply.status === 429 ? "Too many attempts. Try again later." : "Could not check access. Try again.");
+        if (reply.status === 400) throw new Error("Enter a valid email address.");
+        if (reply.status === 429) throw new Error("Too many attempts. Try again later.");
+        if (!reply.ok) throw new Error("Could not check access. Try again.");
         const result = await reply.json();
         setAccess(result.admitted ? "admitted" : "uninvited");
-        if (!result.admitted || documents) return;
+        const consentRequired = deployAccess ? Boolean(documents) : result.needs_consent === true;
+        setNeedsConsent(consentRequired);
+        if (!result.admitted || consentRequired) return;
+      } else if ((needsConsent || waitlist) && !accepted) {
+        return;
       }
-      const [id] = await Promise.all([
-        api.requestEmailLogin(value),
-        waitlist &&
-          submitWaitlist("request", {
-            email: value,
-            terms_version: waitlistVersion,
-          }),
-      ]);
-      const target = loginReturnHash(hash);
-      if (target) rememberLoginReturn(target);
-      // Asking again from a spent link's #/login view keeps the original target.
-      else if (!hash.startsWith("#/login")) clearLoginReturn();
-      setOtpId(id);
-      setCode("");
-      setSentTo(value);
+      await sendCode(value, waitlist);
     });
   };
   const redeem = (value: string) => {
@@ -123,14 +141,10 @@ export default function Login({
     void run(async () => {
       try {
         if (waitlist) {
-          try {
-            await submitWaitlist("verify", { email: sentTo, code: value });
-            clearLoginReturn();
-            setJoined(true);
-            return;
-          } catch (error) {
-            if (!(error instanceof InvalidWaitlistCode)) throw error;
-          }
+          await submitWaitlist("verify", { email: sentTo, code: value });
+          clearLoginReturn();
+          setJoined(true);
+          return;
         }
         if (accepted && documents)
           await api.loginEmailCode(otpId, value, documents.termsVersion);
@@ -171,7 +185,9 @@ export default function Login({
     enterCode(event.clipboardData.getData("text"));
   };
   const newCode = () => {
-    setWaitlist(false);
+    setNeedsConsent(false);
+    setResent(false);
+    setEmailTouched(false);
     setAccess("unknown");
     setAccepted(false);
     setSentTo("");
@@ -214,6 +230,7 @@ export default function Login({
         <input
           type="checkbox"
           checked={accepted}
+          disabled={busy}
           onChange={(event) => setAccepted(event.target.checked)}
         />
         <span>
@@ -232,7 +249,7 @@ export default function Login({
         explains how Drop uses your information.
       </p>
     </>
-  ) : betaEnrollment ? (
+  ) : betaEnrollment || needsConsent ? (
     <p className="hint">
       New Beta activation is paused. Existing accounts can still sign in.
     </p>
@@ -247,7 +264,8 @@ export default function Login({
           className="link"
           onClick={() => {
             setJoined(false);
-            setWaitlist(false);
+            setAddress("");
+            setValidEmail(false);
             newCode();
           }}
         >
@@ -297,14 +315,13 @@ export default function Login({
             </>
           ) : (
             <>
-              If {sentTo} has a Drop account or an invitation, a sign-in code
-              and link are on their way. They work for 15 minutes.
+              A sign-in code and link are on their way to <strong>{sentTo}</strong>. They work for 15 minutes.
             </>
           )}
         </p>
         <p className="hint">
           {waitlist
-            ? "Copy the code from the email, then paste or enter it here to finish joining the waitlist. If you already have access, your sign-in code opens Drop."
+            ? "Copy the code from the email, then paste or enter it here to finish joining the waitlist."
             : isStandaloneApp()
               ? "Enter the code from the email here. The link in the email opens your browser, not this app."
               : "Enter the code from the email here, or open the link in it. Either one signs you in."}
@@ -341,30 +358,16 @@ export default function Login({
             {waitlist ? "Verify and join the waitlist" : "Sign in"}
           </button>
         </form>
-        <button
-          type="button"
-          className="link"
-          disabled={busy}
-          onClick={newCode}
-        >
-          {error
-            ? waitlist
-              ? "Request a new verification code"
-              : "Request a new sign-in code"
-            : "Use a different email"}
-        </button>
-        {!deployAccess && !waitlist && (
-          <button
-            className="link"
-            disabled={busy}
-            onClick={() => {
-              newCode();
-              requestAnimationFrame(() => consent.current?.focus());
-            }}
-          >
-            Join the waitlist with this email
-          </button>
-        )}
+        <div className="waitlist-actions">
+          <button className="link" disabled={busy} onClick={() => void run(async () => {
+            await sendCode(sentTo, waitlist);
+            setResent(true);
+          })}>Resend code</button>
+          <button className="link" disabled={busy} onClick={() => {
+            newCode(); setAddress(""); setValidEmail(false);
+          }}>Change email</button>
+        </div>
+        {resent && <p role="status">Check your inbox for the latest code.</p>}
       </>
     );
   } else if (deployAccess && access === "join") {
@@ -381,6 +384,7 @@ export default function Login({
       <>
         <h1 id="sign-in-title">{deployAccess ? "Deploy your app" : "Log in to Drop"}</h1>
         {deployAccess && access === "admitted" && <p role="status">This email has access. Verify it to continue deploying.</p>}
+        {waitlist && <p role="status">This email doesn’t have access yet.</p>}
         <form className="stack" onSubmit={email}>
           <label>
             Email
@@ -391,23 +395,29 @@ export default function Login({
               type="email"
               autoComplete="email"
               maxLength={254}
-              key={address}
               readOnly={busy || (deployAccess && access === "admitted")}
-              defaultValue={address}
+              value={address}
+              onChange={event => {
+                setAddress(event.target.value);
+                setValidEmail(validSignInAddress(event.target));
+                setAccess("unknown"); setAccepted(false); setNeedsConsent(false); setError("");
+              }}
+              onBlur={() => setEmailTouched(true)}
+              aria-invalid={emailTouched && !!address && !validEmail}
             />
           </label>
-          {(!deployAccess || access === "admitted") && legal}
-          {!deployAccess && <>
+          {emailTouched && !!address && !validEmail && <p role="alert" className="error">Enter a valid email address.</p>}
+          {access === "admitted" && needsConsent && legal}
+          {waitlist && <>
           <label className="check">
             <input
-              ref={consent}
               type="checkbox"
-              checked={waitlist}
+              checked={accepted}
               disabled={busy}
-              onChange={(event) => setWaitlist(event.target.checked)}
+              onChange={(event) => setAccepted(event.target.checked)}
             />
             <span>
-              Join the waitlist if I don’t have access. I accept the{" "}
+              I accept the{" "}
               <a href={legalBase + "/terms"} target="_blank" rel="noreferrer">
                 Waitlist Terms
               </a>
@@ -425,17 +435,17 @@ export default function Login({
           <button
             className="primary"
             disabled={
-              busy || (betaEnrollment && documents && !accepted && !waitlist && (!deployAccess || access === "admitted"))
+              busy || !validEmail || ((waitlist || needsConsent) && !accepted)
             }
           >
             {deployAccess && access === "unknown" ? "Check access" : waitlist
-              ? "Email me a verification code"
+              ? "Join the waitlist"
               : "Email me a sign-in code"}
           </button>
         </form>
-        <p className="hint">
+        {deployAccess && <p className="hint">
           Drop is invite-only. <a href="#/waitlist">Join waitlist</a>
-        </p>
+        </p>}
       </>
     );
   }

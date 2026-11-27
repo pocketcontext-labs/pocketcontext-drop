@@ -5,8 +5,6 @@ export const waitlistVersion = "2026-11-26-waitlist";
 export const legalBase = "#/legal/" + waitlistVersion;
 export const waitlistHash = "#/waitlist";
 
-export class InvalidWaitlistCode extends Error {}
-
 export async function submitWaitlist(
   action: "request" | "verify" | "leave",
   payload: Record<string, string>,
@@ -21,13 +19,6 @@ export async function submitWaitlist(
   if (reply.ok) return;
   if (reply.status === 429)
     throw new Error("Too many attempts. Please try again later.");
-  if (action === "verify" && reply.status === 400) {
-    const body = await reply.json().catch(() => null);
-    if (body?.code === "invalid_input" && body?.data?.field === "code")
-      throw new InvalidWaitlistCode(
-        "This code is incorrect or has expired. Check it or request a new code.",
-      );
-  }
   if (action === "verify" && [400, 409, 410].includes(reply.status))
     throw new Error(
       "This code is incorrect or has expired. Check it or request a new code.",

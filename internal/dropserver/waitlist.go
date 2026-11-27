@@ -32,6 +32,7 @@ type waitEntry struct {
 }
 type waitPublic struct {
 	CheckAccess bool   `json:"check_access"`
+	LoginFlow   bool   `json:"login_flow"`
 	Email       string `json:"email"`
 	Terms       string `json:"terms_version"`
 	Code        string `json:"code"`
@@ -80,12 +81,19 @@ func registerWaitlist(e *core.ServeEvent) {
 			if err := re.BindBody(&in); err != nil {
 				return writeError(re, Invalid("request", "Enter valid request details."))
 			}
-			// The deploy flow discloses invitation status before collecting waitlist
+			// The login and deploy flows disclose admission before collecting waitlist
 			// consent. This lookup neither queues mail nor creates a waitlist entry.
 			if action == "request" && in.CheckAccess {
 				email, err := canonicalEmail(in.Email)
 				if err != nil {
 					return writeError(re, err)
+				}
+				if in.LoginFlow {
+					result, err := loginAccess(re.App, email)
+					if err != nil {
+						return writeError(re, err)
+					}
+					return re.JSON(http.StatusOK, result)
 				}
 				admitted, err := waitlistSignInAddress(re.App, email)
 				if err != nil {
@@ -130,6 +138,32 @@ func waitlistSignInAddress(app core.App, email string) (bool, error) {
 	}
 	invite, err := openInvite(app, email)
 	return invite != nil, err
+}
+
+// loginAccess performs the same reads for each valid address. It exposes only
+// admission and whether the authentication hook needs activation consent.
+func loginAccess(app core.App, email string) (map[string]bool, error) {
+	var account struct {
+		Exists    bool `db:"present"`
+		Activated bool `db:"activated"`
+		Pending   bool `db:"pending"`
+	}
+	if err := app.DB().NewQuery(`SELECT COUNT(*) > 0 AS present,
+    COALESCE(MAX(verified OR beta_terms_version!=''), 0) AS activated,
+    COALESCE(MAX(beta_terms_pending),0) AS pending
+    FROM users WHERE email={:email} COLLATE NOCASE`).Bind(dbx.Params{"email": email}).One(&account); err != nil {
+		return nil, err
+	}
+	invite, err := openInvite(app, email)
+	if err != nil {
+		return nil, err
+	}
+	enabled, err := betaEnabled(app)
+	if err != nil {
+		return nil, err
+	}
+	admitted := account.Exists || invite != nil
+	return map[string]bool{"admitted": admitted, "needs_consent": account.Pending || (admitted && enabled && !account.Activated && !adminAddress(app, email))}, nil
 }
 
 func waitRequest(app core.App, in waitPublic) error {

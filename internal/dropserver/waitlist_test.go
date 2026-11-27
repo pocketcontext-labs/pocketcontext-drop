@@ -244,3 +244,32 @@ func TestReturningWaitlistMemberRetainsVerificationDate(t *testing.T) {
 		t.Fatal(actual, err)
 	}
 }
+
+func TestLoginAccessRequiresOnlyApplicableConsent(t *testing.T) {
+	h := droptest.NewHosted(t, droptest.Options{BetaNodes: []string{"fixture-node"}})
+	h.Invite("invited@example.test", "user")
+	h.Invite("pending@example.test", "user")
+	h.RequestOTP("pending@example.test")
+	returning, _ := h.User("returning@example.test", "user")
+	returning.Set("beta_terms_version", "fixture-terms")
+	returning.Set("beta_terms_pending", false)
+	if err := h.App.Save(returning); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		address           string
+		admitted, consent bool
+	}{
+		{"invited@example.test", true, true}, {"pending@example.test", true, true}, {returning.Email(), true, false}, {droptest.OwnerEmail, true, false}, {"uninvited@example.test", false, false},
+	} {
+		w := h.Request("POST", "/api/drop/waitlist/request", "", fmt.Sprintf(`{"email":%q,"check_access":true,"login_flow":true}`, tc.address))
+		var result map[string]bool
+		if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil || w.Code != 200 || len(result) != 2 || result["admitted"] != tc.admitted || result["needs_consent"] != tc.consent {
+			t.Fatalf("%s: %d %s", tc.address, w.Code, w.Body)
+		}
+	}
+	var count int
+	if err := h.App.DB().NewQuery("SELECT count(*) FROM drop_waitlist").Row(&count); err != nil || count != 0 {
+		t.Fatal(count, err)
+	}
+}

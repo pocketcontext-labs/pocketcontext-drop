@@ -65,13 +65,11 @@ try {
       if (phase === 'join') {
         await page.getByRole('button', {name:'Sign in', exact:true}).click();
         await page.getByLabel('Email', {exact:true}).fill(email);
-        if (name === 'desktop') {
-          await page.getByRole('button', {name:'Email me a sign-in code'}).click();
-          await page.getByRole('button', {name:'Join the waitlist with this email'}).click();
-          assert.equal(await page.getByLabel('Email', {exact:true}).inputValue(), email);
-        }
+        assert.equal(await page.getByRole('checkbox').count(), 0);
+        await page.getByRole('button', {name:'Email me a sign-in code'}).click();
+        await page.getByText('This email doesn’t have access yet.').waitFor();
         await page.getByRole('checkbox', {name:/Waitlist Terms/i}).check();
-        await page.getByRole('button', {name:'Email me a verification code'}).click();
+        await page.getByRole('button', {name:'Join the waitlist',exact:true}).click();
         const code = await readCode(path.join(directory, email + '.waitlist'));
         const submit = page.getByRole('button', {name:'Verify and join the waitlist'});
         const field = page.getByLabel('Code from the email');

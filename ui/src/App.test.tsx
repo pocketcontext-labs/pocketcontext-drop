@@ -39,6 +39,7 @@ it("shows the password sign-in locally until a users session exists, then the re
 
 it("signs in by email on the hosted origin with the code from the email", async () => {
   vi.spyOn(api, "loginMode").mockResolvedValue({ mode: "email" });
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ admitted: true, needs_consent: false }));
   const request = vi.spyOn(api, "requestEmailLogin").mockResolvedValue("otp000000000001");
   const redeem = vi.spyOn(api, "loginEmailCode").mockImplementation(async () => pb.authStore.save(token, user));
   vi.spyOn(dropApi, "listApps").mockResolvedValue(noApps);
@@ -46,7 +47,15 @@ it("signs in by email on the hosted origin with the code from the email", async 
   vi.spyOn(api, "refreshSession").mockResolvedValue();
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Sign in" }));
-  fireEvent.change(await screen.findByLabelText("Email"), { target: { value: "owner@example.test" } });
+  expect(screen.queryByRole("checkbox")).toBeNull();
+  expect(screen.queryByRole("link", {name:"Join waitlist"})).toBeNull();
+  const field = await screen.findByLabelText("Email");
+  fireEvent.change(field, { target: { value: "invalid" } });
+  fireEvent.blur(field);
+  expect(screen.getByText("Enter a valid email address.")).toBeInTheDocument();
+  expect(screen.getByRole("button", {name:"Email me a sign-in code"})).toBeDisabled();
+  expect(fetch).not.toHaveBeenCalled();
+  fireEvent.change(field, { target: { value: "owner@example.test" } });
   fireEvent.click(screen.getByRole("button", { name: "Email me a sign-in code" }));
   expect(await screen.findByRole("heading", { name: "Check your inbox" })).toBeInTheDocument();
   expect(request).toHaveBeenCalledWith("owner@example.test");
@@ -189,4 +198,64 @@ it("lists pinned deployments for a hosted user without preparing an app", async 
   expect(screen.getByRole("link", { name: "Deploy PocketBase" })).toHaveAttribute("href", expect.stringContaining("/deploy?name=pocketbase&binary="));
   expect(screen.getByRole("link", { name: "Deploy ZeroClaw" })).toBeVisible();
   expect(prepare).not.toHaveBeenCalled();
+});
+
+it("requests only a waitlist code for an unrecognized email and keeps consent bound to that address", async () => {
+  history.replaceState(null, "", "/#/account");
+  const otp = vi.spyOn(api, "requestEmailLogin");
+  const signIn = vi.spyOn(api, "loginEmailCode");
+  const requests: string[] = [];
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const data = JSON.parse(String(init?.body));
+    if (data.check_access) return Response.json({admitted:false,needs_consent:false});
+    requests.push(String(input));
+    if (data.code && data.code !== "123456") return Response.json({code:"invalid_input",data:{field:"code"}},{status:400});
+    return Response.json({ok:true});
+  });
+  render(<App />);
+  const field = await screen.findByLabelText("Email");
+  fireEvent.change(field, {target:{value:"guest@example.test"}});
+  fireEvent.click(screen.getByRole("button",{name:"Email me a sign-in code"}));
+  const join = await screen.findByRole("button",{name:"Join the waitlist"});
+  expect(join).toBeDisabled();
+  fireEvent.click(screen.getByRole("checkbox",{name:/Waitlist Terms/}));
+  fireEvent.change(field, {target:{value:"different@example.test"}});
+  expect(screen.queryByRole("checkbox")).toBeNull();
+  fireEvent.click(screen.getByRole("button",{name:"Email me a sign-in code"}));
+  fireEvent.click(await screen.findByRole("checkbox",{name:/Waitlist Terms/}));
+  fireEvent.click(screen.getByRole("button",{name:"Join the waitlist"}));
+  const code = await screen.findByLabelText("Code from the email");
+  fireEvent.change(code,{target:{value:"111111"}});
+  fireEvent.click(screen.getByRole("button",{name:"Verify and join the waitlist"}));
+  expect(await screen.findByRole("alert")).toHaveTextContent("incorrect or has expired");
+  fireEvent.click(screen.getByRole("button",{name:"Resend code"}));
+  await screen.findByText("Check your inbox for the latest code.");
+  fireEvent.change(code,{target:{value:"123456"}});
+  fireEvent.click(screen.getByRole("button",{name:"Verify and join the waitlist"}));
+  await screen.findByRole("heading",{name:"You’re on the waitlist"});
+  expect(requests).toEqual(["request","verify","request","verify"].map(action => "/api/drop/waitlist/"+action));
+  expect(otp).not.toHaveBeenCalled();
+  expect(signIn).not.toHaveBeenCalled();
+});
+
+it("requests an activation code only after Beta consent and resets it when the email changes", async () => {
+  history.replaceState(null, "", "/#/account");
+  vi.spyOn(api,"loginMode").mockResolvedValue({mode:"email",legal:{termsURL:"https://drop.example.test/terms",privacyURL:"https://drop.example.test/privacy",termsVersion:"v1"}});
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({admitted:true,needs_consent:true}));
+  const send = vi.spyOn(api,"requestEmailLogin").mockResolvedValue("otp000000000001");
+  render(<App />);
+  fireEvent.change(await screen.findByLabelText("Email"),{target:{value:"new@example.test"}});
+  fireEvent.click(screen.getByRole("button",{name:"Email me a sign-in code"}));
+  const consent = await screen.findByRole("checkbox",{name:/Beta Terms of Service/});
+  expect(screen.getByRole("button",{name:"Email me a sign-in code"})).toBeDisabled();
+  expect(send).not.toHaveBeenCalled();
+  fireEvent.click(consent);
+  fireEvent.click(screen.getByRole("button",{name:"Email me a sign-in code"}));
+  await screen.findByRole("heading",{name:"Check your inbox"});
+  fireEvent.click(screen.getByRole("button",{name:"Resend code"}));
+  await screen.findByText("Check your inbox for the latest code.");
+  expect(send).toHaveBeenCalledTimes(2);
+  fireEvent.click(screen.getByRole("button",{name:"Change email"}));
+  expect(await screen.findByLabelText("Email")).toHaveValue("");
+  expect(screen.queryByRole("checkbox")).toBeNull();
 });

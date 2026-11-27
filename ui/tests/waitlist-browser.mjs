@@ -28,6 +28,10 @@ export async function checkWaitlist(browser, origin, viewport) {
       );
       const input = request.postDataJSON();
       publicWrites.push(path);
+      if (path.endsWith("/request") && input.check_access) {
+        assert.deepEqual(input, { email, check_access: true, login_flow: true });
+        return route.fulfill({json:{admitted:false,needs_consent:false}});
+      }
       if (path.endsWith("/request")) {
         assert.deepEqual(input, {
           email,
@@ -76,6 +80,19 @@ export async function checkWaitlist(browser, origin, viewport) {
     await signIn.click();
     await page.getByRole("heading", { name: "Log in to Drop" }).waitFor();
     await page.getByRole("button", { name: "Email me a sign-in code" }).waitFor();
+    assert.equal(await page.getByRole("checkbox").count(), 0);
+    const loginSubmit = page.getByRole("button", {name:"Email me a sign-in code"});
+    assert(await loginSubmit.isDisabled());
+    await page.getByLabel("Email", {exact:true}).fill(email);
+    await loginSubmit.click();
+    await page.getByText("This email doesn’t have access yet.").waitFor();
+    const join = page.getByRole("button", {name:"Join the waitlist",exact:true});
+    assert(await join.isDisabled());
+    await page.getByRole("checkbox", {name:/Waitlist Terms/}).check();
+    await join.click();
+    await page.getByRole("heading", {name:"Check your inbox"}).waitFor();
+    await page.getByRole("button", {name:"Change email"}).click();
+    assert.equal(await page.getByRole("checkbox").count(),0);
     await page.goBack();
     await page.getByLabel("Email", { exact: true }).fill(email);
     await page.getByRole("checkbox").check();
