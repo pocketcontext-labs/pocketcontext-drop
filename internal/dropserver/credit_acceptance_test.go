@@ -289,10 +289,52 @@ func TestExistingManagedCrewEntersTrial(t *testing.T) {
 		}
 	}
 	checkStorage(false)
+	// Exhaust the shared buffer with two consecutive observations of the
+	// same running deployment. Capture the release and volume before funding.
+	rec := appRecord(t, h, id)
+	at := time.Now().UTC().Truncate(time.Second)
+	row := appReport(rec.GetString("nib_app_id"), rec.GetString("nib_app_id")+"-dep-"+rec.GetString("deployment_seq"), "running")
+	heartbeat := reportOf(hostA, row)
+	for range 2 {
+		dropserver.SetAgentClock(h.App, func() time.Time { return at })
+		heartbeat["nibrunner"].(map[string]any)["reportedAt"] = at.Format(time.RFC3339)
+		if status, res := report(t, h, agent, heartbeat); status != 200 {
+			t.Fatal(status, res)
+		}
+		at = at.Add(time.Hour)
+	}
+	if appRecord(t, h, id).GetString("desired_state") != "stopped" {
+		t.Fatal("expected a credit hold")
+	}
 	if r := h.Op(token, "credits.buy", nil, "legacy-pack"); r.Status != 200 {
 		t.Fatal(r.Raw)
 	}
 	checkStorage(true)
+	staged := appRecord(t, h, id)
+	if staged.GetInt("deployment_seq") != rec.GetInt("deployment_seq")+1 || staged.GetString("volume_id") != rec.GetString("volume_id") || staged.GetString("current_release") != rec.GetString("current_release") || staged.GetString("desired_state") != "on-request" {
+		t.Fatal("top-up must restore eligibility with one revision on the existing volume and release")
+	}
+	var holds int
+	if err := h.App.DB().NewQuery("SELECT COUNT(*) FROM drop_credit_holds WHERE app={:a}").Bind(dbx.Params{"a": id}).Row(&holds); err != nil || holds != 0 {
+		t.Fatalf("holds after top-up: %d, %v", holds, err)
+	}
+	legacy, _ := desired(t, h, agent)
+	if legacy.Apps[0].DesiredState != "stopped" || legacy.Apps[0].DeferUntilRequest {
+		t.Fatal("legacy node must retain the stopped app")
+	}
+	heartbeat = reportOf(hostA)
+	heartbeat["nibrunner"].(map[string]any)["versions"].(map[string]any)["deferUntilRequest"] = true
+	if status, res := report(t, h, agent, heartbeat); status != 200 {
+		t.Fatal(status, res)
+	}
+	ready, _ := desired(t, h, agent)
+	next := ready.Apps[0]
+	if next.DesiredState != "on-request" || !next.DeferUntilRequest || !next.ProxyOnly || next.DeploymentID != legacy.Apps[0].DeploymentID {
+		t.Fatal("funded configuration must be staged for the next request")
+	}
+	if !h.Op(token, "credits.buy", nil, "legacy-pack").Replayed || appRecord(t, h, id).GetInt("deployment_seq") != staged.GetInt("deployment_seq") {
+		t.Fatal("replayed purchase changed the staged deployment")
+	}
 	h.MustOp(token, "release.deploy", map[string]any{"app": id, "release": before.GetString("current_release")})
 	checkStorage(true)
 }

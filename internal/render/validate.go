@@ -129,6 +129,9 @@ func validateApp(app App, lim Limits) *AppError {
 	if (app.CrewOwnerEmail != "" || app.SignInEmailEnabled) && (!appspec.ValidSignInMailbox(app.CrewOwnerEmail) || strings.ToLower(app.CrewOwnerEmail) != app.CrewOwnerEmail) {
 		return fail("crewOwnerEmail", "must be a canonical verified mailbox for a Crew app")
 	}
+	if app.DeferUntilRequest && (!lim.DeferUntilRequest || app.DesiredState != "on-request") {
+		return fail("deferUntilRequest", "requires node support and an on-request app")
+	}
 	switch app.DesiredState {
 	case "running", "stopped":
 	case "on-request":

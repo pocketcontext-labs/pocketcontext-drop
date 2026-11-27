@@ -116,6 +116,9 @@ func sanitizeVersions(raw json.RawMessage) map[string]any {
 		return nil
 	}
 	out := map[string]any{}
+	if v["deferUntilRequest"] == true {
+		out["deferUntilRequest"] = true
+	}
 	if v["localVolumeResize"] == true {
 		out["localVolumeResize"] = true
 	}

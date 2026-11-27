@@ -81,6 +81,24 @@ func TestGolden(t *testing.T) {
 	}
 }
 
+func TestDeferredBillingRevision(t *testing.T) {
+	in := loadInput(t, "crew-dev.input.json")
+	in.Apps[0].DeferUntilRequest = true
+	if out := mustRender(t, in); len(out.Rejected) != 1 || out.Rejected[0].Field != "deferUntilRequest" {
+		t.Fatal("agent accepted deferred activation without runner support")
+	}
+	in.Limits.DeferUntilRequest = true
+	out := mustRender(t, in)
+	if len(out.Rejected) != 0 || !bytes.Contains(out.Document, []byte(`"deferUntilRequest": true`)) {
+		t.Fatal("missing deferred activation")
+	}
+	in.Previous, in.Apps = out.Document, nil
+	tombstone := mustRender(t, in)
+	if !slices.Equal(tombstone.Tombstoned, []string{crewID}) || bytes.Contains(tombstone.Document, []byte("deferUntilRequest")) {
+		t.Fatal("stopped tombstone retained deferred activation")
+	}
+}
+
 // The golden entry is the live crew-dev entry (sanitized copy attached to the
 // M8 task), renamed to a Drop id, with its staged objectKey and explicit host storage.
 func TestGoldenMatchesLiveEntry(t *testing.T) {

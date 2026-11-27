@@ -230,9 +230,10 @@ func creditsAccounts(c *Ctx, in *dropapi.CreditAccountListInput) (any, error) {
 
 // NibRunner reapplies guest storage configuration on a new deployment.
 // Preserve the release, data volume, address and the owner's desired state.
-func changeStorageMode(tx core.App, owner string) error {
-	_, err := tx.DB().NewQuery(`UPDATE apps SET deployment_seq=deployment_seq+1
-		WHERE owner={:o} AND current_release<>'' AND crew_enrollment<>'' AND archived=0`).Bind(dbx.Params{"o": owner}).Execute()
+func changeStorageMode(tx core.App, owner string, funded bool) error {
+	_, err := tx.DB().NewQuery(`UPDATE apps SET deployment_seq=deployment_seq+1,
+		billing_deferred_seq=CASE WHEN {:funded} AND desired_state='on-request' THEN deployment_seq+1 ELSE 0 END
+		WHERE owner={:o} AND current_release<>'' AND crew_enrollment<>'' AND archived=0`).Bind(dbx.Params{"o": owner, "funded": funded}).Execute()
 	if err != nil {
 		return err
 	}

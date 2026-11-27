@@ -168,7 +168,10 @@ func New(cfg Config, secret, version string, stores Stores, logf func(string, ..
 
 func (a *Agent) limits(rep *nibReported) render.Limits {
 	vcpu, mem := rep.allocatable()
-	quarters := rep != nil && sanitizeVersions(rep.Versions)["cpuQuarterQuota"] == true
+	var versions map[string]any
+	if rep != nil {
+		versions = sanitizeVersions(rep.Versions)
+	}
 	receipts := map[string]render.ObservedResize{}
 	if rep != nil {
 		for _, v := range rep.Volumes {
@@ -177,7 +180,7 @@ func (a *Agent) limits(rep *nibReported) render.Limits {
 			}
 		}
 	}
-	return render.Limits{LocalVolumeResize: rep != nil && sanitizeVersions(rep.Versions)["localVolumeResize"] == true, ResizeReceipts: receipts, CPUQuarterQuota: quarters, AllowedHostSuffix: a.cfg.AllowedHostSuffix, SSMPrefix: a.cfg.SSMPrefix, AllocatableVCPU: vcpu, AllocatableMemoryMib: mem}
+	return render.Limits{DeferUntilRequest: versions["deferUntilRequest"] == true, LocalVolumeResize: versions["localVolumeResize"] == true, ResizeReceipts: receipts, CPUQuarterQuota: versions["cpuQuarterQuota"] == true, AllowedHostSuffix: a.cfg.AllowedHostSuffix, SSMPrefix: a.cfg.SSMPrefix, AllocatableVCPU: vcpu, AllocatableMemoryMib: mem}
 }
 
 // Run starts the agent and blocks until ctx ends (nil) or a Refusal stops it.

@@ -43,6 +43,8 @@ func buildDesired(app core.App, node *core.Record) (*dropapi.Desired, error) {
 	if err != nil {
 		return nil, err
 	}
+	versions := jsonMap(node, "versions")
+	deferSupported := versions["deferUntilRequest"] == true
 	apps := []dropapi.DesiredApp{}
 	for _, p := range placements {
 		record, err := app.FindRecordById("apps", p.GetString("app"))
@@ -57,6 +59,15 @@ func buildDesired(app core.App, node *core.Record) (*dropapi.Desired, error) {
 			return nil, err
 		}
 		if ok {
+			if desired.DesiredState == "on-request" && record.GetInt("billing_deferred_seq") == record.GetInt("deployment_seq") {
+				if deferSupported {
+					desired.DeferUntilRequest = true
+				} else {
+					// Older runners eagerly boot a new revision. Retain the volume
+					// and route in stopped state until the node reports support.
+					desired.DesiredState = appspec.StateStopped
+				}
+			}
 			if err := renderDiskRequest(record, &desired.Volume, node.Id, p.GetInt("generation")); err != nil {
 				return nil, err
 			}
@@ -65,7 +76,7 @@ func buildDesired(app core.App, node *core.Record) (*dropapi.Desired, error) {
 	}
 	slices.SortFunc(apps, func(a, b dropapi.DesiredApp) int { return strings.Compare(a.AppID, b.AppID) })
 
-	limits := render.Limits{LocalVolumeResize: jsonMap(node, "versions")["localVolumeResize"] == true, CPUQuarterQuota: jsonMap(node, "versions")["cpuQuarterQuota"] == true, AllowedHostSuffix: fallbackHostSuffix, SSMPrefix: services.SSMPrefix}
+	limits := render.Limits{DeferUntilRequest: deferSupported, LocalVolumeResize: versions["localVolumeResize"] == true, CPUQuarterQuota: versions["cpuQuarterQuota"] == true, AllowedHostSuffix: fallbackHostSuffix, SSMPrefix: services.SSMPrefix}
 	if ValidAppDomain(services.AppDomain) {
 		limits.AllowedHostSuffix = "." + services.AppDomain
 	}

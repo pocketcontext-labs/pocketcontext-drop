@@ -217,13 +217,14 @@ func settleWalletChange(tx core.App, owner string, before creditAccount) error {
 		return err
 	}
 	resume := creditBlocked(before) && !creditBlocked(after)
+	storageChanged := (before.Balance == 0) != (after.Balance == 0)
 	if resume {
-		if err := resumeCreditHolds(tx, owner); err != nil {
+		if err := resumeCreditHolds(tx, owner, storageChanged); err != nil {
 			return err
 		}
 	}
-	if (before.Balance == 0) != (after.Balance == 0) {
-		if err := changeStorageMode(tx, owner); err != nil {
+	if storageChanged {
+		if err := changeStorageMode(tx, owner, after.Balance > 0); err != nil {
 			return err
 		}
 	} else if resume {

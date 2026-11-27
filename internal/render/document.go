@@ -45,8 +45,9 @@ type hostServices struct {
 }
 
 type instance struct {
-	SignInEmail  *signInEmail  `json:"signInEmail,omitempty"`
-	HostServices *hostServices `json:"hostServices,omitempty"`
+	DeferUntilRequest bool          `json:"deferUntilRequest,omitempty"`
+	SignInEmail       *signInEmail  `json:"signInEmail,omitempty"`
+	HostServices      *hostServices `json:"hostServices,omitempty"`
 
 	AppID        string      `json:"appId"`
 	DeploymentID string      `json:"deploymentId"`

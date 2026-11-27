@@ -51,7 +51,7 @@ func enforceCredits(tx core.App, owner string, state creditAccount) error {
 	}
 	return syncDesiredSeqs(tx)
 }
-func resumeCreditHolds(tx core.App, owner string) error {
+func resumeCreditHolds(tx core.App, owner string, storageChanged bool) error {
 	var holds []struct {
 		App      string `db:"app"`
 		Reason   string `db:"reason"`
@@ -71,8 +71,15 @@ func resumeCreditHolds(tx core.App, owner string) error {
 			app.Set("archived_at", "")
 		}
 		app.Set("desired_state", hold.Previous)
-		if err := bumpDeployment(app); err != nil {
-			return err
+		// A managed app crossing the funding boundary gets its revision below in
+		// changeStorageMode. Restoring the hold must not consume a second revision.
+		if !storageChanged || app.GetString("crew_enrollment") == "" || app.GetString("current_release") == "" || app.GetBool("archived") {
+			if err := bumpDeployment(app); err != nil {
+				return err
+			}
+			if hold.Previous == "on-request" {
+				app.Set("billing_deferred_seq", app.GetInt("deployment_seq"))
+			}
 		}
 		if err := tx.Save(app); err != nil {
 			return err
@@ -211,7 +218,7 @@ func settleCompute(tx core.App, app *core.Record, node, deployment string, at, s
 		return false, err
 	}
 	if state.Balance > 0 && after.Balance == 0 {
-		if err := changeStorageMode(tx, owner); err != nil {
+		if err := changeStorageMode(tx, owner, false); err != nil {
 			return false, err
 		}
 	}

@@ -87,7 +87,8 @@ type App struct {
 	// no AWS credential. The node agent sets it (DROP_AGENT_HOST_SERVICES).
 	HostS3 bool `json:"hostS3,omitzero"`
 	// DesiredState is running, on-request or stopped.
-	DesiredState string `json:"desiredState"`
+	DesiredState      string `json:"desiredState"`
+	DeferUntilRequest bool   `json:"deferUntilRequest,omitempty"`
 	// IdleTimeoutMs is the traffic-idle sleep timeout of an on-request app,
 	// 60000–86400000; ignored for running and stopped apps.
 	IdleTimeoutMs  int64       `json:"idleTimeoutMs,omitempty"`
@@ -158,6 +159,7 @@ type Secret struct {
 
 // Limits are the node-local bounds of the validation.
 type Limits struct {
+	DeferUntilRequest bool                      `json:"deferUntilRequest,omitempty"`
 	LocalVolumeResize bool                      `json:"localVolumeResize,omitempty"`
 	ResizeReceipts    map[string]ObservedResize `json:"-"`
 	CPUQuarterQuota   bool                      `json:"cpuQuarterQuota,omitempty"`
@@ -311,6 +313,7 @@ func Render(in Input) (*Output, error) {
 		}
 		inst.DesiredState = "stopped"
 		inst.Activation = nil
+		inst.DeferUntilRequest = false
 		inst.SignInEmail = nil
 		inst.HostServices = nil
 		instances[id] = inst
@@ -483,6 +486,7 @@ func renderInstance(app App) instance {
 		inst.HostServices = &hostServices{S3: true}
 	}
 	if app.DesiredState == "on-request" {
+		inst.DeferUntilRequest = app.DeferUntilRequest
 		inst.Activation = &activation{SleepWhen: sleepWhen{Kind: "traffic-idle", TimeoutMs: app.IdleTimeoutMs}}
 	}
 	return inst

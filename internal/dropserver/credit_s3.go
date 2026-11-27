@@ -99,7 +99,7 @@ func chargeS3At(tx core.App, id, source string, c usage.Counts, stored usage.Sto
 	}
 	state.Balance -= amount.Int64()
 	if state.Balance == 0 {
-		if err := changeStorageMode(tx, owner); err != nil {
+		if err := changeStorageMode(tx, owner, false); err != nil {
 			return err
 		}
 	}
