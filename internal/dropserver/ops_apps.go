@@ -66,6 +66,9 @@ func (c *Ctx) writableApp(ref string) (*core.Record, error) {
 	if err != nil {
 		return nil, err
 	}
+	if (c.Spec.Name == "app.start" || c.Spec.Name == "app.stop") && app.GetString("official_product") != "" {
+		return nil, Forbidden("Official apps suspend automatically and wake on HTTP requests.")
+	}
 	if pendingDiskRequest(app) && c.Spec.Name != "workspace.resize" {
 		return nil, resizeBusy()
 	}
@@ -698,9 +701,6 @@ func setState(c *Ctx, ref string, start bool) (any, error) {
 	app, err := c.writableApp(ref)
 	if err != nil {
 		return nil, err
-	}
-	if app.GetString("official_product") != "" {
-		return nil, Forbidden("Official apps suspend automatically and wake on HTTP requests.")
 	}
 	state := appspec.StateStopped
 	if start {
