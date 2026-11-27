@@ -951,6 +951,15 @@ html { scrollbar-gutter: stable; }
 .topbar, .content { width: min(100%, var(--page-width)); padding-inline: var(--page-gutter); margin-inline: auto; }
 .topbar { border-bottom: 0; }
 .topbar .account button { padding-block: 5px; }
+.dashboard-heading, .dashboard-create-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.dashboard-heading { justify-content: space-between; }
+.dashboard-heading h2 { margin: 0; }
+.dashboard-create-actions .button { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; padding: 8px 14px; border: 1px solid transparent; }
+.dashboard-create-actions .secondary { border-color: var(--border); }
+.dashboard-create-actions .secondary:hover { border-color: var(--muted); }
+.app-dashboard .apps { margin-top: 20px; }
+.dashboard-state[data-running] { display: inline-flex; align-items: center; gap: 5px; }
+.dashboard-state[data-running]::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #438565; }
 .app-dashboard progress { display: block; width: min(100%, 240px); appearance: none; border: 0; height: 6px; border-radius: 6px; overflow: hidden; background: var(--border); margin-bottom: 20px; }
 .app-dashboard .dashboard-row { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 16px; background: var(--panel); }
 .dashboard-row:hover, .dashboard-row:focus-within { border-color: var(--muted); }
@@ -984,7 +993,8 @@ html { scrollbar-gutter: stable; }
 .app-dashboard .dashboard-row { cursor: pointer; box-shadow: 0 1px 2px rgb(0 0 0 / 3%); transition: border-color .15s, box-shadow .15s; }
 .app-dashboard .dashboard-row:is(:hover, :focus-within) { box-shadow: 0 2px 5px rgb(0 0 0 / 8%); }
 @media (prefers-color-scheme: light) {
-  .dashboard-identity .slug, .dashboard-meta time { color: #70756f; }
+  .dashboard-identity .slug { color: #737373; }
+  .dashboard-meta time { color: #70756f; }
 }
 .app-dashboard > .quiet { margin-top: 4px; }
 

@@ -32,5 +32,5 @@ export default function RuntimeState({ id }: { id: string }) {
     void read();
     return () => { active = false; clearTimeout(timer); };
   }, [id]);
-  return <span className="dashboard-state">{state}</span>;
+  return <span className="dashboard-state" data-running={state === "Running" || undefined}>{state}</span>;
 }

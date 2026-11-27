@@ -61,14 +61,14 @@ export default function Apps({ beta = false, official=false, developer=false }: 
   }, [load]);
   return (
     <section className="app-dashboard" aria-labelledby="apps-title">
-      <div className="row heading">
+      <div className="dashboard-heading">
         <h2 id="apps-title">Your apps</h2>
-          <div className="row">
-            {developer && <a className="button secondary" href={viewHashes["private-new"]}>Create private app</a>}
-            <a className="button primary" href={official || (beta && !developer) ? viewHashes.catalog : beta ? viewHashes.deploy : viewHashes["app-new"]}>
+        <div className="dashboard-create-actions">
+          {developer && <a className="button secondary" href={viewHashes["private-new"]}>Create private app</a>}
+          <a className="button primary" href={official || (beta && !developer) ? viewHashes.catalog : beta ? viewHashes.deploy : viewHashes["app-new"]}>
             {official || (beta && !developer) ? "Create app" : beta ? "Deploy an app" : "New app"}
           </a>
-          </div>
+        </div>
       </div>
       {error && (
         <p role="alert" className="error">
