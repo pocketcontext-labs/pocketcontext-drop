@@ -10,6 +10,15 @@ import (
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/render"
 )
 
+func TestPrivateAppPopupPolicy(t *testing.T) {
+	h := droptest.NewHosted(t, droptest.Options{})
+	for path, want := range map[string]string{"/": "same-origin-allow-popups", "/api/drop/me": "same-origin"} {
+		if got := h.Request("GET", path, "", "").Header().Get("Cross-Origin-Opener-Policy"); got != want {
+			t.Errorf("%s: opener policy %q, want %q", path, got, want)
+		}
+	}
+}
+
 func TestOwnerOnlyPrivateAccess(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	owner, ownerToken := h.User("builder@example.test", "user")
