@@ -2,9 +2,6 @@ import { useState, type FormEvent } from "react";
 import { NAME_LIMIT, validName, validSlug } from "./api";
 import {
   dropApi,
-  op,
-  type App,
-  type AppKind,
   type DesiredState,
   type HealthKind,
 } from "./dropApi";
@@ -59,17 +56,8 @@ export function NumberInput({
 }
 
 /** `#/apps/new`: create an app with its name, slug and settings. */
-export default function AppNew({
-  hosted,
-  privateApp = false,
-  appDomain,
-}: {
-  hosted: boolean;
-  privateApp?: boolean;
-  appDomain?: string;
-}) {
+export default function AppNew() {
   const [name, setName] = useState("");
-  const [kind, setKind] = useState<AppKind>("ordinary");
   const [slug, setSlug] = useState("");
   const [state, setState] = useState<DesiredState>("on-request");
   const [executable, setExecutable] = useState("server");
@@ -93,16 +81,14 @@ export default function AppNew({
       const input = {
         name: validName(name),
         slug: validSlug(slug),
-        kind,
+        kind: "ordinary" as const,
         desired_state: state,
         executable_name: executable.trim(),
         health_kind: health,
         ...(health === "http" ? { health_path: healthPath.trim() } : {}),
         ...numbers,
       };
-      const app = privateApp
-        ? (await op<{ app: App }>("developer.create", input)).app
-        : await dropApi.createApp(input);
+      const app = await dropApi.createApp(input);
       location.hash = appHash(app.id);
     } catch (e) {
       setError(message(e));
@@ -122,15 +108,7 @@ export default function AppNew({
         <a className="new-app-back" href={viewHashes.apps}>
           ← Your apps
         </a>
-        <h2 id="new-app-title">
-          {privateApp ? "Create private app" : "New app"}
-        </h2>
-        {privateApp && (
-          <p>
-            Upload a Linux executable after creating the app. Only people you
-            invite can open it.
-          </p>
-        )}
+        <h2 id="new-app-title">New app</h2>
       </header>
       <form className="new-app-card" onSubmit={submit}>
         <fieldset>
@@ -147,33 +125,7 @@ export default function AppNew({
                 placeholder="Hello app"
               />
             </label>
-            {hosted && (
-              <label>
-                App type
-                <select
-                  value={kind}
-                  onChange={(event) => {
-                    const newKind = event.target.value as AppKind;
-                    setKind(newKind);
-                    setExecutable(newKind === "crew" ? "crew" : "server");
-                    setNumbers((n) => ({
-                      ...n,
-                      hook_port: newKind === "crew" ? 8081 : 0,
-                    }));
-                  }}
-                >
-                  <option value="ordinary">Ordinary app</option>
-                  <option value="crew">PocketContext Crew</option>
-                </select>
-              </label>
-            )}
           </div>
-          {kind === "crew" && (
-            <p className="quiet">
-              Crew sign-in codes go to the email you verified with Drop when you
-              create the app.
-            </p>
-          )}
           <label>
             Slug
             <input
@@ -184,22 +136,11 @@ export default function AppNew({
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
-              aria-describedby={
-                appDomain
-                  ? "new-app-host new-app-slug-help"
-                  : "new-app-slug-help"
-              }
+              aria-describedby="new-app-slug-help"
               onChange={(event) => setSlug(event.target.value)}
               placeholder="hello-app"
             />
           </label>
-          {appDomain && (
-            <p id="new-app-host" className="quiet">
-              <code>
-                https://{slug.trim() || "hello-app"}.{appDomain}
-              </code>
-            </p>
-          )}
           <p id="new-app-slug-help" className="quiet">
             Choose a unique slug using 3–32 lowercase letters, digits or
             hyphens. The slug is permanent.

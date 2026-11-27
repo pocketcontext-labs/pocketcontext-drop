@@ -25,6 +25,9 @@ export const OPS = [
 
   "credits.accounts",
   "credits.get",
+  "developer.build_upload",
+  "developer.build_import",
+  "developer.build_create",
   "developer.create",
   "developer.upload_link",
   "developer.deploy",

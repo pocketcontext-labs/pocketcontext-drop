@@ -61,7 +61,7 @@ try {
   await admin.goto(origin + "/#/admin/releases");
   await admin.getByRole("heading", { name: "Releases" }).waitFor();
   for (const product of ["crew", "atlas"]) {
-    await admin.getByRole("combobox").first().selectOption(product);
+    await admin.getByLabel("App", { exact: true }).fill(product);
     await admin.getByLabel("Version", { exact: true }).fill("1.0.0");
     await admin
       .getByLabel("Linux executable")

@@ -6,7 +6,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { OfficialCatalog, OfficialReleases } from "./Official";
+import { CreateWorkspace, OfficialCatalog, OfficialReleases } from "./Official";
 import UserDirectory from "./UserDirectory";
 import DeleteSlider from "./DeleteSlider";
 import * as api from "./dropApi";
@@ -222,4 +222,46 @@ it("invites an account directly as a developer", async () => {
   fireEvent.change(screen.getByLabelText("Invitation role"), { target: { value: "developer" } });
   fireEvent.click(screen.getByRole("button", { name: "Create invitation" }));
   await waitFor(() => expect(invite).toHaveBeenCalledWith({ email: "dev@example.test", role: "developer" }));
+});
+
+
+it("checks an uploaded executable before enabling private creation", async () => {
+  const ops = vi.spyOn(api, "op").mockResolvedValue({ path: "/api/drop/upload/fixture" });
+  const file = new File(["ELF fixture"], "tool");
+  const put = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+    product: "third-product", version: "0.1", sha256: "f".repeat(64), minimum_multiplier: 2,
+  })));
+  render(<CreateWorkspace privateBuild />);
+  fireEvent.change(screen.getByLabelText("Linux executable"), {target: { files: [file] }});
+  expect(await screen.findByText("Third Product · 0.1")).toBeVisible();
+  expect(ops).toHaveBeenCalledWith("developer.build_upload", {});
+  expect(put).toHaveBeenCalledWith("/api/drop/upload/fixture", {method: "PUT", body: file, credentials: "omit", redirect: "error"});
+  expect(screen.getByRole("button", {name:"Create app"})).toBeEnabled();
+  fireEvent.change(screen.getByLabelText("Source"), {target: {value: "url"}});
+  expect(screen.getByRole("button", {name:"Create app"})).toBeDisabled();
+});
+
+it("lets the admin assign a new product's prefix at publication", async () => {
+  const ops = vi.spyOn(api, "op").mockImplementation(async name => name === "catalog.list" ? {
+    releases: [{product: "my-tool", version: "1", size_bytes: 100, sha256: "abc", rehearsed: true}],
+  } : {submissions: []});
+  render(<OfficialReleases />);
+  const prefix = await screen.findByLabelText("Catalog prefix");
+  const publish = screen.getByRole("button", {name:"Publish release"});
+  fireEvent.change(prefix, {target: {value: "dev-labs"}});
+  expect(publish).toBeDisabled();
+  fireEvent.change(prefix, {target: {value: "tool"}});
+  fireEvent.click(publish);
+  await waitFor(() => expect(ops).toHaveBeenCalledWith("catalog.publish", {sha256: "abc", prefix: "tool"}));
+});
+
+it("shows published products beyond Crew and Atlas in the catalog", async () => {
+  vi.spyOn(api, "op").mockResolvedValue({enabled: true, releases: [
+    {product: "new-product", version: "2.0", sha256: "abc", published: 2, minimum_multiplier: 2},
+  ]});
+  render(<OfficialCatalog />);
+  fireEvent.click(await screen.findByRole("button", {name: "Choose New Product"}));
+  expect(screen.getByLabelText("App name")).toHaveValue("My New Product");
+  expect(screen.getByLabelText("Release")).toHaveValue("abc");
+  expect(screen.getByLabelText("Resources").querySelectorAll("option")).toHaveLength(7);
 });

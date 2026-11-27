@@ -332,13 +332,23 @@ it("can reopen a completed receipt after the original app is gone", async () => 
 it("creates an owner-private app from the hosted developer route", async () => {
   const apiModule = await import("./dropApi");
   vi.spyOn(dropApi, "me").mockResolvedValue({ ...member, role: "developer", official_catalog: true });
-  const call = vi.spyOn(apiModule, "op").mockResolvedValue({ app });
+  const digest = "c".repeat(64);
+  const call = vi.spyOn(apiModule, "op").mockImplementation(async name => {
+    if (name === "developer.build_import") return { product: "new-tool", version: "1.2", sha256: digest, minimum_multiplier: 5 };
+    return { app };
+  });
   history.replaceState(null, "", "/#/private/new");
   render(<App />);
   fireEvent.change(await screen.findByLabelText("App name"), { target: { value: "My experiment" } });
-  fireEvent.change(screen.getByLabelText("Slug"), { target: { value: "my-experiment" } });
+  fireEvent.change(screen.getByLabelText("Source"), { target: { value: "url" } });
+  expect(screen.getByRole("button", { name: "Create app" })).toBeDisabled();
+  fireEvent.change(screen.getByLabelText("Executable URL"), { target: { value: "https://example.test/tool" } });
+  fireEvent.click(screen.getByRole("button", { name: "Check build" }));
+  expect(await screen.findByText("New Tool · 1.2")).toBeVisible();
+  expect(call).toHaveBeenCalledWith("developer.build_import", {url: "https://example.test/tool"});
+  expect(screen.getByLabelText("Resources")).toHaveValue("5");
   fireEvent.click(screen.getByRole("button", { name: "Create app" }));
-  await vi.waitFor(() => expect(call).toHaveBeenCalledWith("developer.create", expect.objectContaining({ name: "My experiment", slug: "my-experiment" })));
+  await vi.waitFor(() => expect(call).toHaveBeenCalledWith("developer.build_create", { name: "My experiment", sha256: digest, multiplier: 5 }, expect.any(String)));
   expect(location.hash).toBe(`#/apps/${id}`);
 });
 

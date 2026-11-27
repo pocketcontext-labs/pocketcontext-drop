@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ACCOUNT_EMAIL, api, pb, type SignInOptions } from "./api";
 import UserDirectory from "./UserDirectory";
-import {OfficialCatalog,OfficialReleases} from "./Official";
+import {CreateWorkspace,OfficialCatalog,OfficialReleases} from "./Official";
 import AdminNodes from "./AdminNodes";
 import AdminUsers from "./AdminUsers";
 import AdminWaitlist from "./AdminWaitlist";
@@ -186,7 +186,7 @@ function Workspace({
   if(hostedAdmin&&view==="admin-releases")page=<OfficialReleases onActivated={()=>setMe({...me,official_catalog:true})}/>;
   else if(hostedAdmin&&me.official_catalog&&(defaultPage||view==="admin-waitlist"||view==="admin-users"))page=<UserDirectory me={me} waiting={view==="admin-waitlist"}/>;
   else if(view==="admin-releases")page=<NotFound/>;
-  else if (view === "private-new") page = developer ? <AppNew hosted privateApp appDomain={me.app_domain} /> : <NotFound admin={hostedAdmin} />;
+  else if (view === "private-new") page = developer ? <CreateWorkspace privateBuild /> : <NotFound admin={hostedAdmin} />;
   else if (view === "credits") page = <Credits admin={me.admin} />;
   else if (hostedAdmin && (defaultPage || view === "admin-waitlist"))
     page = <AdminWaitlist account={me.id} />;
@@ -200,7 +200,7 @@ function Workspace({
   else if (view === "catalog") page = me.hosted ? <AppCatalog /> : <NotFound />;
   else if (view === "deploy" || (view === "app-new" && me.hosted))
     page = <BetaDeploy key={recipe ? hash : "generic"} recipe={recipe} initialFile={recipe ? null : file} account={me.id} />;
-  else if (view === "app-new") page = <AppNew hosted={false} />;
+  else if (view === "app-new") page = <AppNew />;
   else if (app) page = <AppPage key={app.id} id={app.id} tab={app.tab} official={me.official_catalog} canDeployBinary={!me.hosted || developer} />;
   else page = <Apps developer={developer} beta={me.hosted === true} official={me.official_catalog} />;
   return (

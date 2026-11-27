@@ -1,3 +1,4 @@
+import PrivateBuildSource, {type Build} from "./PrivateBuildSource";
 import CopyButton from "./CopyButton";
 import "./releases.css";
 import HelpTip from "./HelpTip";
@@ -11,6 +12,7 @@ import OpenArrow from "./OpenArrow";
 import { DeleteApp } from "./AppDeletion";
 
 type Published = {
+  prefix?: string;
   minimum_multiplier: number;
   rehearsed?: boolean;
   archived?: boolean;
@@ -30,7 +32,9 @@ type Submission = {
   size_bytes: number;
 };
 type Catalog = { enabled: boolean; releases: Published[] };
-const names: Record<string, string> = { crew: "Crew", atlas: "Atlas" };
+export function productName(id: string) {
+  return id.split("-").map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
+}
 function Size({
   value,
   minimum = 1,
@@ -57,6 +61,9 @@ function Size({
     </div>
   );
 }
+function validCatalogPrefix(prefix: string) {
+  return /^[a-z](?:[a-z0-9-]{0,14}[a-z0-9])?$/.test(prefix) && prefix !== "dev" && !prefix.startsWith("dev-");
+}
 function useCatalog(allVersions = false) {
   const [catalog, setCatalog] = useState<Catalog>();
   const [version, refresh] = useState(0),
@@ -81,6 +88,12 @@ function useCatalog(allVersions = false) {
 }
 export function OfficialCatalog({ releaseSelection = true }: { releaseSelection?: boolean }) {
   const { catalog, error: loadError } = useCatalog(releaseSelection);
+  return <CreateWorkspace catalog={catalog} loadError={loadError} releaseSelection={releaseSelection} />;
+}
+export function CreateWorkspace({ catalog, loadError, releaseSelection = true, privateBuild = false }: {
+  catalog?: Catalog; loadError?: string; releaseSelection?: boolean; privateBuild?: boolean;
+}) {
+  const [build, setBuild] = useState<Build>();
   const [product, setProduct] = useState(""),
     [name, setName] = useState(""),
     [size, setSize] = useState(4),
@@ -93,9 +106,10 @@ export function OfficialCatalog({ releaseSelection = true }: { releaseSelection?
     .sort((a, b) => b.published - a.published);
   const versions = published.filter(r => r.product === product);
   const choices = versions.filter(r => showArchived || !r.archived);
-  const selected = choices.find(r => r.sha256 === digest);
+  const release = choices.find(r => r.sha256 === digest);
+  const selected = privateBuild ? build : release;
   const minimum = selected?.minimum_multiplier || 1;
-  const products = Object.keys(names).map(id =>
+  const products = Array.from(new Set(published.map(r => r.product))).map(id =>
     published.find(r => r.product === id && !r.archived) ?? published.find(r => r.product === id)
   ).filter((r): r is Published => !!r);
   function resetKey() {
@@ -104,11 +118,11 @@ export function OfficialCatalog({ releaseSelection = true }: { releaseSelection?
   return (
     <section className="panel wide official-page">
       <h2>
-        {product ? ("Create " + (product === "atlas" ? "an " : "a ") + names[product] + " app") : "Catalog"}
+        {privateBuild ? "Create private app" : product ? (`Create ${/^[aeiou]/i.test(product) ? "an" : "a"} ${productName(product)} app`) : "Catalog"}
       </h2>
       {catalog && !catalog.enabled ? (
         <p>The official catalog is awaiting activation.</p>
-      ) : product ? (
+      ) : product || privateBuild ? (
         <form
           className="stack app-create-form"
           onSubmit={async (e) => {
@@ -117,11 +131,14 @@ export function OfficialCatalog({ releaseSelection = true }: { releaseSelection?
             setBusy(true);
             setError("");
             try {
-              const r = await op<{ app: App }>(
-                "workspace.create",
-                { product, name, multiplier: Math.max(size, minimum), ...(releaseSelection && { sha256: selected.sha256 }), ...(selected.archived && { allow_archived: true }) },
-                key,
-              );
+              const settings = {name: name.trim(), multiplier: Math.max(size, minimum)};
+              const r = privateBuild
+                ? await op<{app: App}>("developer.build_create", { ...settings, sha256: selected.sha256 }, key)
+                : await op<{app: App}>("workspace.create", {
+                    ...settings, product,
+                    ...(releaseSelection && {sha256: selected.sha256}),
+                    ...(release?.archived && {allow_archived: true}),
+                  }, key);
               location.hash = appHash(r.app.id);
             } catch (err) {
               setError(message(err));
@@ -130,6 +147,11 @@ export function OfficialCatalog({ releaseSelection = true }: { releaseSelection?
             }
           }}
         >
+          {privateBuild && <PrivateBuildSource disabled={busy} onChange={result => {
+            setBuild(result);
+            if (result) setName(current => current.trim() ? current : "My " + productName(result.product));
+            resetKey();
+          }} />}
           <label>
             App name
             <input
@@ -142,7 +164,7 @@ export function OfficialCatalog({ releaseSelection = true }: { releaseSelection?
               }}
             />
           </label>
-          <label>
+          {privateBuild ? (build && <p role="status">{productName(build.product)} · {build.version}</p>) : <label>
             Release
             <select required value={selected?.sha256 ?? ""} onChange={e => {
               setDigest(e.target.value);
@@ -153,11 +175,11 @@ export function OfficialCatalog({ releaseSelection = true }: { releaseSelection?
                 {r.version}{r.archived ? " (archived)" : ""}
               </option>)}
             </select>
-          </label>
+          </label>}
           {versions.some(r => r.archived) && <label className="release-opt-in">
             <input type="checkbox" checked={showArchived} onChange={e => {
               setShowArchived(e.target.checked);
-              if (!e.target.checked && selected?.archived) setDigest(versions.find(r => !r.archived)?.sha256 ?? "");
+              if (!e.target.checked && release?.archived) setDigest(versions.find(r => !r.archived)?.sha256 ?? "");
               resetKey();
             }} />
             Include archived releases
@@ -178,7 +200,7 @@ export function OfficialCatalog({ releaseSelection = true }: { releaseSelection?
               type="button"
               className="secondary"
               disabled={busy}
-              onClick={() => setProduct("")}
+              onClick={() => { if (privateBuild) location.hash = "#/apps"; else setProduct(""); }}
             >
               Cancel
             </button>
@@ -188,12 +210,12 @@ export function OfficialCatalog({ releaseSelection = true }: { releaseSelection?
         <ul className="catalog-grid">
           {products.map((r) => (
             <li key={r.product}>
-              <h3>PocketContext {names[r.product]}</h3>
-              <p>
+              <h3>{["crew", "atlas"].includes(r.product) && "PocketContext "}{productName(r.product)}</h3>
+              {["crew", "atlas"].includes(r.product) && <p>
                 {r.product === "crew"
                   ? "Notes, tasks and human review."
                   : "Your knowledge base and project files."}
-              </p>
+              </p>}
               <small>{r.archived ? "Archived releases available" : "Version " + r.version}</small>
               <button
                 className="primary"
@@ -201,12 +223,12 @@ export function OfficialCatalog({ releaseSelection = true }: { releaseSelection?
                   setProduct(r.product);
                   setShowArchived(false);
                   setDigest(r.archived ? "" : r.sha256);
-                  setName("My " + names[r.product]);
+                  setName("My " + productName(r.product));
                   setSize(Math.max(4, r.minimum_multiplier || 1));
                   resetKey();
                 }}
               >
-                Choose {names[r.product]}
+                Choose {productName(r.product)}
               </button>
             </li>
           ))}
@@ -228,6 +250,7 @@ export function OfficialReleases({
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [status, setStatus] = useState("");
+  const [prefixes, setPrefixes] = useState<Record<string, string>>({});
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [submissionsError, setSubmissionsError] = useState("");
   const [revision, setRevision] = useState(0);
@@ -288,10 +311,7 @@ export function OfficialReleases({
         <h3>Upload a release</h3>
         <label>
           App
-          <select value={product} onChange={(e) => setProduct(e.target.value)}>
-            <option value="crew">Crew</option>
-            <option value="atlas">Atlas</option>
-          </select>
+          <input value={product} required maxLength={32} onChange={e => setProduct(e.target.value)} />
         </label>
         <label>
           Version
@@ -339,7 +359,7 @@ export function OfficialReleases({
           {submissions.map(candidate => (
             <li className="release-card" key={candidate.release}>
               <div className="release-info">
-                <strong>{names[candidate.product]} {candidate.version}</strong>
+                <strong>{productName(candidate.product)} {candidate.version}</strong>
                 <p className="release-meta">Submitted by {candidate.submitted_by} · {(candidate.size_bytes / 1048576).toFixed(1)} MiB</p>
                 <code className="candidate-digest">sha256: {candidate.sha256}</code>
               </div>
@@ -357,7 +377,7 @@ export function OfficialReleases({
           <li key={r.sha256} className="release-card">
             <div className="release-info">
               <h3>
-                {names[r.product]} {r.version}
+                {productName(r.product)} {r.version}
               </h3>
               <p className="release-meta">
                 <span
@@ -384,7 +404,7 @@ export function OfficialReleases({
                 <CopyButton
                   text={r.sha256}
                   icon
-                  label={`Copy SHA-256 for ${names[r.product]} ${r.version}`}
+                  label={`Copy SHA-256 for ${productName(r.product)} ${r.version}`}
                 />
               </div>
             </div>
@@ -424,7 +444,7 @@ export function OfficialReleases({
                   onClick={() => {
                     if (
                       window.confirm(
-                        `Archive ${names[r.product]} ${r.version}? Existing apps keep their installed version.`,
+                        `Archive ${productName(r.product)} ${r.version}? Existing apps keep their installed version.`,
                       )
                     )
                       void act(async () => {
@@ -436,14 +456,17 @@ export function OfficialReleases({
                   Archive release
                 </button>
               )}
+              {!r.published && !r.prefix && <label>Catalog prefix
+                <input value={prefixes[r.product] ?? r.product} maxLength={16} onChange={e => setPrefixes({...prefixes, [r.product]: e.target.value})} />
+              </label>}
               {!r.published && (
                 <p>
                   <button
                     className="primary"
-                    disabled={busy || !r.rehearsed}
+                    disabled={busy || !r.rehearsed || (!r.prefix && !validCatalogPrefix(prefixes[r.product] ?? r.product))}
                     onClick={() =>
                       void act(async () => {
-                        await op("catalog.publish", { sha256: r.sha256 });
+                        await op("catalog.publish", { sha256: r.sha256, ...(!r.prefix && {prefix: prefixes[r.product] ?? r.product}) });
                         return "Release published. Existing apps keep their installed versions.";
                       })
                     }
@@ -461,11 +484,7 @@ export function OfficialReleases({
           className="secondary"
           disabled={
             busy ||
-            !["crew", "atlas"].every((product) =>
-              catalog.releases.some(
-                (r) => r.product === product && !r.archived && r.published,
-              ),
-            )
+            !catalog.releases.some(r => !r.archived && r.published)
           }
           onClick={() =>
             void act(async () => {
@@ -525,7 +544,7 @@ export function OfficialWorkspace({
       <section className="panel official-page">
         <h2>App settings</h2>
         <p>
-          Installed · {names[app.official_product!]}{" "}
+          Installed · {productName(app.official_product!)}{" "}
           {app.installed_version || "· awaiting first healthy deployment"}
         </p>
         {latest &&
@@ -537,7 +556,7 @@ export function OfficialWorkspace({
           ) : (
             <div>
               <p>
-                Install {names[latest.product]} {latest.version} at{" "}
+                Install {productName(latest.product)} {latest.version} at{" "}
                 {app.hostname}? Your app will restart on its existing
                 volume.
               </p>

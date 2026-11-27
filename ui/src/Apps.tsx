@@ -1,3 +1,4 @@
+import {productName} from "./Official";
 import RuntimeState from "./RuntimeState";
 import OpenArrow from "./OpenArrow";
 import { OpenPrivateApp } from "./PrivateApps";
@@ -130,7 +131,7 @@ export default function Apps({ beta = false, official=false, developer=false }: 
                   {app.archived ? <span className="dashboard-state">Archived</span> :
                     (official || app.desired_state === "on-request") ? <RuntimeState id={app.id} /> :
                     <span className="dashboard-state">{stateLabels[app.desired_state]}</span>}
-                  {app.official_product && <><span className="dashboard-tier">{app.memory_mib / 256}×</span><span>{app.official_product === "crew" ? "Crew" : "Atlas"}</span></>}
+                  {app.official_product && <><span className="dashboard-tier">{app.memory_mib / 256}×</span><span>{productName(app.official_product)}</span></>}
                   {!app.official_product && app.kind === "crew" && <span>Crew · {app.crew_owner_email}</span>}
                   <time dateTime={app.created.replace(" ", "T")}>{formatDate(app.created)}</time>
                 </div>
