@@ -51,11 +51,15 @@ it("offers developers one create action leading to both destinations", async () 
   vi.spyOn(dropApi, "listApps").mockResolvedValue({ apps: [], quota: { used: 0, limit: 10240, unlimited: false }, has_more: false });
   render(<App />);
   const create = await screen.findByRole("link", { name: "Create app" });
-  expect(create).toHaveAttribute("href", "#/apps/create");
+  expect(create).toHaveAttribute("href", "#/catalog");
   expect(screen.queryByRole("link", { name: /private app/i })).toBeNull();
-  fireEvent.click(create);
-  expect(await screen.findByRole("link", { name: "Choose a catalog app" })).toHaveAttribute("href", "#/catalog");
-  expect(screen.getByRole("link", { name: "Create a private app" })).toHaveAttribute("href", "#/private/new");
+  const toggle = screen.getByRole("button", { name: "More app creation options" });
+  fireEvent.click(toggle);
+  const privateApp = screen.getByRole("link", { name: "Create private app" });
+  expect(privateApp).toHaveAttribute("href", "#/private/new");
+  fireEvent.keyDown(privateApp, { key: "Escape" });
+  expect(toggle).toHaveFocus();
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
 });
 
 it("keeps creation available at the former account limit", async () => {

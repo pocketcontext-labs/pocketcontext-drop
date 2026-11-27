@@ -25,6 +25,46 @@ export const stateLabels: Record<App["desired_state"], string> = {
   stopped: "Stopped",
 };
 
+function CreateAppAction({ hosted, developer }: { hosted: boolean; developer: boolean }) {
+  const [open, setOpen] = useState(false);
+  const group = useRef<HTMLDivElement>(null);
+  const toggle = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const dismiss = (event: PointerEvent) => {
+      if (!group.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", dismiss);
+    return () => document.removeEventListener("pointerdown", dismiss);
+  }, [open]);
+
+  return <div className="dashboard-create-actions" ref={group}
+    onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}
+    onKeyDown={event => {
+      if (open && event.key === "Escape") {
+        setOpen(false);
+        toggle.current?.focus();
+      }
+    }}>
+    <a className="button primary" href={hosted ? viewHashes.catalog : viewHashes["app-new"]}>
+      {hosted ? "Create app" : "New app"}
+    </a>
+    {developer && <>
+      <button className="button primary create-toggle" type="button" ref={toggle}
+        aria-label="More app creation options" aria-expanded={open} aria-controls="create-options"
+        onClick={() => setOpen(!open)}>
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
+          <path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" strokeWidth="2" />
+        </svg>
+      </button>
+      <div id="create-options" hidden={!open}>
+        <a href={viewHashes["private-new"]}>Create private app</a>
+      </div>
+    </>}
+  </div>;
+}
+
 export default function Apps({ beta = false, official=false, developer=false }: { beta?: boolean; official?:boolean; developer?: boolean }) {
   const [apps, setApps] = useState<App[] | null>(null);
   const [error, setError] = useState("");
@@ -63,11 +103,7 @@ export default function Apps({ beta = false, official=false, developer=false }: 
     <section className="app-dashboard" aria-labelledby="apps-title">
       <div className="dashboard-heading">
         <h2 id="apps-title">Your apps</h2>
-        <div className="dashboard-create-actions">
-          <a className="button primary" href={developer ? viewHashes["app-create"] : beta || official ? viewHashes.catalog : viewHashes["app-new"]}>
-            {beta || official || developer ? "Create app" : "New app"}
-          </a>
-        </div>
+        <CreateAppAction developer={developer} hosted={beta || official || developer} />
       </div>
       {error && (
         <p role="alert" className="error">
