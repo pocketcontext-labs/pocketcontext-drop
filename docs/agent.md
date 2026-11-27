@@ -32,7 +32,7 @@ With `DROP_AGENT_HOST_SERVICES=s3`, `drop agent run` gives funded managed deploy
 
 | Rule | Enforcement |
 | --- | --- |
-| Funding | Every S3 exchange, including an internal prefix listing, needs a reservation against the workspace owner’s unreserved balance. A budget outage or insufficient funds rejects the request before forwarding. Object GET first checks the requested length with a funded HEAD and pins the GET to the returned ETag. |
+| Funding | Every S3 exchange, including an internal prefix listing, needs a reservation against the workspace owner’s unreserved balance. A budget outage or insufficient funds rejects the request before forwarding. Object GET first checks the requested length with a funded HEAD and pins the GET to the returned ETag. Each grant uses a fresh HTTP/1.1 connection. Redirects are returned to the guest, and another attempt needs a new grant. |
 | Credentials | The guest holds placeholder keys. The proxy drops the guest's `Authorization`, date, token, ACL, grant, storage-class, tagging, object-lock, encryption and redirect headers. It signs again with the app's STS session, from `AssumeRoleWithWebIdentity` with a token it signs with the node key (`app_id` session tag). Sessions are cached per app until five minutes before they expire. |
 | Scope | Path-style requests only. The bucket must be the app's replica bucket, and every key, list prefix, `start-after` and DeleteObjects key must start with `<appId>/`. Keys may not contain empty, `.` or `..` segments or control characters. Version IDs and copies are refused. |
 | Operations | GetObject, HeadObject, PutObject, DeleteObject, DeleteObjects, ListObjectsV2 and multipart upload (create, part, complete, abort). Anything else is `NotImplemented`. |

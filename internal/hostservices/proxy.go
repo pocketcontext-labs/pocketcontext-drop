@@ -69,6 +69,9 @@ type Proxy struct {
 	Now      func() time.Time
 	Logf     func(string, ...any)
 
+	upstreamOnce sync.Once
+	upstreamHTTP *http.Client
+
 	mu        sync.Mutex
 	limiters  map[string]*limiter
 	stored    map[string]*inventory

@@ -14,6 +14,40 @@ import (
 
 type Budget func(context.Context, dropapi.StorageBudget) error
 
+// A grant pays for exactly one physical S3 exchange. Go's pooled transport
+// may otherwise replay a GET or HEAD after a reused connection drops before
+// response headers arrive. Fresh HTTP/1.1 connections prevent such replays.
+// Keep endpoint TLS roots, dialers and timeout configuration from the service.
+func (p *Proxy) upstreamClient() *http.Client {
+	p.upstreamOnce.Do(func() {
+		base := p.Upstream.Client
+		if base == nil {
+			base = http.DefaultClient
+		}
+		rt := base.Transport
+		if rt == nil {
+			rt = http.DefaultTransport
+		}
+		if standard, ok := rt.(*http.Transport); ok {
+			tr := standard.Clone()
+			tr.DisableKeepAlives = true
+			tr.ForceAttemptHTTP2 = false
+			tr.Protocols = new(http.Protocols)
+			tr.Protocols.SetHTTP1(true)
+			// Clone can inherit an explicit HTTP/2 ALPN advertisement.
+			if tr.TLSClientConfig != nil {
+				tr.TLSClientConfig.NextProtos = []string{"http/1.1"}
+			}
+			rt = tr
+		}
+		// Injected transports for offline tests perform a single RoundTrip.
+		// Redirect policy belongs to the funded exchange in every case.
+		p.upstreamHTTP = &http.Client{Transport: rt, Timeout: base.Timeout,
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	})
+	return p.upstreamHTTP
+}
+
 // exchange reserves a request and its maximum response bytes before S3 sees
 // it. Quota inventory calls use the same path. The node supplies the marker,
 // which is visible in provider access logs, never the guest.
@@ -31,11 +65,7 @@ func (p *Proxy) exchange(out *http.Request, app App, op Op, limit int64) (*http.
 		return nil, err
 	}
 	out.Header.Set("User-Agent", dropapi.StorageMarker+grant.Token)
-	client := p.Upstream.Client
-	if client == nil {
-		client = http.DefaultClient
-	}
-	resp, err := client.Do(out)
+	resp, err := p.upstreamClient().Do(out)
 	if err != nil {
 		// Ambiguous delivery leaves the hold for provider reconciliation.
 		return nil, err
