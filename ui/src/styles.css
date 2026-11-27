@@ -1011,3 +1011,4 @@ html { scrollbar-gutter: stable; }
 .app-create-form select { width: 100%; min-width: 0; text-overflow: ellipsis; }
 .app-create-form #workspace-rate { display: block; margin-top: 4px; }
 .app-create-form .row { flex-wrap: wrap; }
+.balance-euro { display: block; color: var(--muted); margin-bottom: 6px; }

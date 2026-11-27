@@ -97,6 +97,12 @@ export default function Credits({ admin, onPurchase }: { admin: boolean; onPurch
     finally { setBusy(false); }
   }
 
+  const euroFormat = new Intl.NumberFormat(undefined, {style: "currency", currency: "EUR"});
+  function euro(microcredits: number) {
+    const amount = microcredits / 1e6 * (data?.settings.euro_micros_per_credit ?? 0) / 1e6;
+    if (amount !== 0 && Math.abs(amount) < 0.01) return `${amount < 0 ? "−" : ""}< ${euroFormat.format(0.01)}`;
+    return euroFormat.format(amount);
+  }
   const rate = data?.apps.reduce((total, a) => total + a.rate, 0) ?? 0;
   return <section className="panel wide credits-page">
     <h2>Credits</h2>
@@ -120,7 +126,7 @@ export default function Credits({ admin, onPurchase }: { admin: boolean; onPurch
       </div>
     </fieldset>}
     {data && <>
-      <p className="credit-balance"><strong>{credits(data.state.balance)} credits</strong>  {rate} credits per awake hour <HelpTip topic="awake hours">An awake hour is an hour an app is running, even if you close your browser. Sleeping or stopped apps use no running-time credits. Storage can have separate charges.</HelpTip></p>
+      <p className="credit-balance"><strong>{credits(data.state.balance)} credits</strong><span className="balance-euro">≈ {euro(data.state.balance)}</span> {rate} credits per awake hour (≈ {euro(rate * 1e6)}/h) <HelpTip topic="awake hours">An awake hour is an hour an app is running, even if you close your browser. Sleeping or stopped apps use no running-time credits. Storage can have separate charges.</HelpTip></p>
       {(data.state.reserved ?? 0) > 0 && <p>{credits(data.state.reserved ?? 0)} credits reserved for storage requests.</p>}
       {(data.state.pending_compute_seconds ?? 0) > 0 && <p>{data.state.pending_compute_seconds} awake seconds await storage settlement.</p>}
       {rate > 0 && data.state.balance > 0 && <p>About {(data.state.balance / 1_000_000 / rate).toFixed(1)} hours left at this compute rate.</p>}
@@ -131,7 +137,7 @@ export default function Credits({ admin, onPurchase }: { admin: boolean; onPurch
       <button className="primary" disabled={busy || (admin && !Number(delta))} onClick={() => void submit()}>{admin ? "Apply adjustment" :
         `Buy ${data.settings.pack} credits (€${(data.settings.pack * data.settings.euro_micros_per_credit / 1_000_000).toFixed(2)})`}</button>
       {data.apps.length > 0 && <><h3>App usage</h3><div className="credit-table credit-usage"><table><thead><tr><th>App</th><th>Credits/hour</th><th>Running costs (credits)</th><th>Storage costs (credits)</th></tr></thead><tbody>
-        {data.apps.map(a => <tr key={a.id}><td>{a.name}</td><td data-label="Credits/hour">{a.rate}</td><td data-label="Running costs (credits)">{credits(a.compute)}</td><td data-label="Storage costs (credits)">{credits(a.s3)}</td></tr>)}
+        {data.apps.map(a => <tr key={a.id}><td>{a.name}</td><td data-label="Credits/hour">{a.rate} <small>({euro(a.rate * 1e6)}/h)</small></td><td data-label="Running costs (credits)">{credits(a.compute)} <small>({euro(a.compute)})</small></td><td data-label="Storage costs (credits)">{credits(a.s3)} <small>({euro(a.s3)})</small></td></tr>)}
       </tbody></table></div></>}
       <details className="credit-history"><summary>Transaction history</summary>
       <div className="row">
@@ -143,7 +149,7 @@ export default function Credits({ admin, onPurchase }: { admin: boolean; onPurch
         }}><option value="">All types</option><option value="compute">App runtime</option><option value="s3">Storage</option><option value="purchase">Purchase</option><option value="adjustment">Adjustment</option></select></label>
       </div>
       {historyLoading ? <p role="status">Loading transactions…</p> : data.entries.length ? <div className="credit-table"><table><thead><tr><th>Time</th><th>App</th><th>Entry</th><th>Credits</th></tr></thead><tbody>{data.entries.map(e => <tr key={e.id}>
-        <td>{new Date(e.created * 1000).toLocaleString()}</td><td>{data.apps.find(a => a.id === e.app)?.name || e.app || "—"}</td><td>{e.kind === "s3" ? "Storage" : e.kind === "compute" ? "App runtime" : e.kind}</td><td>{credits(e.delta)}</td></tr>)}</tbody></table></div> : <p>No matching transactions.</p>}
+        <td>{new Date(e.created * 1000).toLocaleString()}</td><td>{data.apps.find(a => a.id === e.app)?.name || e.app || "—"}</td><td>{e.kind === "s3" ? "Storage" : e.kind === "compute" ? "App runtime" : e.kind}</td><td>{credits(e.delta)} <small>({euro(e.delta)})</small></td></tr>)}</tbody></table></div> : <p>No matching transactions.</p>}
       {data.has_more && <button className="secondary" disabled={historyLoading} onClick={() => {
         setHistoryLoading(true); setCursors([...cursors, data.entries[data.entries.length - 1].id]);
       }}>Older transactions</button>}
