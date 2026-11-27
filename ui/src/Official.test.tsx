@@ -166,10 +166,12 @@ it("deploys an archived version only after the user enables and selects it", asy
   expect(screen.queryByRole("option", { name: "1 (archived)" })).toBeNull();
   fireEvent.click(screen.getByLabelText("Include archived releases"));
   fireEvent.change(release, { target: { value: "older" } });
-  expect(screen.getByLabelText("Resources")).toHaveValue("6");
+  const resources = screen.getByLabelText("Resources");
+  expect(resources.querySelectorAll("option")).toHaveLength(8);
+  fireEvent.change(resources, {target: {value: "1"}});
   fireEvent.click(screen.getByRole("button", { name: "Create app" }));
   await waitFor(() => expect(ops).toHaveBeenCalledWith("workspace.create",
-    { product: "crew", name: "My Crew", multiplier: 6, sha256: "older", allow_archived: true }, expect.any(String)));
+    { product: "crew", name: "My Crew", multiplier: 1, sha256: "older", allow_archived: true }, expect.any(String)));
 });
 
 it("offers both active Crew versions and pins the older selection", async () => {

@@ -329,7 +329,7 @@ Official apps suspend automatically and wake on HTTP requests. Manual `app.start
 
 Customers use `catalog.list`, `workspace.create {product,name,multiplier}`,
 `workspace.resize {app,multiplier}` and `workspace.upgrade {app,sha256}`.
-Both products support 1×–8× compute (4× suggested) within the chosen release’s manifest minimum. An older release that requires 4× must be upgraded before selecting 1×. A target release requiring more CPU or memory needs a resize before installation. Each unit provides
+Every catalog release supports 1×–8× compute. Manifest resource values guide the recommendation. Creating, resizing and upgrading a workspace accept any of the eight tiers, subject to node capacity and safe disk resizing. Each unit provides
 256 MiB memory and a quarter vCPU. New catalog workspaces reserve 2 GiB of persistent disk per unit, independently of the legacy per-account disk quota. On a node reporting `localVolumeResize`, a change of disk size creates a durable resize request. Drop reserves the target resources on that placement while serving and metering the current allocation. The node fences traffic during maintenance. A matching successful receipt applies the new allocation; a refusal keeps the original disk and allocation. Older nodes support compute-only upgrades and refuse a downgrade that needs a smaller disk. A fresh guest filesystem measurement can explain when the data already exceeds the selected tier. Publication affects
 new workspaces immediately. Existing workspaces install only the specific
 version their owner accepts. A matching healthy node report confirms the

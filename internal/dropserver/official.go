@@ -255,14 +255,8 @@ func workspaceCreate(c *Ctx, in *dropapi.WorkspaceCreate) (any, error) {
 	if m.App != r.Product {
 		return nil, Conflict("candidate_invalid", "The release did not pass manifest checks.")
 	}
-	if in.Multiplier < r.Minimum {
-		return nil, Invalid("multiplier", "This release requires at least "+strconv.Itoa(r.Minimum)+"× resources.")
-	}
 	port, hook := m.HTTPPort, m.HookPort
 	cpu, mem, disk := (in.Multiplier+3)/4, in.Multiplier*256, in.Multiplier*2048
-	if disk < m.Minimum.DiskMiB {
-		return nil, Invalid("multiplier", "Choose a larger size for this release.")
-	}
 	if err := allowRequiredStorage(c.App, c.Auth.Id, m); err != nil {
 		return nil, err
 	}
@@ -346,9 +340,6 @@ func workspaceResize(c *Ctx, in *dropapi.WorkspaceResize) (any, error) {
 	if !slices.Contains(crewBetaSizes, in.Multiplier) {
 		return nil, Invalid("multiplier", "Choose a resource multiplier from 1 to 8.")
 	}
-	if in.Multiplier < a.GetInt("official_minimum") {
-		return nil, Invalid("multiplier", "The installed workspace requires a larger size. Upgrade it first to use smaller sizes.")
-	}
 	if r := workspaceDiskRequest(a); r != nil && r.Outcome == "pending" {
 		if r.Target == in.Multiplier {
 			return dropapi.AppResult{App: c.appOut(a, nil)}, nil
@@ -423,14 +414,7 @@ func workspaceUpgrade(c *Ctx, in *dropapi.WorkspaceUpgrade) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	cpuQuarters := betaFractionalQuota(a)
-	if cpuQuarters == 0 {
-		cpuQuarters = a.GetInt("vcpu") * 4
-	}
-	if cpuQuarters < m.Minimum.CPUQuarters || a.GetInt("memory_mib") < m.Minimum.MemoryMiB {
-		return nil, Conflict("resize_required", "Increase workspace resources to at least "+strconv.Itoa(r.Minimum)+"× before installing this release.")
-	}
-	if m.App != product || m.HTTPPort != a.GetInt("http_port") || m.HookPort != a.GetInt("hook_port") || m.Minimum.DiskMiB > a.GetInt("disk_mib") {
+	if m.App != product || m.HTTPPort != a.GetInt("http_port") || m.HookPort != a.GetInt("hook_port") {
 		return nil, Conflict("incompatible_upgrade", "The new release requires a different workspace configuration.")
 	}
 	_, features := manifestWorkspaceRuntime(m)

@@ -66,7 +66,7 @@ func TestOfficialWorkspaceLifecycle(t *testing.T) {
 				if product == "a-completely-new-app" {
 					m = fmt.Sprintf(`{"schema":"drop.manifest/v1","app":%q,"version":%q,"http_port":8181,"health":"tcp","minimum":{"memory_mib":256,"cpu_quarters":1,"disk_mib":1024}}`, product, version)
 				}
-				if product == "atlas" {
+				if product == "atlas" && version == "1.0.0" {
 					m = strings.ReplaceAll(strings.ReplaceAll(m, `"memory_mib":512`, `"memory_mib":256`), `"cpu_quarters":4`, `"cpu_quarters":1`)
 				}
 				err = json.NewEncoder(c).Encode(map[string]any{"outcome": "success", "manifest": json.RawMessage(m)})
@@ -113,16 +113,19 @@ func TestOfficialWorkspaceLifecycle(t *testing.T) {
 		t.Helper()
 		return appOf(t, h.MustOp(user, "workspace.create", map[string]any{"product": product, "name": name, "multiplier": 1}))
 	}
-	wantError(t, h.Op(alice, "workspace.create", map[string]any{"product": "crew", "name": "Too small", "multiplier": 1}), 400, dropapi.CodeInvalidInput)
-	old := appOf(t, h.MustOp(alice, "workspace.create", map[string]any{"product": "crew", "name": "Historical Crew", "multiplier": 4}))
+	wantError(t, h.Op(alice, "workspace.create", map[string]any{"product": "crew", "name": "Invalid multiplier", "multiplier": 0}), 400, dropapi.CodeInvalidInput)
+	old := appOf(t, h.MustOp(alice, "workspace.create", map[string]any{"product": "crew", "name": "Historical Crew", "multiplier": 1}))
 	for _, op := range []string{"app.start", "app.stop"} {
 		wantError(t, h.Op(alice, op, map[string]any{"app": old["id"]}), 403, dropapi.CodeForbidden)
 		wantError(t, h.Op(bob, op, map[string]any{"app": old["id"]}), 404, dropapi.CodeNotFound)
 	}
-	if old["disk_mib"] != float64(8192) {
-		t.Fatalf("4× disk: %v", old["disk_mib"])
+	if old["disk_mib"] != float64(2048) {
+		t.Fatalf("1× disk: %v", old["disk_mib"])
 	}
-	wantError(t, h.Op(alice, "workspace.resize", map[string]any{"app": old["id"], "multiplier": 1}), 400, dropapi.CodeInvalidInput)
+	resized := appOf(t, h.MustOp(alice, "workspace.resize", map[string]any{"app": old["id"], "multiplier": 2}))
+	if resized["memory_mib"] != float64(512) {
+		t.Fatal(resized)
+	}
 	a, b := create(alice, "atlas", "Research"), create(bob, "atlas", "Library")
 	if a["official_product"] != "atlas" || a["name"] != "Research" {
 		t.Fatal(a)
@@ -143,7 +146,9 @@ func TestOfficialWorkspaceLifecycle(t *testing.T) {
 	if err := h.App.DB().NewQuery("SELECT units FROM drop_credit_executions WHERE deployment={:deployment}").Bind(dbx.Params{"deployment": a2["deployment_id"]}).Row(&units); err != nil || units != 8 {
 		t.Fatalf("resize billing units %d: %v", units, err)
 	}
-	reportApp(a2, "running")
+	// Return to 1× before installing a release that recommends 4×.
+	a1 := appOf(t, h.MustOp(alice, "workspace.resize", map[string]any{"app": a["id"], "multiplier": 1}))
+	reportApp(a1, "running")
 	newVersion := stage("atlas", "1.1.0", 3)
 	publish(newVersion, atlas)
 	up := map[string]any{"app": a["id"], "sha256": newVersion}

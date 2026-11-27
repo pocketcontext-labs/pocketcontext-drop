@@ -1,3 +1,4 @@
+import { OpenPrivateApp } from "./PrivateApps";
 import PrivateBuildSource, {type Build} from "./PrivateBuildSource";
 import CopyButton from "./CopyButton";
 import "./releases.css";
@@ -38,13 +39,11 @@ export function productName(id: string) {
 }
 function Size({
   value,
-  minimum = 1,
   recommended = 4,
   diskMiB,
   onChange,
 }: {
   value: number;
-  minimum?: number;
   recommended?: number;
   diskMiB?: number;
   onChange: (n: number) => void;
@@ -54,7 +53,7 @@ function Size({
       <label className="size-label" htmlFor="workspace-size">Resources</label>{" "}
       <HelpTip topic="app size">CPU sets processing power, RAM holds work in progress, and disk stores files between runs. A larger size uses more credits while running. You can change it later in App settings.</HelpTip>
       <select id="workspace-size" aria-describedby="workspace-rate" value={value} onChange={(e) => onChange(Number(e.target.value))}>
-        {Array.from({ length: 9 - minimum }, (_, i) => i + minimum).map((n) => (
+        {Array.from({ length: 8 }, (_, i) => i + 1).map((n) => (
           <option value={n} key={n}>
             {n}× · {n / 4} vCPU · {n * 256} MiB RAM · {(diskMiB ?? n * 2048) / 1024} GiB disk{n === recommended ? " · recommended" : ""}
           </option>
@@ -111,7 +110,6 @@ export function CreateWorkspace({ catalog, loadError, releaseSelection = true, p
   const choices = versions.filter(r => showArchived || !r.archived);
   const release = choices.find(r => r.sha256 === digest);
   const selected = privateBuild ? build : release;
-  const minimum = privateBuild ? 1 : selected?.minimum_multiplier || 1;
   const products = Array.from(new Set(published.map(r => r.product))).map(id =>
     published.find(r => r.product === id && !r.archived) ?? published.find(r => r.product === id)
   ).filter((r): r is Published => !!r);
@@ -135,7 +133,7 @@ export function CreateWorkspace({ catalog, loadError, releaseSelection = true, p
             setBusy(true);
             setError("");
             try {
-              const settings = {name: name.trim(), multiplier: Math.max(size, minimum)};
+              const settings = {name: name.trim(), multiplier: size};
               const r = privateBuild
                 ? await op<{app: App}>("developer.build_create", { ...settings, sha256: selected.sha256 }, key)
                 : await op<{app: App}>("workspace.create", {
@@ -207,8 +205,8 @@ export function CreateWorkspace({ catalog, loadError, releaseSelection = true, p
             </div>
             <small className="quiet">{size} {size === 1 ? "credit" : "credits"} per awake hour</small>
           </fieldset> : <Size
-            value={Math.max(size, minimum)}
-            minimum={minimum}
+            value={size}
+            recommended={Math.max(4, release?.minimum_multiplier || 1)}
             onChange={(n) => {
               setSize(n);
               resetKey();
@@ -551,14 +549,23 @@ export function OfficialWorkspace({
   reload: () => void;
 }) {
   const { catalog, error: loadError } = useCatalog();
+  const latest = catalog?.releases.find(r => r.product === app.official_product);
+  return <WorkspaceDetail app={app} reload={reload} latest={latest} loadError={loadError} />;
+}
+
+export function WorkspaceDetail({ app, reload, latest, loadError, children }: {
+  app: App;
+  reload: () => void;
+  latest?: Published;
+  loadError?: string;
+  children?: React.ReactNode;
+}) {
   const [size, setSize] = useState(app.memory_mib / 256),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [review, setReview] = useState(false);
   const resizing = app.disk_resize?.outcome === "pending";
-  const latest = catalog?.releases.find(
-    (r) => r.product === app.official_product,
-  );
+  useEffect(() => setSize(app.memory_mib / 256), [app.id, app.memory_mib]);
   async function mutate(fn: () => Promise<unknown>) {
     if (busy) return;
     setBusy(true);
@@ -579,16 +586,20 @@ export function OfficialWorkspace({
         <a className="status-back" href="#/apps">← Apps</a>
         <header className="status-header">
           <div className="status-identity"><h1>{app.name}</h1><RuntimeState key={app.id} id={app.id} /></div>
-          {appURL(app.hostname) && <a className="button primary" href={appURL(app.hostname)} target="_blank" rel="noreferrer">Open app <OpenArrow /></a>}
+          {app.developer_private ? <OpenPrivateApp app={app.id} hostname={app.hostname} primary
+            disabled={!app.current_release || app.archived || app.desired_state === "stopped"} />
+            : appURL(app.hostname) && <a className="button primary" href={appURL(app.hostname)} target="_blank" rel="noreferrer">Open app <OpenArrow /></a>}
         </header>
-        <AppAddress hostname={app.hostname} />
-        <p className="quiet">HTTP traffic wakes this app automatically. Compute charges pause while it sleeps. Stored data can still incur S3 charges.</p>
+        <AppAddress hostname={app.hostname} copyOnly={app.developer_private} />
+        {app.desired_state === "on-request" && !app.archived && <p className="quiet">HTTP traffic wakes this app automatically. Compute charges pause while it sleeps. Stored data can still incur S3 charges.</p>}
       </section>
       <section className="panel official-page">
         <h2>App settings</h2>
         <p>
-          Installed · {productName(app.official_product!)}{" "}
-          {app.installed_version || "· awaiting first healthy deployment"}
+          {app.current_release || app.official_product ? <>
+            Installed · {productName(app.official_product || app.executable_name)}{" "}
+            {app.installed_version || (app.official_product ? "· awaiting first healthy deployment" : "")}
+          </> : "Upload a release to run this app."}
         </p>
         {latest &&
           latest.sha256 !== app.beta_sha256 && !resizing &&
@@ -622,23 +633,18 @@ export function OfficialWorkspace({
               </button>
             </div>
           ))}
-        {(app.minimum_multiplier ?? 1) > 1 && (
-          <p className="quiet">
-            This installed release requires at least {app.minimum_multiplier}×.
-            Upgrade to a release with a lower minimum to select smaller sizes.
-          </p>
-        )}
         {resizing && <p role="status">Resizing the disk for {app.disk_resize?.multiplier}× resources. Your current configuration stays in effect until the node confirms the change.</p>}
         {app.disk_resize?.outcome === "refused" && <p role="alert">The node could not resize the disk for {app.disk_resize.multiplier}× resources. Your original disk and resources are intact.</p>}
+        {(app.official_product || app.private_tiered) && <>
         <Size
           value={size}
-          minimum={app.minimum_multiplier}
+          recommended={app.minimum_multiplier || 4}
           diskMiB={app.disk_resize_supported ? undefined : app.disk_mib}
           onChange={setSize}
         />
         <button
           className="secondary"
-          disabled={busy || resizing || (size === app.memory_mib / 256 && (!app.disk_resize_supported || size * 2048 === app.disk_mib))}
+          disabled={busy || app.archived || resizing || (size === app.memory_mib / 256 && (!app.disk_resize_supported || size * 2048 === app.disk_mib))}
           onClick={() =>
             void mutate(() =>
               op("workspace.resize", { app: app.id, multiplier: size }),
@@ -647,9 +653,12 @@ export function OfficialWorkspace({
         >
           Save resources
         </button>
+        </>}
+        {app.archived && app.developer_private && <button className="secondary" disabled={busy} onClick={() => void mutate(() => op("app.restore", {app: app.id}))}>Restore app</button>}
         {(error || loadError) && <p role="alert">{error || loadError}</p>}
         {!resizing && <div className="workspace-delete"><DeleteApp app={app} /></div>}
       </section>
+      {children}
     </div>
   );
 }
