@@ -193,6 +193,7 @@ func (c *AwakeCounter) Valid() bool {
 }
 
 type AppReport struct {
+	VolumeUsage  *VolumeUsage  `json:"volumeUsage,omitempty"`
 	FirstRun     *FirstRun     `json:"firstRun,omitempty"`
 	LogTail      string        `json:"logTail,omitempty"`
 	AwakeCounter *AwakeCounter `json:"awakeCounter,omitempty"`

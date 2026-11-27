@@ -25,9 +25,10 @@ type nibReported struct {
 	Allocatable      json.RawMessage `json:"allocatable"`
 	Versions         json.RawMessage `json:"versions"`
 	Volumes          []struct {
-		AppID    string `json:"appId"`
-		VolumeID string `json:"volumeId"`
-		State    string `json:"state"`
+		AppID    string               `json:"appId"`
+		VolumeID string               `json:"volumeId"`
+		Usage    *dropapi.VolumeUsage `json:"usage"`
+		State    string               `json:"state"`
 	} `json:"volumes"`
 	Instances []nibInstance `json:"instances"`
 }
@@ -191,9 +192,15 @@ func nibPhase(state string) string {
 // desired.json the agent last wrote or confirmed.
 func appReports(intents []appIntent, r *nibReported, writtenRevision string, now time.Time) []dropapi.AppReport {
 	byApp := map[string]nibInstance{}
+	usageByApp := map[string]*dropapi.VolumeUsage{}
 	stale := true
 	accepted := ""
 	if r != nil {
+		for _, v := range r.Volumes {
+			if v.VolumeID == appspec.VolumeID(v.AppID) && v.State == "ready" && v.Usage.Fresh(now) {
+				usageByApp[v.AppID] = v.Usage
+			}
+		}
 		for _, inst := range r.Instances {
 			byApp[inst.AppID] = inst
 		}
@@ -231,6 +238,9 @@ func appReports(intents []appIntent, r *nibReported, writtenRevision string, now
 			}
 			if appDeploymentOK(in.AppID, inst.DeploymentID) {
 				rep.DeploymentID = inst.DeploymentID
+				if !stale && inst.DeploymentID == in.DeploymentID {
+					rep.VolumeUsage = usageByApp[in.AppID]
+				}
 				if !stale && inst.AwakeCounter.Valid() {
 					rep.AwakeCounter = inst.AwakeCounter
 				}

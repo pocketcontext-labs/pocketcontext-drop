@@ -295,7 +295,7 @@ func workspaceResize(c *Ctx, in *dropapi.WorkspaceResize) (any, error) {
 		return nil, Invalid("multiplier", "The installed workspace requires a larger size. Upgrade it first to use smaller sizes.")
 	}
 	if in.Multiplier*256 < a.GetInt("memory_mib") && in.Multiplier*2048 < a.GetInt("disk_mib") {
-		return nil, Conflict(dropapi.CodeDiskLocked, "This size requires a smaller disk. The node cannot safely shrink the existing volume.")
+		return nil, volumeDowngradeError(c, a, in.Multiplier*2048)
 	}
 	if a.GetInt("memory_mib") != in.Multiplier*256 || a.GetInt("vcpu") != (in.Multiplier+3)/4 {
 		a.Set("beta_digest", a.GetString("official_target"))

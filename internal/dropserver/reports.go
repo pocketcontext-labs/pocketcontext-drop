@@ -237,6 +237,9 @@ func checkReport(r *dropapi.Report) error {
 		if a.LastExitCode != nil && (*a.LastExitCode < -1<<31 || *a.LastExitCode > 1<<31-1) {
 			return reportInvalid(field+".lastExitCode", "lastExitCode is out of range.")
 		}
+		if a.VolumeUsage != nil && !a.VolumeUsage.Valid() {
+			return reportInvalid(field+".volumeUsage", "Invalid guest filesystem measurement.")
+		}
 		if !a.AwakeCounter.Valid() {
 			return reportInvalid(field+".awakeCounter", "Billable seconds must be between zero and measured seconds.")
 		}
@@ -399,7 +402,8 @@ func ingestApps(app core.App, nodeID string, reports []dropapi.AppReport, now ti
 		if !r.FirstRun.Available(now) {
 			r.FirstRun = nil
 		}
-		if row != nil && sameReport(row, r) && !hostUsageDue(row, r, now) {
+		updateVolume := newVolumeMeasurement(row, r.VolumeUsage, now, sampleAt) && r.DeploymentID == deploymentID(appRecord) && r.VolumeUsage.TotalBytes <= int64(appRecord.GetInt("disk_mib"))<<20
+		if row != nil && !updateVolume && sameReport(row, r) && !hostUsageDue(row, r, now) {
 			continue
 		}
 		out.changes++
@@ -410,6 +414,11 @@ func ingestApps(app core.App, nodeID string, reports []dropapi.AppReport, now ti
 			row = core.NewRecord(collection)
 			row.Set("node", nodeID)
 			row.Set("nib_app_id", r.AppID)
+		}
+		if updateVolume {
+			row.Set("volume_usage", r.VolumeUsage)
+		} else if row.GetString("deployment_id") != r.DeploymentID {
+			row.Set("volume_usage", nil)
 		}
 		row.Set("first_run", r.FirstRun)
 		row.Set("app", appRecord.Id)
