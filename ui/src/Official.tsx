@@ -166,7 +166,7 @@ export function OfficialCatalog() {
     </section>
   );
 }
-export function OfficialReleases() {
+export function OfficialReleases({ onActivated }: { onActivated?: () => void }) {
   const { catalog, error: loadError, refresh } = useCatalog();
   const [product, setProduct] = useState("crew"),
     [version, setVersion] = useState(""),
@@ -319,6 +319,7 @@ export function OfficialReleases() {
           onClick={() =>
             void act(async () => {
               await op("catalog.activate");
+              onActivated?.();
               return "The official workspace catalog is active.";
             })
           }

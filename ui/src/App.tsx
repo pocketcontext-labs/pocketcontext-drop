@@ -165,7 +165,7 @@ function Workspace({
   const administration = view === "admin-waitlist" || view === "admin-users" || view === "admin-nodes";
   let page;
   const app = view === "app" ? appRouteFromHash(hash) : null;
-  if(hostedAdmin&&view==="admin-releases")page=<OfficialReleases/>;
+  if(hostedAdmin&&view==="admin-releases")page=<OfficialReleases onActivated={()=>setMe({...me,official_catalog:true})}/>;
   else if(hostedAdmin&&me.official_catalog&&(defaultPage||view==="admin-waitlist"||view==="admin-users"))page=<UserDirectory me={me} waiting={view==="admin-waitlist"}/>;
   else if(view==="admin-releases")page=<NotFound/>;
   else if (view === "credits") page = <Credits admin={me.admin} />;
