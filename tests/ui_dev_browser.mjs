@@ -191,7 +191,7 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   const signIn = await cli(['open', '--no-browser']);
   await page.goto(signIn.signInLink);
-  await page.getByRole('button', { name: 'Sign out' }).waitFor();
+  await page.getByRole('button', { name: 'Account menu' }).waitFor();
   await page.getByText('Hello from the synthetic CLI', { exact: true }).waitFor();
   ok('one-time open link signs into the reader on the backend origin');
   await until(async () => sockets.some(url => new URL(url).pathname === '/__ui_hmr'), 'same-origin hot-reload connection');
@@ -212,7 +212,7 @@ try {
   assert.equal(await page.evaluate(() => window.__uiTestDocument), documentMarker, 'CSS and component edits must preserve the document');
   assert.equal(server.pid, initialPID);
   assert.equal(server.exitCode, null, 'the same Go process must stay running');
-  await page.getByRole('button', { name: 'Sign out' }).waitFor();
+  await page.getByRole('button', { name: 'Account menu' }).waitFor();
   assert.equal(errors.length, 0, `reader must have no browser runtime errors: ${errors.join('; ')}`);
   ok('CSS and React edits update without navigation, sign-in loss or Go restart');
 
@@ -239,7 +239,7 @@ try {
   await remote.getByRole('button', { name: 'Use a sign-in code instead' }).click();
   await remote.getByLabel('Sign-in code').fill(code.code);
   await remote.getByRole('button', { name: 'Sign in' }).click();
-  await remote.getByRole('button', { name: 'Sign out' }).waitFor();
+  await remote.getByRole('button', { name: 'Account menu' }).waitFor();
   await remote.getByText('Hello from the synthetic CLI', { exact: true }).waitFor();
   ok('through the same-port forward a one-time login code signs in the project account');
 
@@ -297,7 +297,7 @@ try {
   ok('Vite failure returns 502 while the backend remains healthy');
   vite = startVite();
   await until(async () => (await fetch(`${origin}/@vite/client`)).ok, 'Vite restart');
-  await page.getByRole('button', { name: 'Sign out' }).waitFor();
+  await page.getByRole('button', { name: 'Account menu' }).waitFor();
   await writeFile(css, `${await readFile(css, 'utf8')}\nbody { --drop-hmr-check: reconnected; }\n`);
   await page.waitForFunction(() => getComputedStyle(document.body).getPropertyValue('--drop-hmr-check').trim() === 'reconnected');
   assert.equal(server.pid, initialPID);
@@ -316,7 +316,7 @@ try {
   const embeddedPage = await (await browser.newContext()).newPage();
   const embeddedSignIn = await cli(['open', '--no-browser']);
   await embeddedPage.goto(embeddedSignIn.signInLink);
-  await embeddedPage.getByRole('button', { name: 'Sign out' }).waitFor();
+  await embeddedPage.getByRole('button', { name: 'Account menu' }).waitFor();
   await embeddedPage.locator('.product-brand img').evaluate(async image => { await image.decode(); });
   assert(await embeddedPage.locator('.product-brand img').evaluate(image => image.naturalWidth > 0), 'embedded logo must render under the production security policy');
   ok('the same binary still serves the signed-in embedded reader by default');

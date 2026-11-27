@@ -951,3 +951,17 @@ html { scrollbar-gutter: stable; }
 .dashboard-meta time::before { content: "·"; margin-inline-end: 8px; }
 .dashboard-actions :is(button, a.button) { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 36px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 6px; background: transparent; }
 .dashboard-actions :is(button, a.button):hover { background: var(--accent-soft); }
+
+.account-menu { position: relative; }
+.account-avatar { width: 38px; height: 38px; padding: 0; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.account-avatar:hover, .account-avatar[aria-expanded=true] { outline: 1px solid var(--accent); }
+.account-dropdown { position: absolute; inset: calc(100% + 8px) 0 auto auto; z-index: 12; display: grid; gap: 10px; width: max-content; max-width: 80vw; overflow-wrap: anywhere; padding: 14px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; }
+@media (min-width: 641px) {
+  .topbar { flex-wrap: nowrap; }
+}
+.app-dashboard .dashboard-row { cursor: pointer; box-shadow: 0 1px 2px rgb(0 0 0 / 3%); transition: border-color .15s, box-shadow .15s; }
+.app-dashboard .dashboard-row:is(:hover, :focus-within) { box-shadow: 0 2px 5px rgb(0 0 0 / 8%); }
+@media (prefers-color-scheme: light) {
+  .dashboard-identity .slug, .dashboard-meta time { color: #70756f; }
+}
+.app-dashboard > .quiet { margin-top: 4px; }

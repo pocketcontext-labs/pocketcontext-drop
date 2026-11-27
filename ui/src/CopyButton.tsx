@@ -5,7 +5,7 @@ export default function CopyButton({ text, label = "Copy", icon = false, showAdd
   const [result, setResult] = useState<{ value: string; copied: boolean }>();
   useEffect(() => {
     if (!result?.copied) return;
-    const timer = window.setTimeout(() => setResult(undefined), 2000);
+    const timer = window.setTimeout(() => setResult(undefined), 1500);
     return () => window.clearTimeout(timer);
   }, [result]);
   async function copy() {

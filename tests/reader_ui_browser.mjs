@@ -109,7 +109,7 @@ try {
   const link = await cli(['open', '--no-browser']);
   assert(link.signInLink.startsWith(`${origin}/bundle/login#`));
   await page.goto(link.signInLink);
-  await page.getByRole('button', { name: 'Sign out' }).waitFor();
+  await page.getByRole('button', { name: 'Account menu' }).waitFor();
   assert.equal(new URL(page.url()).pathname, '/');
   assert.equal(new URL(page.url()).hash, '', 'the code never stays in the address bar');
   await page.getByText('An app from the CLI', { exact: true }).waitFor();
@@ -243,6 +243,7 @@ try {
   await page.setViewportSize({ width: 1280, height: 900 });
   ok('light, dark and phone layouts render');
 
+  await page.getByRole('button', { name: 'Account menu' }).click();
   await page.getByRole('button', { name: 'Sign out' }).click();
   await page.getByRole('heading', { name: 'Sign in' }).waitFor();
   assert.equal(await page.evaluate(k => localStorage.getItem(k), key), null);
@@ -256,6 +257,7 @@ try {
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.getByText('Third app about telescopes', { exact: true }).waitFor();
   ok('a login code signs in the same account, which sees the same apps');
+  await page.getByRole('button', { name: 'Account menu' }).click();
   await page.getByRole('button', { name: 'Sign out' }).click();
   await page.getByLabel('Password').fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();

@@ -30,6 +30,7 @@ it("shows the password sign-in locally until a users session exists, then the re
   expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
   act(() => pb.authStore.save(token, user));
   expect(await screen.findByRole("heading", { name: "Your apps" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Account menu" }));
   expect(screen.getByText("owner@example.test")).toBeInTheDocument();
   expect(refresh).toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
