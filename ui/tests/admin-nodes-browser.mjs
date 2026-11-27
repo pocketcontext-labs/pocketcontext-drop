@@ -38,6 +38,9 @@ export async function checkAdminNodeLayout(browser, origin) {
           case "waitlist.list": result={entries:[],has_more:false}; break;
           case "user.list": result={users:[]}; break;
           case "invite.list": result={invites:[]}; break;
+          case "app.list":
+            assert.equal(input.all, true);
+            result={apps:[{id:"example-id",slug:"example-app",name:"Example"}],has_more:false}; break;
           case "node.list": result={nodes}; break;
           case "node.create": {
             writes.push(op);
@@ -109,8 +112,10 @@ export async function checkAdminNodeLayout(browser, origin) {
       page.once("dialog",dialog=>dialog.accept());
       await rotations.first().click();
       await page.getByText("synthetic-rotated-password",{exact:true}).waitFor();
+      await page.getByLabel("App (id or slug)").focus();
+      await page.locator("#placement-app-ids option[value=example-id]").waitFor({state:"attached"});
       await page.getByLabel("App (id or slug)").fill("example-app");
-      await page.getByRole("region", {name:"Place an app"}).getByRole("combobox").selectOption(second.name);
+      await page.getByRole("region", {name:"Place an app"}).getByRole("combobox",{name:/^Node/}).selectOption(second.name);
       await page.getByRole("button",{name:"Place",exact:true}).click();
       await page.getByText("example-app is placed on " + second.name + ".").waitFor();
       await page.getByRole("button",{name:"Clear placement"}).click();

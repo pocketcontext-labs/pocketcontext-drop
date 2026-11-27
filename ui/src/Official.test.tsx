@@ -165,3 +165,19 @@ it("deploys an archived version only after the user enables and selects it", asy
   await waitFor(() => expect(ops).toHaveBeenCalledWith("workspace.create",
     { product: "crew", name: "My Crew", multiplier: 6, sha256: "older", allow_archived: true }, expect.any(String)));
 });
+
+it("offers both active Crew versions and pins the older selection", async () => {
+  const ops = vi.spyOn(api, "op").mockResolvedValueOnce({ enabled: true, releases: [
+    { product: "crew", version: "0.45.4-drop.5", sha256: "older", published: 1 },
+    { product: "crew", version: "0.45.4-drop.6", sha256: "latest", published: 2 },
+  ] }).mockResolvedValueOnce({ app: { id: "workspace000001" } });
+  render(<OfficialCatalog />);
+  fireEvent.click(await screen.findByRole("button", { name: "Choose Crew" }));
+  const release = screen.getByLabelText("Release");
+  expect(release).toHaveValue("latest");
+  expect(release.querySelectorAll("option")).toHaveLength(2);
+  fireEvent.change(release, { target: { value: "older" } });
+  fireEvent.click(screen.getByRole("button", { name: "Create app" }));
+  await waitFor(() => expect(ops).toHaveBeenCalledWith("workspace.create",
+    expect.objectContaining({ sha256: "older" }), expect.any(String)));
+});

@@ -9,6 +9,8 @@ import { formatDate } from "./Apps";
 import CopyButton from "./CopyButton";
 import {
   dropApi,
+  op,
+  type App,
   type DropNode,
   type NodeSecret,
   type NodeState,
@@ -117,6 +119,27 @@ function PlaceForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
+  const [lookupStarted, setLookupStarted] = useState(false);
+  const [suggestions, setSuggestions] = useState<App[]>([]);
+  const [lookupError, setLookupError] = useState(false);
+  useEffect(() => {
+    if (!lookupStarted) return;
+    let active = true;
+    async function load() {
+      const apps = new Map<string, App>();
+      for (let offset = 0; active; offset += 500) {
+        const page = await op<{ apps: App[]; has_more: boolean }>("app.list", { all: true, limit: 500, offset });
+        if (!active) return;
+        for (const item of page.apps) {
+          if (!item.developer_private) apps.set(item.id, item);
+        }
+        if (!page.has_more || !page.apps.length) break;
+      }
+      if (active) setSuggestions(Array.from(apps.values()));
+    }
+    void load().catch(() => { if (active) setLookupError(true); });
+    return () => { active = false; };
+  }, [lookupStarted]);
   const active = nodes.filter((n) => n.state === "active");
   const run = async (clear: boolean) => {
     setBusy(true);
@@ -160,9 +183,14 @@ function PlaceForm({
               autoComplete="off"
               value={app}
               onChange={(event) => setApp(event.target.value)}
-              placeholder="hello-app"
+              list="placement-app-ids"
+              onFocus={() => setLookupStarted(true)}
+              placeholder="Type an app ID or slug"
             />
           </label>
+          <datalist id="placement-app-ids">
+            {suggestions.map(item => <option key={item.id} value={item.id}>{item.slug} · {item.name}</option>)}
+          </datalist>
           <label>
             Node
             <select
@@ -189,6 +217,7 @@ function PlaceForm({
             Clear placement
           </button>
         </div>
+        {lookupError && <p className="quiet" role="status">App suggestions are unavailable. Enter an ID or slug to continue.</p>}
         <p className="quiet">
           A moved app stops on its old node, which keeps its data. The disk
           size is fixed from the first placement.
