@@ -39,6 +39,12 @@ function NavIcon({ path }: { path: string }) {
   </svg>;
 }
 
+const mobileNav = window.matchMedia?.("(max-width: 640px)");
+function subscribeMobileNav(notify: () => void) {
+  mobileNav?.addEventListener("change", notify);
+  return () => mobileNav?.removeEventListener("change", notify);
+}
+
 function subscribe(change: () => void) {
   return pb.authStore.onChange(change);
 }
@@ -140,6 +146,7 @@ function Workspace({
   const email = accountEmail();
   // The account's role decides which pages it has; the server checks it on
   // every operation regardless.
+  const mobile = useSyncExternalStore(subscribeMobileNav, () => mobileNav?.matches ?? false);
   const [me, setMe] = useState<Me | null>(null);
   const [meFailed, setMeFailed] = useState(false);
   useEffect(() => {
@@ -237,8 +244,15 @@ function Workspace({
           >
             <NavIcon path="M8 8H5v4a7 7 0 0 0 14 0V8h-3 M9 4v5 M15 4v5 M12 19v3" />Connect
           </a>}
+          <button className="mobile-more" type="button" popoverTarget="mobile-account">
+            <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <circle cx="4" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="20" cy="12" r="2" />
+            </svg>
+            More
+          </button>
         </nav>
-        <div className="account">
+        <div key={mobile ? "mobile" : "desktop"} className={mobile ? undefined : "account"}
+          id={mobile ? "mobile-account" : undefined} popover={mobile ? "auto" : undefined}>
           {email && <span title={email}>{email}</span>}
           <button
             type="button"
