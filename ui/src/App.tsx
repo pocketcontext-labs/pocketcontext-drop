@@ -251,7 +251,10 @@ function Workspace({
           >
             <NavIcon path="M8 8H5v4a7 7 0 0 0 14 0V8h-3 M9 4v5 M15 4v5 M12 19v3" />Connect
           </a>}
-          <button className="mobile-more" type="button" aria-haspopup="dialog" aria-controls="mobile-account" onClick={() => moreSheet.current?.showModal()}>
+          <button className="mobile-more" type="button" aria-haspopup="dialog" aria-controls="mobile-account" onClick={() => {
+            moreSheet.current?.showModal();
+            moreSheet.current?.querySelector<HTMLElement>("#more-title")?.focus();
+          }}>
             <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
               <circle cx="4" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="20" cy="12" r="2" />
             </svg>
@@ -265,10 +268,10 @@ function Workspace({
                 moreSheet.current?.close();
             }}>
             <div className="sheet-heading">
-              <h2 id="more-title">More</h2>
+              <h2 id="more-title" tabIndex={-1}>More</h2>
               <button type="button" className="primary" onClick={() => moreSheet.current?.close()}>Done</button>
             </div>
-            {!hostedAdmin && <a href={viewHashes.connect} onClick={() => moreSheet.current?.close()}>Connect an assistant</a>}
+            {!hostedAdmin && <a href={viewHashes.connect} aria-current={view === "connect" ? "page" : undefined} onClick={() => moreSheet.current?.close()}>Connect an assistant</a>}
             <button className="secondary" type="button" onClick={() => api.logout()}>Sign out</button>
             {email && <p>{email}</p>}
           </dialog>
