@@ -1,3 +1,4 @@
+import HelpTip from "./HelpTip";
 import { useEffect, useState } from "react";
 import { op, type App } from "./dropApi";
 import { message } from "./errors";
@@ -26,9 +27,10 @@ function Size({
   onChange: (n: number) => void;
 }) {
   return (
-    <label>
-      Resources
-      <select value={value} onChange={(e) => onChange(Number(e.target.value))}>
+    <div>
+      <label htmlFor="workspace-size">Resources</label>{" "}
+      <HelpTip topic="workspace size">The size sets how much memory and processing power your workspace gets. A larger size uses more credits while running. You can change it later in Workspace settings.</HelpTip>
+      <select id="workspace-size" value={value} onChange={(e) => onChange(Number(e.target.value))}>
         {Array.from({ length: 9 - minimum }, (_, i) => i + minimum).map((n) => (
           <option value={n} key={n}>
             {n}×{n === 4 ? " · recommended" : ""} · {n}{" "}
@@ -36,7 +38,7 @@ function Size({
           </option>
         ))}
       </select>
-    </label>
+    </div>
   );
 }
 function useCatalog() {

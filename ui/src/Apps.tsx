@@ -1,3 +1,4 @@
+import HelpTip from "./HelpTip";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import AppAddress from "./AppAddress";
@@ -76,7 +77,7 @@ export default function Apps({ beta = false, official=false }: { beta?: boolean;
           </a>
         )}
       </div>
-      {quota && <p className="quiet">{quotaText(quota)}</p>}
+      {quota && <p className="quiet">{quotaText(quota)} <HelpTip topic="workspace storage">This is the space set aside for your workspaces. Stopping a workspace keeps its files and still counts toward this total.</HelpTip></p>}
       {error && (
         <p role="alert" className="error">
           {error}

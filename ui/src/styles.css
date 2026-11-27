@@ -799,3 +799,35 @@ section > h3 {
   #mobile-account span { display: block; margin: 0 0 10px; overflow-wrap: anywhere; }
   #mobile-account button { width: 100%; }
 }
+
+button.help-tip {
+  display: inline-grid;
+  place-items: center;
+  vertical-align: middle;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+}
+.help-tip span {
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font: 600 13px/1 sans-serif;
+}
+.help-answer:not([hidden]) {
+  display: block;
+  margin-block: 5px 10px;
+  max-width: 56ch;
+  padding: 8px 12px;
+  border-inline-start: 3px solid var(--border);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+}
+#workspace-size { display: block; }

@@ -1,3 +1,4 @@
+import HelpTip from "./HelpTip";
 import { useEffect, useState } from "react";
 import { api, type ConnectedApp, type Connection } from "./api";
 import CopyButton from "./CopyButton";
@@ -112,7 +113,7 @@ export default function Connect() {
         <>
           <p>
             Add this address wherever your assistant asks for an MCP server,
-            then approve the connection with your Drop account.
+            then approve the connection with your Drop account. <HelpTip topic="connecting an assistant">You can use Drop without an assistant. To connect one, open its settings, look for connectors or MCP servers, and paste the address below. You can remove its access under Connected apps.</HelpTip>
           </p>
           <div className="row">
             <code className="endpoint">{connection.url}</code>

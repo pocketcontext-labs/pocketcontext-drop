@@ -1,3 +1,4 @@
+import HelpTip from "./HelpTip";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { op } from "./dropApi";
 import { message } from "./errors";
@@ -91,7 +92,7 @@ export default function Credits({ admin, onPurchase }: { admin: boolean; onPurch
       </div>
     </fieldset>}
     {data && <>
-      <p><strong>{credits(data.state.balance)} credits</strong> · {rate} credits per awake hour</p>
+      <p><strong>{credits(data.state.balance)} credits</strong> · {rate} credits per awake hour <HelpTip topic="awake hours">An awake hour is an hour a workspace is running, even if you close your browser. Sleeping or stopped workspaces use no running-time credits. Storage can have separate charges.</HelpTip></p>
       {(data.state.reserved ?? 0) > 0 && <p>{credits(data.state.reserved ?? 0)} credits reserved for storage requests.</p>}
       {(data.state.pending_compute_seconds ?? 0) > 0 && <p>{data.state.pending_compute_seconds} awake seconds await storage settlement.</p>}
       {rate > 0 && data.state.balance > 0 && <p>About {(data.state.balance / 1_000_000 / rate).toFixed(1)} hours left at this compute rate.</p>}
