@@ -126,17 +126,17 @@ export default function Credits({ admin, onPurchase }: { admin: boolean; onPurch
       </div>
     </fieldset>}
     {data && <>
-      <p className="credit-balance"><strong>{credits(data.state.balance)} credits</strong><span className="balance-euro">≈ {euro(data.state.balance)}</span> {rate} credits per awake hour (≈ {euro(rate * 1e6)}/h) <HelpTip topic="awake hours">An awake hour is an hour an app is running, even if you close your browser. Sleeping or stopped apps use no running-time credits. Storage can have separate charges.</HelpTip></p>
+      <p className="credit-balance"><strong>{credits(data.state.balance)} credits</strong><span className="balance-euro">≈ {euro(data.state.balance)}</span> Up to {rate} credits per hour for currently awake apps (≈ {euro(rate * 1e6)}/h) <HelpTip topic="awake hours">This is the compute cost if the apps that are awake now run for a full hour. Other apps waking up can raise this rate. An app that stays suspended overnight uses zero compute credits overnight. S3 storage is billed separately.</HelpTip></p>
       {(data.state.reserved ?? 0) > 0 && <p>{credits(data.state.reserved ?? 0)} credits reserved for storage requests.</p>}
       {(data.state.pending_compute_seconds ?? 0) > 0 && <p>{data.state.pending_compute_seconds} awake seconds await storage settlement.</p>}
-      {rate > 0 && data.state.balance > 0 && <p>About {(data.state.balance / 1_000_000 / rate).toFixed(1)} hours left at this compute rate.</p>}
+      {rate > 0 && data.state.balance > 0 && <p>About {(data.state.balance / 1_000_000 / rate).toFixed(1)} hours at this compute rate. <HelpTip topic="remaining hours">This estimate divides your balance by the current hourly compute rate. Your balance can last longer when apps sleep. The estimate excludes storage charges.</HelpTip></p>}
       {data.state.balance === 0 && <p>{Math.ceil((3600 - data.state.trial_seconds) / 60)} shared awake minutes left. Apps run locally until the buffer runs out, then stop with their data retained. A top-up resets the buffer to 60 minutes.</p>}
       {admin ?
         <label className="credit-adjustment">Adjustment in credits <input type="number" step="0.000001" value={delta} onChange={e => setDelta(e.target.value)} /></label> :
         <p>Simulated purchase. No payment is collected.</p>}
       <button className="primary" disabled={busy || (admin && !Number(delta))} onClick={() => void submit()}>{admin ? "Apply adjustment" :
         `Buy ${data.settings.pack} credits (€${(data.settings.pack * data.settings.euro_micros_per_credit / 1_000_000).toFixed(2)})`}</button>
-      {data.apps.length > 0 && <><h3>App usage</h3><div className="credit-table credit-usage"><table><thead><tr><th>App</th><th>Credits/hour</th><th>Running costs (credits)</th><th>Storage costs (credits)</th></tr></thead><tbody>
+      {data.apps.length > 0 && <><h3>App usage <HelpTip topic="app usage">Credits/hour shows each app’s current compute rate. Running costs are credits used for time already spent awake. Storage costs cover S3 usage and can continue while the app is suspended.</HelpTip></h3><div className="credit-table credit-usage"><table><thead><tr><th>App</th><th>Credits/hour</th><th>Running costs (credits)</th><th>Storage costs (credits)</th></tr></thead><tbody>
         {data.apps.map(a => <tr key={a.id}><td>{a.name}</td><td data-label="Credits/hour">{a.rate} <small>({euro(a.rate * 1e6)}/h)</small></td><td data-label="Running costs (credits)">{credits(a.compute)} <small>({euro(a.compute)})</small></td><td data-label="Storage costs (credits)">{credits(a.s3)} <small>({euro(a.s3)})</small></td></tr>)}
       </tbody></table></div></>}
       <details className="credit-history"><summary>Transaction history</summary>
