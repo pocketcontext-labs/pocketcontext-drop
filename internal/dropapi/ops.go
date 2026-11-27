@@ -100,7 +100,7 @@ var specs = []Spec{
 	{Name: "workspace.upgrade", Role: RoleUser, Input: &WorkspaceUpgrade{}, MCP: true, Summary: "Install the reviewed current official release on one workspace."},
 	{Name: "user.directory", Role: RoleAdmin, Input: &DirectoryInput{}, Read: true, Summary: "Search users and access requests with filters and pagination."},
 
-	{Name: "credits.accounts", Role: RoleAdmin, Read: true, Input: &UserListInput{}, Summary: "List account balances and simulated purchases for the administrator."},
+	{Name: "credits.accounts", Role: RoleAdmin, Read: true, Input: &CreditAccountListInput{}, Summary: "List account balances and simulated purchases for the administrator."},
 	{Name: "credits.get", Role: RoleUser, Read: true, Input: &CreditViewInput{}, Summary: "Read your balance and ledger. Administrators can select an account."},
 	{Name: "credits.buy", Role: RoleUser, Input: &MeInput{}, Summary: "Buy one simulated credit pack."},
 	{Name: "credits.adjust", Role: RoleAdmin, Input: &CreditAdjustment{}, Summary: "Record a signed adjustment to an account balance."},

@@ -257,7 +257,7 @@ The Credits page and these operations use integer microcredits (1,000,000 per cr
 | Operation | Role | Input and result |
 | --- | --- | --- |
 | `credits.get` | User or admin | Own balance, seconds consumed, burn per app, S3 and compute charges, and the last 100 ledger entries. An administrator may select `account`. Supply `before` with the oldest entry ID for the next page. |
-| `credits.accounts` | Admin | Account email, balance and total simulated purchases, paginated with `limit` and `offset`. |
+| `credits.accounts` | Admin | Account email, balance and total simulated purchases, paginated with `limit` and `offset`. Optional `query` searches email and account ID. |
 | `credits.buy` | User | Empty input, required request idempotency key. Adds one configured simulated pack and returns the balance. A purchase above the cap returns `credit_cap`. |
 | `credits.adjust` | Admin | `account` and signed `microcredits`, required request idempotency key. The transaction records the actor and adjustment and checks the cap and available funds. |
 | `credits.configure` | Admin | Supply integer `pack`, `cap`, `starting` in whole credits, `euro_micros_per_credit`, `eur_per_usd_ppm` and `markup_ppm`. The initial values are 500, 10000, 0, 10000, 1000000 and 1250000 respectively. EUR/USD is a configurable simulation rate. |

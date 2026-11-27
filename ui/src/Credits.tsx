@@ -13,8 +13,13 @@ interface Ledger {
 const credits = (micro: number) => (micro / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 6 });
 
 export default function Credits({ admin, onPurchase }: { admin: boolean; onPurchase?: () => void }) {
-  const [accounts, setAccounts] = useState<Account[]>([]);
-  const [account, setAccount] = useState("");
+  const [page, setPage] = useState<{ accounts: Account[]; has_more: boolean; offset: number; query: string } | null>(null);
+  const [selected, setSelected] = useState<Account | null>(null);
+  const account = selected?.id ?? "";
+  const [query, setQuery] = useState("");
+  const [offset, setOffset] = useState(0);
+  const currentPage = page?.offset === offset && page.query === query ? page : null;
+  const accounts = currentPage?.accounts ?? [];
   const [data, setData] = useState<Ledger | null>(null);
   const [before, setBefore] = useState(0);
   const [error, setError] = useState("");
@@ -23,18 +28,22 @@ export default function Credits({ admin, onPurchase }: { admin: boolean; onPurch
   const [version, setVersion] = useState(0);
   const pending = useRef<{ intent: string; key: string } | null>(null);
   const refresh = useCallback(() => setVersion(v => v + 1), []);
+  const pageSize = 25;
+  useEffect(() => {
+    if (!admin) return;
+    let active = true;
+    const timer = window.setTimeout(() => {
+      void op<{ accounts: Account[]; has_more: boolean }>("credits.accounts", { query, offset, limit: pageSize })
+        .then(result => {
+          if (active) setPage({ ...result, query, offset });
+        })
+        .catch(e => { if (active) { setPage({ accounts: [], has_more: false, query, offset }); setError(message(e)); } });
+    }, 180);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [admin, query, offset, version]);
   useEffect(() => {
     let active = true;
     async function load() {
-      if (admin) {
-        const all: Account[] = [];
-        for (;;) {
-          const res = await op<{ accounts: Account[]; has_more: boolean }>("credits.accounts", { offset: all.length, limit: 100 });
-          all.push(...res.accounts);
-          if (!res.has_more || !active) break;
-        }
-        if (active) setAccounts(all);
-      }
       const result = await op<Ledger>("credits.get", { account, before });
       if (active) { setData(result); setError(""); }
     }
@@ -63,10 +72,24 @@ export default function Credits({ admin, onPurchase }: { admin: boolean; onPurch
   return <section className="panel wide">
     <h2>Credits</h2>
     {error && <p role="alert">{error}</p>}
-    {admin && <label>Account <select value={account} onChange={e => { setData(null); setBefore(0); setAccount(e.target.value); }}>
-      <option value="">My account</option>
-      {accounts.map(a => <option key={a.id} value={a.id}>{a.email} · {credits(a.balance)} credits · purchased {credits(a.purchases)}</option>)}
-    </select></label>}
+    {admin && <fieldset>
+      <legend>Account</legend>
+      <label>Find an account <input type="search" value={query} placeholder="Email or user ID" onChange={e => {
+        setQuery(e.target.value); setOffset(0);
+      }} /></label>
+      <label>View balance <select value={account} onChange={e => {
+        setData(null); setBefore(0); setSelected(accounts.find(a => a.id === e.target.value) ?? null);
+      }}>
+        <option value="">My account</option>
+        {selected && !accounts.some(a => a.id === selected.id) && <option value={selected.id}>{selected.email}</option>}
+        {accounts.map(a => <option key={a.id} value={a.id}>{a.email} · {credits(a.balance)} credits · purchased {credits(a.purchases)}</option>)}
+      </select></label>
+      <div className="row">
+        <button className="secondary" disabled={offset === 0} onClick={() => setOffset(n => Math.max(0, n - pageSize))}>Previous</button>
+        <button className="secondary" disabled={!currentPage?.has_more} onClick={() => setOffset(n => n + pageSize)}>Next</button>
+        <span className="quiet">{!currentPage ? "Loading accounts…" : accounts.length ? `${offset + 1}–${offset + accounts.length}` : "No accounts found"}</span>
+      </div>
+    </fieldset>}
     {data && <>
       <p><strong>{credits(data.state.balance)} credits</strong> · {rate} credits per awake hour</p>
       {(data.state.reserved ?? 0) > 0 && <p>{credits(data.state.reserved ?? 0)} credits reserved for storage requests.</p>}

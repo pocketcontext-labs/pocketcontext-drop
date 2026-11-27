@@ -41,6 +41,10 @@ func TestCreditPurchases(t *testing.T) {
 	if !replay.Replayed || num(replay.Result["balance"]) != 500_000_000 {
 		t.Fatalf("replay: %+v", replay)
 	}
+	accounts := h.MustOp(owner, "credits.accounts", map[string]any{"query": "BALANCE@", "limit": 1})
+	if accounts["has_more"] != false || len(accounts["accounts"].([]any)) != 1 || accounts["accounts"].([]any)[0].(map[string]any)["id"] != first.Id {
+		t.Fatalf("credit account search: %v", accounts)
+	}
 	view := h.MustOp(token, "credits.get", nil)
 	if len(view["entries"].([]any)) != 1 || len(h.MustOp(other, "credits.get", nil)["entries"].([]any)) != 0 {
 		t.Fatal("ledger isolation or replay")

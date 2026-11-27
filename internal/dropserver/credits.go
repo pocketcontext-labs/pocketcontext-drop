@@ -2,6 +2,7 @@ package dropserver
 
 import (
 	"fmt"
+	"strings"
 
 	"ganigeorgiev.com/pocketbase/dbx"
 	"ganigeorgiev.com/pocketbase/pocketbase/core"
@@ -170,7 +171,7 @@ func appendCredit(tx core.App, owner, app, kind, source string, delta int64) err
 	return err
 }
 
-func creditsAccounts(c *Ctx, in *dropapi.UserListInput) (any, error) {
+func creditsAccounts(c *Ctx, in *dropapi.CreditAccountListInput) (any, error) {
 	limit, offset, err := page(in.Limit, in.Offset)
 	if err != nil {
 		return nil, err
@@ -182,7 +183,15 @@ func creditsAccounts(c *Ctx, in *dropapi.UserListInput) (any, error) {
 		Purchases int64  `db:"purchases" json:"purchases"`
 	}
 	rows := []summary{}
-	err = c.App.DB().NewQuery(`SELECT u.id,u.email,c.balance,COALESCE(sum(l.delta),0) AS purchases FROM users u JOIN drop_credit_accounts c ON c.owner=u.id LEFT JOIN drop_credit_ledger l ON l.owner=u.id AND l.kind='purchase' GROUP BY u.id ORDER BY u.email,u.id LIMIT {:l} OFFSET {:o}`).Bind(dbx.Params{"l": limit + 1, "o": offset}).All(&rows)
+	query := strings.ToLower(strings.TrimSpace(in.Query))
+	if len(query) > 254 {
+		return nil, Invalid("query", "Search by email or account ID (up to 254 bytes).")
+	}
+	err = c.App.DB().NewQuery(`SELECT p.id,p.email,p.balance,COALESCE((SELECT sum(l.delta) FROM drop_credit_ledger l
+	 WHERE l.owner=p.id AND l.kind='purchase'),0) AS purchases
+	 FROM (SELECT u.id,u.email,c.balance FROM users u JOIN drop_credit_accounts c ON c.owner=u.id
+	 WHERE {:q}='' OR instr(lower(u.email),{:q})>0 OR instr(lower(u.id),{:q})>0
+	 ORDER BY u.email,u.id LIMIT {:l} OFFSET {:o}) p ORDER BY p.email,p.id`).Bind(dbx.Params{"l": limit + 1, "o": offset, "q": query}).All(&rows)
 	if err != nil {
 		return nil, err
 	}

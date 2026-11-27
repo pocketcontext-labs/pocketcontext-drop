@@ -18,3 +18,9 @@ type CreditSettings struct {
 	MarkupPPM           int64 `db:"markup_ppm" json:"markup_ppm"`
 	EURPerUSDPPM        int64 `db:"eur_per_usd_ppm" json:"eur_per_usd_ppm"`
 }
+
+type CreditAccountListInput struct {
+	Limit  int    `json:"limit,omitempty"`
+	Offset int    `json:"offset,omitempty"`
+	Query  string `json:"query,omitempty"`
+}
