@@ -243,7 +243,7 @@ func appGet(c *Ctx, in *dropapi.AppGetInput) (any, error) {
 		return nil, err
 	}
 	detail := dropapi.AppDetail{App: c.appOut(app, nil), Secrets: secrets}
-	if app.GetString("official_product") != "" {
+	if app.GetString("official_product") != "" || app.GetBool("private_tiered") {
 		p, err := placementOf(c.App, app.Id)
 		if err != nil {
 			return nil, err
