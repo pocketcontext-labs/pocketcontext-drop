@@ -1,3 +1,4 @@
+import { OpenPrivateApp } from "./PrivateApps";
 import HelpTip from "./HelpTip";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
@@ -29,7 +30,7 @@ export function quotaText(quota: Quota): string {
 }
 
 /** The account's apps, newest first, with its quota. */
-export default function Apps({ beta = false, official=false }: { beta?: boolean; official?:boolean }) {
+export default function Apps({ beta = false, official=false, developer=false, admin=false }: { beta?: boolean; official?:boolean; developer?: boolean; admin?: boolean }) {
   const [apps, setApps] = useState<App[] | null>(null);
   const [quota, setQuota] = useState<Quota | null>(null);
   const [error, setError] = useState("");
@@ -73,9 +74,12 @@ export default function Apps({ beta = false, official=false }: { beta?: boolean;
         {full ? (
           <span className="quiet">Quota reached</span>
         ) : (
-          <a className="button primary" href={official?viewHashes.catalog:beta ? viewHashes.deploy : viewHashes["app-new"]}>
+          <div className="row">
+            {developer && <a className="button secondary" href={viewHashes["private-new"]}>Create private app</a>}
+            {!admin && <a className="button primary" href={official?viewHashes.catalog:beta ? viewHashes.deploy : viewHashes["app-new"]}>
             {official?"Create app":beta ? "Deploy an app" : "New app"}
-          </a>
+          </a>}
+          </div>
         )}
       </div>
       {quota && <p className="quiet">{quotaText(quota)} <HelpTip topic="app storage">This is the space set aside for your apps. Stopping an app keeps its files and still counts toward this total.</HelpTip></p>}
@@ -108,7 +112,9 @@ export default function Apps({ beta = false, official=false }: { beta?: boolean;
                   <time dateTime={app.created.replace(" ", "T")}>{formatDate(app.created)}</time>
                 </div>
               </div>
-              {url && <div className="dashboard-actions">
+              {app.developer_private
+                ? <div className="dashboard-actions"><OpenPrivateApp app={app.id} hostname={app.hostname} disabled={!app.current_release || app.archived}/></div>
+                : url && <div className="dashboard-actions">
                 <CopyButton text={url} icon label="Copy app URL" />
                 <a className="button secondary" href={url} target="_blank" rel="noreferrer">Open <span aria-hidden="true">↗</span></a>
               </div>}

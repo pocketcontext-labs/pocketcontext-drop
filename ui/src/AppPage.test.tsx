@@ -312,3 +312,44 @@ it("can reopen a completed receipt after the original app is gone", async () => 
   expect(readApp).not.toHaveBeenCalled();
   expect(screen.getByText(app.slug)).toBeInTheDocument();
 });
+
+it("creates an owner-private app from the hosted developer route", async () => {
+  const apiModule = await import("./dropApi");
+  vi.spyOn(dropApi, "me").mockResolvedValue({ ...member, developer: true, official_catalog: true });
+  const call = vi.spyOn(apiModule, "op").mockResolvedValue({ app });
+  history.replaceState(null, "", "/#/private/new");
+  render(<App />);
+  fireEvent.change(await screen.findByLabelText("App name"), { target: { value: "My experiment" } });
+  fireEvent.change(screen.getByLabelText("Slug"), { target: { value: "my-experiment" } });
+  fireEvent.click(screen.getByRole("button", { name: "Create app" }));
+  await vi.waitFor(() => expect(call).toHaveBeenCalledWith("developer.create", expect.objectContaining({ name: "My experiment", slug: "my-experiment" })));
+  expect(location.hash).toBe(`#/apps/${id}`);
+});
+
+it("uploads a private executable and deploys a selected release separately", async () => {
+  const apiModule = await import("./dropApi");
+  vi.spyOn(dropApi, "me").mockResolvedValue({ ...member, developer: true, official_catalog: true });
+  vi.spyOn(dropApi, "getApp").mockResolvedValue({ app: { ...app, developer_private: true }, secrets: [] });
+  vi.spyOn(dropApi, "listReleases").mockResolvedValue({ releases: [older], current_release: "", has_more: false });
+  const path = "/api/drop/upload/" + "T".repeat(32);
+  const call = vi.spyOn(apiModule, "op").mockImplementation(async name => {
+    if (name === "developer.upload_link") return { path, max_bytes: 90000000 };
+    if (name === "developer.deploy") return { deployment_bumped: true, deployment_id: "new-private-deployment" };
+    throw new Error("unexpected operation " + name);
+  });
+  const put = vi.spyOn(dropApi, "uploadRelease").mockResolvedValue({ release, created: true, deployed: false, deployment_id: "" });
+  history.replaceState(null, "", `/#/apps/${id}/releases`);
+  render(<App />);
+  const file = await screen.findByLabelText("App file");
+  expect(screen.queryByLabelText("Deploy it when the upload completes")).not.toBeInTheDocument();
+  fireEvent.change(file, { target: { files: [elf()] } });
+  const upload = screen.getByRole("button", { name: "Upload app file" });
+  await vi.waitFor(() => expect(upload).toBeEnabled());
+  fireEvent.click(upload);
+  expect(await screen.findByText("Uploaded aaaaaaaaaaaa.")).toBeInTheDocument();
+  expect(call).toHaveBeenCalledWith("developer.upload_link", { app: id, note: "" });
+  expect(put).toHaveBeenCalledWith(path, expect.any(File), expect.any(Function));
+  fireEvent.click(screen.getByRole("button", { name: "Deploy" }));
+  expect(await screen.findByText(/Deployed bbbbbbbbbbbb/)).toBeInTheDocument();
+  expect(call).toHaveBeenCalledWith("developer.deploy", { app: id, release: older.id });
+});

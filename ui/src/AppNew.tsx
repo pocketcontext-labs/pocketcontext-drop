@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { NAME_LIMIT, validName, validSlug } from "./api";
-import { dropApi, type AppKind, type DesiredState, type HealthKind } from "./dropApi";
+import { dropApi, op, type App, type AppKind, type DesiredState, type HealthKind } from "./dropApi";
 import { message } from "./errors";
 import { appHash, viewHashes } from "./routes";
 
@@ -49,7 +49,7 @@ export function NumberInput({
 }
 
 /** `#/apps/new`: create an app with its name, slug and settings. */
-export default function AppNew({ hosted }: { hosted: boolean }) {
+export default function AppNew({ hosted, privateApp = false }: { hosted: boolean; privateApp?: boolean }) {
   const [name, setName] = useState("");
   const [kind, setKind] = useState<AppKind>("ordinary");
   const [slug, setSlug] = useState("");
@@ -72,7 +72,7 @@ export default function AppNew({ hosted }: { hosted: boolean }) {
     setBusy(true);
     setError("");
     try {
-      const app = await dropApi.createApp({
+      const input = {
         name: validName(name),
         slug: validSlug(slug),
         kind,
@@ -81,7 +81,10 @@ export default function AppNew({ hosted }: { hosted: boolean }) {
         health_kind: health,
         ...(health === "http" ? { health_path: healthPath.trim() } : {}),
         ...numbers,
-      });
+      };
+      const app = privateApp
+        ? (await op<{ app: App }>("developer.create", input)).app
+        : await dropApi.createApp(input);
       location.hash = appHash(app.id);
     } catch (e) {
       setError(message(e));
@@ -100,7 +103,8 @@ export default function AppNew({ hosted }: { hosted: boolean }) {
       <p>
         <a href={viewHashes.apps}>← Your apps</a>
       </p>
-      <h2 id="new-app-title">New app</h2>
+      <h2 id="new-app-title">{privateApp ? "Create private app" : "New app"}</h2>
+      {privateApp && <p>Upload a Linux executable after creating the app. Only people you invite can open it.</p>}
       <form className="add" onSubmit={submit}>
         <label>
           App name

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState, type DragEvent } from "react"
 import { formatDate } from "./Apps";
 import {
   dropApi,
+  op,
+  type UploadLink,
   MAX_RELEASE_BYTES,
   releaseFileProblem,
   type App,
@@ -77,7 +79,9 @@ export default function Releases({
     setStatus("");
     setProgress({ loaded: 0, total: file.size });
     try {
-      const link = await dropApi.createUploadLink(app.id, { note: note.trim(), activate });
+      const link = app.developer_private
+        ? await op<UploadLink>("developer.upload_link", { app: app.id, note: note.trim() })
+        : await dropApi.createUploadLink(app.id, { note: note.trim(), activate });
       if (file.size > link.max_bytes) {
         setError(`The app file size limit is ${mib(link.max_bytes)}.`);
         return;
@@ -106,7 +110,9 @@ export default function Releases({
     setError("");
     setStatus("");
     try {
-      const result = await dropApi.deployRelease(app.id, release.id);
+      const result = app.developer_private
+        ? await op<{deployment_bumped: boolean; deployment_id: string}>("developer.deploy", { app: app.id, release: release.id })
+        : await dropApi.deployRelease(app.id, release.id);
       setStatus(
         result.deployment_bumped
           ? `Deployed ${release.sha256.slice(0, 12)}: new deployment ${result.deployment_id}.`
@@ -180,10 +186,10 @@ export default function Releases({
             />
           </label>
         </div>
-        <label className="check">
+        {!app.developer_private && <label className="check">
           <input type="checkbox" checked={activate} onChange={(event) => setActivate(event.target.checked)} />
           Deploy it when the upload completes
-        </label>
+        </label>}
       </fieldset>
       <div className="row">
         <button
