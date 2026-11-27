@@ -121,6 +121,7 @@ export default function Apps({ beta = false, official=false, developer=false }: 
         <ol className="apps" aria-label="Apps, newest first">
           {apps.map((app) => {
             const url = appURL(app.hostname);
+            const product = app.official_product || (app.developer_private && app.executable_name);
             return <li className="dashboard-row" key={app.id}>
               <div>
                 <div className="dashboard-identity">
@@ -131,16 +132,18 @@ export default function Apps({ beta = false, official=false, developer=false }: 
                   {app.archived ? <span className="dashboard-state">Archived</span> :
                     (official || app.desired_state === "on-request") ? <RuntimeState id={app.id} /> :
                     <span className="dashboard-state">{stateLabels[app.desired_state]}</span>}
-                  {app.official_product && <><span className="dashboard-tier">{app.memory_mib / 256}×</span><span>{productName(app.official_product)}</span></>}
-                  {!app.official_product && app.kind === "crew" && <span>Crew · {app.crew_owner_email}</span>}
+                  {(app.official_product || app.private_tiered) && <span className="dashboard-tier">{app.memory_mib / 256}×</span>}
+                  {product && <span>{productName(product)}</span>}
+                  {app.developer_private && <span className="dashboard-tier">Custom</span>}
+                  {!product && app.kind === "crew" && <span>Crew · {app.crew_owner_email}</span>}
                   <time dateTime={app.created.replace(" ", "T")}>{formatDate(app.created)}</time>
                 </div>
               </div>
-              {app.developer_private
-                ? <div className="dashboard-actions"><OpenPrivateApp app={app.id} hostname={app.hostname} disabled={!app.current_release || app.archived}/></div>
-                : url && <div className="dashboard-actions">
+              {url && <div className="dashboard-actions">
                 <CopyButton text={url} icon label="Copy app URL" />
-                <a className="button secondary" href={url} target="_blank" rel="noreferrer">Open <OpenArrow /></a>
+                {app.developer_private
+                  ? <OpenPrivateApp app={app.id} hostname={app.hostname} disabled={!app.current_release || app.archived} />
+                  : <a className="button secondary" href={url} target="_blank" rel="noreferrer">Open <OpenArrow /></a>}
               </div>}
             </li>;
           })}
