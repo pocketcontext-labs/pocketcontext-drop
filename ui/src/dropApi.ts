@@ -82,6 +82,7 @@ export type Op = (typeof OPS)[number];
 
 export type Role = "admin" | "developer" | "user";
 export interface Me {
+  app_domain?: string;
   official_catalog?: boolean;
   release_selection?: boolean;
   trial_remaining_seconds?: number;

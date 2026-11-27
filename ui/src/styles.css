@@ -1028,3 +1028,37 @@ html { scrollbar-gutter: stable; }
 .directory-access select { min-width: 9rem; }
 .directory-detail h3 { margin-block: 0; overflow-wrap: anywhere; }
 .directory-detail { margin-bottom: 16px; }
+
+.new-app-page { min-width: 0; display: grid; gap: 16px; }
+.new-app-back { color: var(--muted); text-decoration: none; font-size: 14px; }
+.new-app-back:hover { color: var(--accent); }
+.new-app-page header h2 { margin: 12px 0 4px; font-size: 24px; }
+.new-app-page header p, .new-app-card p { margin: 0; }
+.new-app-page header p { color: var(--muted); }
+.new-app-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding-inline: clamp(16px, 3vw, 28px);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 3%);
+}
+@media (prefers-color-scheme: light) { .new-app-card { background: white; } }
+.new-app-card fieldset { min-inline-size: 0; margin: 0; border: 0; padding: 16px 0 20px; }
+.new-app-card legend { float: left; width: 100%; padding: 0 0 10px; color: var(--muted); font-size: 13px; font-weight: 600; }
+.new-app-card legend + div { clear: both; }
+.new-app-card fieldset + fieldset, .new-app-footer { border-top: 1px solid var(--border); }
+.new-app-grid { display: grid; align-items: start; gap: 16px; }
+.new-app-grid.identity { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.new-app-grid.runtime { grid-template-columns: minmax(0, 2fr) minmax(0, 1.4fr) repeat(2, minmax(0, 1fr)); }
+.new-app-grid.resources { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.new-app-grid + label, .new-app-grid + .new-app-grid, .new-app-card p + label { margin-top: 12px; }
+.new-app-card input, .new-app-card select { min-width: 0; width: 100%; height: 40px; }
+.new-app-card small, .new-app-card .quiet { font-size: 12px; font-weight: 400; color: var(--muted); }
+.new-app-card #new-app-host { margin-top: 6px; }
+.new-app-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-block: 16px; }
+@media (max-width: 700px) {
+  .new-app-grid.runtime, .new-app-grid.resources { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+  .new-app-grid.identity, .new-app-grid.runtime { grid-template-columns: minmax(0, 1fr); }
+}

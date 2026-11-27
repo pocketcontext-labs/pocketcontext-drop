@@ -34,6 +34,9 @@ func me(c *Ctx) (dropapi.Me, error) {
 	}
 	out := dropapi.Me{Hosted: accountsOf(c.App).hosted, ID: c.Auth.Id, Email: c.Auth.Email(), Role: role, Admin: c.Admin, Developer: isDeveloper(c.Auth), Owner: c.Owner, AppQuota: c.Auth.GetInt("app_quota")}
 	if out.Hosted {
+		if domain := servicesOf(c.App).AppDomain; out.Developer && ValidAppDomain(domain) {
+			out.AppDomain = domain
+		}
 		var err error
 		out.OfficialCatalog, err = officialEnabled(c.App)
 		out.ReleaseSelection = out.OfficialCatalog

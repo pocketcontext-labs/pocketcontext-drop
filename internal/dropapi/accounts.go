@@ -24,6 +24,7 @@ type MeInput struct{}
 
 // Me is the signed-in account. Admin is true for role admin.
 type Me struct {
+	AppDomain             string `json:"app_domain,omitempty"`
 	Developer             bool   `json:"developer"`
 	ReleaseSelection      bool   `json:"release_selection,omitempty"`
 	OfficialCatalog       bool   `json:"official_catalog,omitempty"`
