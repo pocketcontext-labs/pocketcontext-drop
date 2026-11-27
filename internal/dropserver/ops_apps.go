@@ -127,7 +127,8 @@ func (c *Ctx) appOut(r *core.Record, emails map[string]string) dropapi.App {
 	}
 	crewOwnerEmail := r.GetString("crew_owner_email")
 	kind := "ordinary"
-	if crewOwnerEmail != "" && (r.GetString("beta_digest") == "" || r.GetString("executable_name") == "crew") {
+	manifestDriven := r.GetString("beta_digest") != "" || r.GetBool("private_tiered")
+	if crewOwnerEmail != "" && (!manifestDriven || r.GetString("executable_name") == "crew") {
 		kind = "crew"
 	}
 	syncInterval := ""

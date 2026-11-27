@@ -84,7 +84,7 @@ func TestPrivateBuildCreateFromInspection(t *testing.T) {
 		t.Fatal(resp)
 	}
 	app := appOf(t, h.MustOp(dev, "developer.build_create", input))
-	if !strings.HasPrefix(app["slug"].(string), "dev-") || app["developer_private"] != true || app["executable_name"] != "field-notes" || num(app["http_port"]) != 8040 || num(app["memory_mib"]) != 512 || num(app["disk_mib"]) != 4096 {
+	if !strings.HasPrefix(app["slug"].(string), "dev-") || app["developer_private"] != true || app["kind"] == "crew" || app["executable_name"] != "field-notes" || num(app["http_port"]) != 8040 || num(app["memory_mib"]) != 512 || num(app["disk_mib"]) != 4096 {
 		t.Fatal(app)
 	}
 	r, err := h.App.FindRecordById("apps", app["id"].(string))
