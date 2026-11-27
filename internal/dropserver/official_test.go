@@ -105,6 +105,10 @@ func TestOfficialWorkspaceLifecycle(t *testing.T) {
 	}
 	wantError(t, h.Op(alice, "workspace.create", map[string]any{"product": "crew", "name": "Too small", "multiplier": 1}), 400, dropapi.CodeInvalidInput)
 	old := appOf(t, h.MustOp(alice, "workspace.create", map[string]any{"product": "crew", "name": "Historical Crew", "multiplier": 4}))
+	for _, op := range []string{"app.start", "app.stop"} {
+		wantError(t, h.Op(alice, op, map[string]any{"app": old["id"]}), 403, dropapi.CodeForbidden)
+		wantError(t, h.Op(bob, op, map[string]any{"app": old["id"]}), 404, dropapi.CodeNotFound)
+	}
 	if old["disk_mib"] != float64(8192) {
 		t.Fatalf("4× disk: %v", old["disk_mib"])
 	}

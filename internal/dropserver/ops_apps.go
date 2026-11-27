@@ -699,6 +699,9 @@ func setState(c *Ctx, ref string, start bool) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	if app.GetString("official_product") != "" {
+		return nil, Forbidden("Official apps suspend automatically and wake on HTTP requests.")
+	}
 	state := appspec.StateStopped
 	if start {
 		if err := checkInstalledPrivateManifest(c.App, app); err != nil {

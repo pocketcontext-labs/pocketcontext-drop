@@ -169,7 +169,7 @@ func dropWriteDescription(names []string) string {
 	return "Change Drop through one of its operations, with your own account: a thin pass-through to POST /api/drop/op, where the server checks your role and ownership on every call (another account's app is not_found; an admin operation from a user is forbidden). input is the operation's object, as in the table (? marks optional fields). " +
 		"idempotency_key (1-128 letters, digits, '.', '_', ':' or '-') makes a retry safe: reuse the same key when you did not see a write's result (secret.set ignores keys; setting the same value again is safe). " +
 		"The result is {op, result, replayed?}; an error is {error: {status, code, message, field?}}. " +
-		"Destructive: app.stop stops a running app, secret.delete removes the secret from the app and schedules deletion of all stored versions, and app.set, secret.set and secret.delete start a new deployment, which restarts the app. Act only on the person's request, and say so before restarting a running app.\n" +
+		"Act only on the person's request. Explain any restart or secret deletion before making the change.\n" +
 		secretWarning + "\nOperations:\n" + dropWriteTable(names)
 }
 
@@ -258,7 +258,7 @@ func (p mcpProfile) writeNames() []string {
 	if !p.official {
 		return dropapi.MCPWriteNames(p.role)
 	}
-	names := []string{"workspace.create", "workspace.resize", "workspace.upgrade", "app.start", "app.stop"}
+	names := []string{"workspace.create", "workspace.resize", "workspace.upgrade"}
 	for _, spec := range dropapi.Specs() {
 		if p.role == dropapi.RoleDeveloper && (strings.HasPrefix(spec.Name, "developer.") || strings.HasPrefix(spec.Name, "private.") || spec.PrivateOwnerWrite()) && spec.MCP && spec.Allows(p.role) && !slices.Contains(names, spec.Name) {
 			names = append(names, spec.Name)
@@ -281,7 +281,7 @@ func makeDropMCPServer(api http.Handler, p mcpProfile) *mcp.Server {
 	names := p.writeNames()
 	description := dropWriteDescription(names)
 	if p.official {
-		description = "Read the official catalog before creating or upgrading an official app. " + description
+		description = "Official apps suspend automatically and wake on HTTP requests. Read the catalog before creating or upgrading one. " + description
 	}
 	addDropTool(server, api, &mcp.Tool{
 		Name: "drop_write", Title: "Change Drop", Description: description, InputSchema: writeSchema(names),

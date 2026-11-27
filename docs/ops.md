@@ -326,6 +326,8 @@ With `catalog.list {all_versions:true}`, customers and administrators see every 
 
 `workspace.create` optionally accepts `sha256` to pin a published version of the selected product. For an archived digest, also pass `allow_archived:true`. An unavailable digest returns an error. Omitting the digest installs the latest active version.
 
+Official apps suspend automatically and wake on HTTP requests. Manual `app.start` and `app.stop` return 403 for an official workspace.
+
 Customers use `catalog.list`, `workspace.create {product,name,multiplier}`,
 `workspace.resize {app,multiplier}` and `workspace.upgrade {app,sha256}`.
 Both products support 1×–8× compute (4× suggested) within the chosen release’s manifest minimum. An older release that requires 4× must be upgraded before selecting 1×. A target release requiring more CPU or memory needs a resize before installation. Each unit provides

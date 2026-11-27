@@ -813,3 +813,12 @@ func TestMCPDeveloperAccess(t *testing.T) {
 		}
 	}
 }
+
+func TestOfficialUserHasAutomaticLifecycle(t *testing.T) {
+	names := (mcpProfile{role: dropapi.RoleUser, official: true}).writeNames()
+	for _, name := range names {
+		if name == "app.start" || name == "app.stop" {
+			t.Fatalf("official user offered %s", name)
+		}
+	}
+}
