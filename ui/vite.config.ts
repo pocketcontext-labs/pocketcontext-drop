@@ -1,7 +1,10 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { marked } from "marked";
 
 // Compile only the reviewed, versioned documents from the release source.
@@ -21,7 +24,49 @@ const legalDocuments = Object.fromEntries(
 );
 export default defineConfig({
   define: { __DROP_LEGAL_DOCUMENTS__: JSON.stringify(legalDocuments) },
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      name: "drop-guest-launcher",
+      resolveId(id) {
+        if (id === "virtual:drop-guest") return "\0" + id;
+      },
+      load(id) {
+        if (id !== "\0virtual:drop-guest") return;
+        const dir = mkdtempSync(join(tmpdir(), "drop-guest-build-"));
+        const binary = join(dir, "launcher");
+        try {
+          execFileSync(
+            "go",
+            [
+              "build",
+              "-buildvcs=false",
+              "-trimpath",
+              "-ldflags=-s -w -buildid=",
+              "-o",
+              binary,
+              "./cmd/drop-guest",
+            ],
+            {
+              cwd: fileURLToPath(new URL("..", import.meta.url)),
+              env: {
+                ...process.env,
+                GOOS: "linux",
+                GOARCH: "amd64",
+                CGO_ENABLED: "0",
+              },
+            },
+          );
+          return (
+            "export default " +
+            JSON.stringify(readFileSync(binary).toString("base64"))
+          );
+        } finally {
+          rmSync(dir, { recursive: true, force: true });
+        }
+      },
+    },
+  ],
   server: {
     host: "127.0.0.1",
     port: 5173,

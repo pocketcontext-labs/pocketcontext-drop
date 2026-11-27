@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import Brand from "./Brand";
+import ArchiveImport from "./ArchiveImport";
+import type {DeployRecipe} from "./deployRecipes";
+import {archiveName} from "./releaseArchive";
 import Credits from "./Credits";
 import type { PublishedLegal } from "./api";
 import AppAddress, { appURL } from "./AppAddress";
@@ -37,7 +40,7 @@ function explain(e: unknown, fallback: string) {
     };
     return messages[e.code] ?? fallback;
   }
-  return fallback;
+  return e instanceof Error ? e.message : fallback;
 }
 
 function FilePicker({
@@ -66,11 +69,12 @@ function FilePicker({
     setError("");
     let problem = "";
     try {
-      if (/\.(zip|tar|gz|bz2|xz|tgz|7z)$/i.test(chosen.name))
-        problem = "Extract the archive and choose the app file inside.";
-      else if (chosen.size > MAX_RELEASE_BYTES)
+      if (chosen.size > MAX_RELEASE_BYTES)
         problem = "Choose an app file of 90 MiB or less.";
-      else if (await releaseFileProblem(chosen))
+      else if (archiveName(chosen.name)) {
+        const signature = new Uint8Array(await chosen.slice(0,2).arrayBuffer());
+        if (signature[0] !== 0x50 && signature[0] !== 0x1f) problem = "Choose a valid ZIP or tar.gz archive.";
+      } else if (await releaseFileProblem(chosen))
         problem = "Choose a Linux (amd64) app file for Linux (amd64).";
     } catch {
       problem = "The app file could not be read. Please choose it again.";
@@ -99,7 +103,7 @@ function FilePicker({
         onDrop={drop}
       >
         <strong>Drop your app file here</strong>
-        <p>Linux (amd64) app files, up to 90 MiB</p>
+        <p>Linux (amd64) executables, ZIP or tar.gz archives, up to 90 MiB</p>
         <button
           className="primary"
           onClick={() => input.current?.click()}
@@ -323,16 +327,21 @@ export function BetaStatus({
 
 export default function BetaDeploy({
   initialFile,
+  recipe,
   account,
   prepared,
   onComplete,
 }: {
   initialFile: File | null;
+  recipe?: DeployRecipe;
   account: string;
   prepared?: App;
   onComplete?: () => void;
 }) {
-  const [file, setFile] = useState(initialFile);
+  const updating = !!prepared?.current_release;
+  const [archiveFile,setArchiveFile] = useState(initialFile && archiveName(initialFile.name) ? initialFile : null);
+  const [importing,setImporting] = useState(!!archiveFile || !!recipe);
+  const [file, setFile] = useState(importing ? null : initialFile);
   const [hostname, setHostname] = useState(prepared?.hostname ?? "");
   const [product, setProduct] = useState<BetaRelease>();
   const [port, setPort] = useState(8080);
@@ -362,10 +371,10 @@ export default function BetaDeploy({
     setLocked(false);
     setStagedRelease("");
     attempt.current = { app: prepared?.id ?? "", release: "", key: "" };
-    if (file || prepared?.beta_sha256) {
+    if (file || (!updating && prepared?.beta_sha256)) {
       const inspect = async () => {
         try {
-          let sha = prepared?.beta_sha256 ?? "";
+          let sha = (!updating && prepared?.beta_sha256) || "";
           if (file) {
             const hash = await crypto.subtle.digest(
               "SHA-256",
@@ -396,6 +405,7 @@ export default function BetaDeploy({
             info = await dropApi.inspectBeta(sha);
           }
           if (!active) return;
+          if (updating && !info.generic) throw Error("Choose a generic release for this app.");
           if (prepared) {
             const { releases } = await dropApi.listReleases(prepared.id);
             if (!active) return;
@@ -426,6 +436,7 @@ export default function BetaDeploy({
   }, [
     file,
     inspectCount,
+    updating,
     prepared?.id,
     prepared?.beta_sha256,
     prepared?.memory_mib,
@@ -436,7 +447,10 @@ export default function BetaDeploy({
     setSize(0);
     setPort(8080);
     setDigest("");
-    setFile(next);
+    const isArchive = !!next && archiveName(next.name);
+    setArchiveFile(isArchive ? next : null);
+    setImporting(isArchive);
+    setFile(isArchive ? null : next);
   }
   async function refreshStorageEntitlement() {
     try {
@@ -457,7 +471,9 @@ export default function BetaDeploy({
     setError("");
     setLocked(true);
     const draft = attempt.current;
-    const storageKey = ["drop.beta.prepare", account, digest, size, product.generic ? port : "manifest"].join(".");
+    const keyParts = ["drop.beta.prepare", account, digest, size, product.generic ? port : "manifest"];
+    if (product.generic && recipe?.name) keyParts.push(recipe.name);
+    const storageKey = keyParts.join(".");
     try {
       // Reuse the preparation key if the connection or tab closes after creating the app.
       if (!draft.key && !draft.app) {
@@ -475,8 +491,10 @@ export default function BetaDeploy({
       }
       setAction("Preparing deployment…");
       if (!draft.app) {
-        const { app } = await dropApi.prepareBeta(digest, size, draft.key, product.generic ? port : undefined);
+        const { app } = await dropApi.prepareBeta(digest, size, draft.key, product.generic ? port : undefined, product.generic ? recipe?.name : undefined);
         draft.app = app.id;
+        // A refresh reopens the server-backed app and any already uploaded release.
+        history.replaceState(history.state, "", appHash(app.id));
         if (mounted.current) setHostname(app.hostname);
       }
       if (!mounted.current) return;
@@ -508,6 +526,7 @@ export default function BetaDeploy({
       }
       if (mounted.current) {
         if (onComplete) onComplete();
+        else if (location.hash === appHash(draft.app)) window.dispatchEvent(new HashChangeEvent("hashchange"));
         else location.hash = appHash(draft.app);
       }
     } catch (e) {
@@ -534,17 +553,20 @@ export default function BetaDeploy({
   }
   return (
     <section className="panel beta-flow">
-      <h1>{prepared ? "Resume deployment" : "Deploy your PocketContext app"}</h1>
+      <h1>{updating ? "Deploy a new release" : prepared ? "Resume deployment" : "Deploy your PocketContext app"}</h1>
       <AppAddress hostname={hostname} />
-      {prepared && !file && !product && !error && (
+      {prepared && !updating && !file && !product && !error && (
         <p role="status">Checking your app file…</p>
       )}
       {prepared && product && !stagedRelease && !file && (
         <p>Select your original app file to finish the upload.</p>
       )}
-      {!file && !stagedRelease && (!prepared || product) && (
-        <FilePicker onSelect={chooseFile} />
-      )}
+      {importing ? <ArchiveImport input={archiveFile} recipe={recipe} onCancel={()=>chooseFile(null)}
+        onReady={(ready, httpPort)=>{setImporting(false);setPort(prepared?.http_port ?? httpPort);setFile(ready);}} /> :
+        !file && !stagedRelease && (updating || !prepared || product) && <>
+          <FilePicker onSelect={chooseFile} />
+          <button className="secondary" onClick={()=>setImporting(true)}>Import from HTTPS URL</button>
+        </>}
       {file && (
         <>
           <p className="beta-filename">{file.name}</p>

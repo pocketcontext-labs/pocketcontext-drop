@@ -12,6 +12,7 @@ type BetaCompleteInput struct {
 	Manifest json.RawMessage `json:"manifest,omitempty"`
 }
 type BetaPrepareInput struct {
+	Name       string `json:"name,omitempty"`
 	SHA256     string `json:"sha256"`
 	HTTPPort   int    `json:"http_port,omitempty"`
 	Multiplier int    `json:"multiplier"`

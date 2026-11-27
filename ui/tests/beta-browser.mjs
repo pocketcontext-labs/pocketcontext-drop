@@ -272,7 +272,7 @@ try {
       .setInputFiles({ ...binary, name: "crew.zip" });
     await page
       .getByRole("alert")
-      .filter({ hasText: "Extract the archive" })
+      .filter({ hasText: "Choose a valid ZIP or tar.gz archive" })
       .waitFor();
     await page.locator(".beta-picker").evaluate((node) => {
       const dt = new DataTransfer();

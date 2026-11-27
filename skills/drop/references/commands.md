@@ -56,6 +56,7 @@ drop release upload APP FILE [--activate] [--note TEXT]
 drop release deploy APP RELEASE_ID
 ```
 
+- For a ZIP or tar.gz, use the reader’s generic deploy form to inspect compatible binaries, review launch settings and package the chosen assets before deployment.
 - FILE must be a static linux/amd64 ELF executable of at most 90 MiB; anything else exits 2 before anything is sent. `release upload` asks for a one-time upload link (`release.upload_link`, valid 15 minutes) and sends the file to it; it prints `{"release", "created", "deployed", "deployment_id"}` (`created` is false when the app already had these bytes). `--activate` deploys it (a new deployment); `--note` keeps a short note (at most 500 characters).
 - A release: `id`, `app`, `sha256`, `size_bytes`, `s3_key` (`releases/<sha256>`), `note`, `created_by`, `created`, `current`.
 - `release list` prints `{"releases", "has_more", "current_release"}` newest first. `release deploy` prints `{"app", "release", "deployment_bumped", "deployment_id"}`; deploying the current release changes nothing.

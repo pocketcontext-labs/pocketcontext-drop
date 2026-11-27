@@ -1,12 +1,16 @@
 package dropserver_test
 
 import (
+	"bytes"
+	"compress/gzip"
+	"encoding/binary"
 	"encoding/json"
 	"net/http"
 	"testing"
 
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/droptest"
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/releasebundle"
 )
 
 const validCrewManifest = `{"schema":"drop.manifest/v1","app":"crew","version":"0.45.4-drop.4","http_port":8080,"hook_port":8081,"health":"tcp","hooks":["suspend","resume","terminate"],"requires":["persistent_volume","s3_replica","verified_owner_email","sign_in_email"],"minimum":{"memory_mib":512,"cpu_quarters":4,"disk_mib":1024}}`
@@ -268,5 +272,68 @@ func TestBetaIndependentServicesAndStorageEntitlement(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestGenericArchiveUpdateKeepsPlacementAndReleaseProvenance(t *testing.T) {
+	h := droptest.NewHosted(t, droptest.Options{BetaNodes: []string{"beta-node"}})
+	admin := h.Token(h.Owner())
+	_, owner := h.User("archive@example.test", "user")
+	_, other := h.User("other@example.test", "user")
+	n := h.MustOp(admin, "node.create", map[string]any{"name": "beta-node", "host_id": hostA})
+	_, agent := h.NodeLogin("beta-node", n["password"].(string))
+	if code, r := report(t, h, agent, reportOf(hostA)); code != 200 {
+		t.Fatal(code, r)
+	}
+	var app string
+	var volume string
+	for i := range 2 {
+		executable := droptest.ELF(512, byte(i))
+		archiveSHA := sha([]byte{byte(i)})
+		m := releasebundle.Manifest{ArchiveSHA256: archiveSHA, ExecutableSHA256: sha(executable), Executable: "demo", Files: []releasebundle.Member{{Path: "demo", Size: int64(len(executable))}}}
+		meta, err := json.Marshal(m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var body bytes.Buffer
+		body.Write(droptest.ELF(512, 10))
+		start := body.Len()
+		gz := gzip.NewWriter(&body)
+		if err = binary.Write(gz, binary.LittleEndian, uint32(len(meta))); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = gz.Write(meta); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = gz.Write(executable); err != nil {
+			t.Fatal(err)
+		}
+		if err = gz.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err = binary.Write(&body, binary.LittleEndian, uint32(body.Len()-start)); err != nil {
+			t.Fatal(err)
+		}
+		body.WriteString("DRP1")
+		digest := sha(body.Bytes())
+		ref := map[string]any{"sha256": digest}
+		claim := h.MustOp(admin, "beta.claim", ref)
+		h.MustOp(admin, "beta.complete", map[string]any{"sha256": digest, "attempt": claim["attempt"], "outcome": "invalid"})
+		if app == "" {
+			created := appOf(t, h.MustOp(owner, "beta.prepare", map[string]any{"sha256": digest, "multiplier": 4, "http_port": 8090}))
+			app = created["id"].(string)
+			volume = created["volume_id"].(string)
+		}
+		up := upload(t, h, uploadLink(t, h, owner, app, nil), body.Bytes())
+		if up.Status != 200 || up.Result.Release.ArchiveSHA256 != archiveSHA || up.Result.Release.ExecutableSHA256 != sha(executable) || up.Result.Release.ExecutablePath != "demo" {
+			t.Fatal(up.Raw)
+		}
+		deploy := map[string]any{"app": app, "release": up.Result.Release.ID}
+		wantError(t, h.Op(other, "beta.deploy", deploy), 404, dropapi.CodeNotFound)
+		updated := appOf(t, h.MustOp(owner, "beta.deploy", deploy))
+		if updated["volume_id"] != volume || updated["beta_sha256"] != digest || updated["current_release"] != up.Result.Release.ID {
+			t.Fatal(updated)
+		}
+		wantError(t, h.Op(other, "release.list", map[string]any{"app": app}), 404, dropapi.CodeNotFound)
 	}
 }

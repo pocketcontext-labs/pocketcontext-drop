@@ -726,6 +726,7 @@ export default function AppPage({ id, tab }: { id: string; tab: AppTab }) {
 function AppDetailPage({ id, tab }: { id: string; tab: AppTab }) {
   const [app, setApp] = useState<App | null>(null);
   const [secrets, setSecrets] = useState<Secret[]>([]);
+  const [updating, setUpdating] = useState("");
   const [missing, setMissing] = useState(false);
   const [error, setError] = useState("");
   const [version, setVersion] = useState(0);
@@ -768,9 +769,11 @@ function AppDetailPage({ id, tab }: { id: string; tab: AppTab }) {
     setVersion((v) => v + 1);
   };
   if (app?.beta_managed) return <>
-    {!app.archived && !app.current_release
-      ? <BetaDeploy key={app.id} account={app.owner} initialFile={null} prepared={app} onComplete={() => void load()} />
+    {!app.archived && (!app.current_release || updating === app.id)
+      ? <BetaDeploy key={app.id} account={app.owner} initialFile={null} prepared={app} onComplete={() => { setUpdating(""); void load(); }} />
       : <BetaStatus id={app.id} name={app.name} release={app.current_release} hostname={app.hostname} />}
+    {app.generic_beta && !app.archived && app.current_release && <button className="secondary"
+      onClick={() => setUpdating(updating === app.id ? "" : app.id)}>{updating === app.id ? "Cancel update" : "Deploy a new release"}</button>}
     <DeleteApp app={app} />
   </>;
   if (missing)

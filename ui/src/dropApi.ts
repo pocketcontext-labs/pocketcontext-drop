@@ -104,6 +104,7 @@ export interface App {
   kind: AppKind;
   beta_managed?: boolean;
   beta_sha256?: string;
+  generic_beta?: boolean;
   crew_owner_email?: string;
   sign_in_email_enabled: boolean;
   id: string;
@@ -170,6 +171,9 @@ export interface AppSettings {
 
 /** An uploaded executable of an app (internal/dropapi Release). */
 export interface Release {
+  archive_sha256?: string;
+  executable_sha256?: string;
+  executable_path?: string;
   id: string;
   app: string;
   sha256: string;
@@ -253,6 +257,9 @@ export const MAX_RELEASE_BYTES = 90 * 1024 * 1024;
 
 /** The first bytes of a file (FileReader works in every browser and in tests). */
 function readStart(file: Blob, bytes: number): Promise<Uint8Array> {
+  if (typeof file.arrayBuffer === "function") {
+    return file.slice(0, bytes).arrayBuffer().then(buffer => new Uint8Array(buffer));
+  }
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
@@ -590,8 +597,8 @@ export const dropApi = {
     op<{ok: boolean}>(`waitlist.${action}`, {id}),
   inspectBeta: (sha256: string) => op<BetaRelease>("beta.inspect", { sha256 }),
   probeUpload: (sha256:string) => op<{path:string}>("beta.probe_upload",{sha256}),
-  prepareBeta: (sha256: string, multiplier: number, key: string, http_port?: number) =>
-    op<{ app: App }>("beta.prepare", { sha256, multiplier, http_port }, key),
+  prepareBeta: (sha256: string, multiplier: number, key: string, http_port?: number, name?: string) =>
+    op<{ app: App }>("beta.prepare", { sha256, multiplier, http_port, name }, key),
   deployBeta: (app: string, release: string) =>
     op<{ deployment_id: string }>("beta.deploy", { app, release }),
   me,

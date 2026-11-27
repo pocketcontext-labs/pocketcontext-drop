@@ -92,6 +92,10 @@ func betaPrepare(c *Ctx, in *dropapi.BetaPrepareInput) (any, error) {
 	if runtime.storage || runtime.signInEmail || runtime.ownerEmail {
 		kind = "crew"
 	}
+	name := betaDisplayName(m)
+	if generic && in.Name != "" {
+		name = in.Name
+	}
 	port := m.HTTPPort
 	if generic {
 		port = in.HTTPPort
@@ -106,7 +110,7 @@ func betaPrepare(c *Ctx, in *dropapi.BetaPrepareInput) (any, error) {
 		slug = slug[:12]
 	}
 	result, err := createApp(c, &dropapi.AppCreateInput{
-		Name: betaDisplayName(m), Slug: slug + "-" + core.GenerateDefaultRandomId(), Kind: kind, ExecutableName: m.App,
+		Name: name, Slug: slug + "-" + core.GenerateDefaultRandomId(), Kind: kind, ExecutableName: m.App,
 		VCPU: &cpu, MemoryMiB: &mem, DiskMiB: &disk, Env: map[string]string{"PORT": strconv.Itoa(port)},
 		HTTPPort: &port, HookPort: &m.HookPort, HealthKind: "tcp",
 	}, runtime)
@@ -132,7 +136,7 @@ func checkBetaUpload(app core.App, a *core.Record, digest string, activate bool)
 	if expected == "" {
 		return nil
 	}
-	if expected != digest {
+	if expected != digest && !genericUpdateAllowed(app, a, digest) {
 		return Conflict("unsupported_binary", "The uploaded bytes do not match the selected release.")
 	}
 	if activate {
@@ -140,6 +144,16 @@ func checkBetaUpload(app core.App, a *core.Record, digest string, activate bool)
 	}
 	_, err := betaRelease(app, digest)
 	return err
+}
+
+// An existing generic app may stage another inspected generic executable. Its
+// fixed runtime capabilities, placement, owner and volume remain app-scoped.
+func genericUpdateAllowed(tx core.App, app *core.Record, digest string) bool {
+	if !app.GetBool("generic_beta") || app.GetString("current_release") == "" {
+		return false
+	}
+	m, err := betaRelease(tx, digest)
+	return err == nil && m.Schema == ""
 }
 
 func betaCapacityError() error {
@@ -198,9 +212,7 @@ func betaDeploy(c *Ctx, in *dropapi.ReleaseDeployInput) (any, error) {
 	if digest == "" {
 		return nil, Invalid("app", "Select an app prepared through Drop Beta.")
 	}
-	if err = allowBetaRelease(c.App, a.GetString("owner"), digest); err != nil {
-		return nil, err
-	}
+
 	size := a.GetInt("memory_mib") / 256
 	if !slices.Contains(crewBetaSizes, size) || a.GetInt("vcpu") != (size+3)/4 || a.GetInt("memory_mib") != size*256 || a.GetInt("disk_mib") != size*2048 {
 		return nil, Conflict("invalid_size", "The app size is unavailable for this release.")
@@ -216,8 +228,15 @@ func betaDeploy(c *Ctx, in *dropapi.ReleaseDeployInput) (any, error) {
 		return nil, NotFound("Release")
 	}
 	r, err := c.App.FindRecordById("releases", in.Release)
-	if err != nil || r.GetString("app") != a.Id || r.GetString("sha256") != digest {
+	if err != nil || r.GetString("app") != a.Id {
 		return nil, NotFound("Release")
+	}
+	candidate := r.GetString("sha256")
+	if candidate != digest && !genericUpdateAllowed(c.App, a, candidate) {
+		return nil, NotFound("Release")
+	}
+	if err = allowBetaRelease(c.App, a.GetString("owner"), candidate); err != nil {
+		return nil, err
 	}
 	if err := betaPlacement(c, a); err != nil {
 		return nil, err
@@ -228,6 +247,7 @@ func betaDeploy(c *Ctx, in *dropapi.ReleaseDeployInput) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	a.Set("beta_digest", candidate)
 	bumped, err := setCurrentRelease(c.App, a, r)
 	if err != nil {
 		return nil, err
@@ -254,7 +274,7 @@ func betaDeploy(c *Ctx, in *dropapi.ReleaseDeployInput) (any, error) {
 			return nil, err
 		}
 	}
-	c.Event(Event{App: a.Id, Detail: map[string]any{"sha256": digest, "release": r.Id, "deployment_seq": a.GetInt("deployment_seq")}})
+	c.Event(Event{App: a.Id, Detail: map[string]any{"sha256": candidate, "release": r.Id, "deployment_seq": a.GetInt("deployment_seq")}})
 	return dropapi.ReleaseDeployResult{App: c.appOut(a, nil), Release: releaseOut(r, r.Id), DeploymentBumped: bumped, DeploymentID: deploymentID(a)}, nil
 }
 

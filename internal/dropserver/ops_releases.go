@@ -39,6 +39,7 @@ func releasesUnavailable() *dropapi.Error {
 
 func releaseOut(r *core.Record, current string) dropapi.Release {
 	return dropapi.Release{
+		ArchiveSHA256: r.GetString("archive_sha256"), ExecutableSHA256: r.GetString("executable_sha256"), ExecutablePath: r.GetString("executable_path"),
 		ID: r.Id, App: r.GetString("app"), SHA256: r.GetString("sha256"), SizeBytes: int64(r.GetInt("size_bytes")),
 		S3Key: r.GetString("s3_key"), Note: r.GetString("note"), CreatedBy: r.GetString("created_by"),
 		Created: dateString(r, "created"), Current: r.Id == current,

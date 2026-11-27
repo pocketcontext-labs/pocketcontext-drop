@@ -12,6 +12,7 @@
     "test:beta-browser": "node tests/beta-browser.mjs"
   },
   "dependencies": {
+    "@zip.js/zip.js": "^2.25.0",
     "pocketbase": "^0.28.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"

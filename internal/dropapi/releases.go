@@ -37,15 +37,18 @@ var UploadTokenPattern = regexp.MustCompile(`^[A-Za-z0-9]{32}$`)
 // several apps (or uploads) of the same bytes share one stored object.
 // Current is true for the app's current release (the one it runs).
 type Release struct {
-	ID        string `json:"id"`
-	App       string `json:"app"`
-	SHA256    string `json:"sha256"`
-	SizeBytes int64  `json:"size_bytes"`
-	S3Key     string `json:"s3_key"`
-	Note      string `json:"note"`
-	CreatedBy string `json:"created_by"`
-	Created   string `json:"created"`
-	Current   bool   `json:"current"`
+	ArchiveSHA256    string `json:"archive_sha256,omitempty"`
+	ExecutableSHA256 string `json:"executable_sha256,omitempty"`
+	ExecutablePath   string `json:"executable_path,omitempty"`
+	ID               string `json:"id"`
+	App              string `json:"app"`
+	SHA256           string `json:"sha256"`
+	SizeBytes        int64  `json:"size_bytes"`
+	S3Key            string `json:"s3_key"`
+	Note             string `json:"note"`
+	CreatedBy        string `json:"created_by"`
+	Created          string `json:"created"`
+	Current          bool   `json:"current"`
 }
 
 // ReleaseListInput selects one page of an app's releases, newest first.

@@ -21,6 +21,7 @@ import (
 
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/awsx"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/releasebundle"
 )
 
 // The upload route, PUT /api/drop/upload/<token> (plan 4.2): anonymous, and
@@ -219,6 +220,16 @@ func (u *uploader) serve(re *core.RequestEvent) error {
 	if err != nil {
 		return writeError(re, err)
 	}
+	// Imported release metadata is informational. Authorization and storage use
+	// the server-computed ELF digest irrespective of any embedded declarations.
+	var provenance *releasebundle.Manifest
+	if payload, err := releasebundle.Payload(file); err == nil {
+		info, err := releasebundle.ReadManifest(payload)
+		_ = payload.Close()
+		if err == nil {
+			provenance = &info
+		}
+	}
 	if err := checkBetaUpload(re.App, app, sha, link.GetBool("activate")); err != nil {
 		return writeError(re, err)
 	}
@@ -264,6 +275,14 @@ func (u *uploader) serve(re *core.RequestEvent) error {
 		release, created, err := findOrCreateRelease(tx, app, sha, key, size, link.GetString("note"), creator.Id)
 		if err != nil {
 			return err
+		}
+		if created && provenance != nil {
+			release.Set("archive_sha256", provenance.ArchiveSHA256)
+			release.Set("executable_sha256", provenance.ExecutableSHA256)
+			release.Set("executable_path", provenance.Executable)
+			if err := tx.Save(release); err != nil {
+				return err
+			}
 		}
 		deployed := false
 		if link.GetBool("activate") {

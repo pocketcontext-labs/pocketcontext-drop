@@ -95,6 +95,8 @@ Unique indexes on `slug` and `nib_app_id`, and an index on `(owner, created)`. L
 
 `pb_migrations/1820000300_releases.js` creates `releases`, one row per app and executable, written only by the upload route (`internal/dropserver/upload.go`): `app` (relation to `apps`, required), `sha256` (64 lower-case hex characters), `size_bytes` (1 to 90 MiB), `s3_key` (`releases/<sha256>`, where the bytes live in the release store; [AWS](aws.md)), `note` (at most 500 characters), `created_by` (relation to `users`: the account that asked for the upload link) and `created`. There is no PocketBase file field: PocketBase's storage uses its own key layout, and Drop stores by content itself. A unique index on `(app, sha256)` (the same bytes uploaded again reuse the row; another app's row with the same digest shares the stored object) and an index on `(app, created)`. List and view rules as `app_secret_names` (admins, and the app's owner); writes closed. The records are not a public route of the hosted origin: the reader and the CLI read them with `release.list`. It also adds `apps.current_release`.
 
+Migration `1820002580_archive_provenance.js` adds optional `archive_sha256`, `executable_sha256`, and `executable_path` fields to releases. The reader records the source archive digest and selected member in the packaged release, and the upload handler reads that metadata. The server computes the complete upload’s `sha256` for storage and admission.
+
 What the node needs to run a release (M7 and M9) is `sha256`, `s3_key` and `size_bytes` of the app's `current_release`: the desired-state route fills `render.Release{SHA256, S3Key, SizeBytes}` from them, and the agent downloads `s3_key` and refuses bytes whose size or digest differ. An app without a current release is not rendered.
 
 ## Nodes
@@ -179,7 +181,7 @@ Then run `make ui build test names identity e2e`.
 
 ## Beta catalog and inspected releases
 
-Migration `1820002000_beta.js` adds the private tables `drop_beta_catalog` (digest and current approval) and `drop_beta_probes` (digest and probe contract primary key, state, short-lived attempt and expiry, validated manifest). They are absent from the SQL reader, PocketBase collection API and realtime. Approval and inspection are checked independently on each new deployment. `apps.beta_digest` is a hidden, immutable-through-operations pin set by `beta.prepare`. Earlier apps have an empty pin. Their release operations stay compatible. The account-facing API exposes a `beta_managed` flag for managed apps.
+Migration `1820002000_beta.js` adds the private tables `drop_beta_catalog` (digest and current approval) and `drop_beta_probes` (digest and probe contract primary key, state, short-lived attempt and expiry, validated manifest). They are absent from the SQL reader, PocketBase collection API and realtime. Approval and inspection are checked independently on each new deployment. `apps.beta_digest` is a hidden pin set by `beta.prepare` and advanced atomically when an existing generic app deploys another inspected generic release. Earlier apps have an empty pin. Their release operations stay compatible. The account-facing API exposes a `beta_managed` flag for managed apps.
 
 Hosted restore clears all Beta approvals and pending probe leases and stops restored Beta apps. Reconcile the approved release catalog against current trusted release digests before reapproving and resuming any affected app.
 

@@ -126,6 +126,7 @@ func (c *Ctx) appOut(r *core.Record, emails map[string]string) dropapi.App {
 	return dropapi.App{
 		BetaSHA256:          r.GetString("beta_digest"),
 		BetaManaged:         r.GetString("beta_digest") != "",
+		GenericBeta:         r.GetBool("generic_beta"),
 		CrewFreshEnrollment: r.GetString("crew_enrollment") == "fresh", Kind: kind, CrewOwnerEmail: crewOwnerEmail, SignInEmailEnabled: r.GetBool("sign_in_email_enabled"),
 		ReplicaSyncInterval: syncInterval,
 		ID:                  r.Id, Name: r.GetString("name"), Slug: r.GetString("slug"), Owner: owner, OwnerEmail: email,
