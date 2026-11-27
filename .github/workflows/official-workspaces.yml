@@ -1,0 +1,70 @@
+name: Official workspaces on Firecracker
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  two-accounts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Build Drop and the disposable guest relay
+        run: |
+          npm install --global pnpm@10.33.2
+          pnpm --dir ui install --frozen-lockfile
+          pnpm --dir ui build
+          make build
+          CGO_ENABLED=0 go build -o "$RUNNER_TEMP/relay" ./tests/fixtures/archive-relay
+          python3 -m venv "$RUNNER_TEMP/mail"
+          "$RUNNER_TEMP/mail/bin/pip" install aiosmtpd==1.4.6
+          sudo apt-get install -y busybox-static e2fsprogs
+      - name: Verify credit exhaustion, shared trial buffer, and automatic resumption with a controlled clock
+        run: go test -count=1 -tags "$(cat build-tags.txt)" ./internal/dropserver -run '^(TestSharedTrialAndPaidSuspension|TestSecondPurchasePreservesPaidIntervalAndResetsOnlyFutureBuffer|TestDeploymentRatesAndCounterBounds)$'
+      - name: Fetch and verify immutable guest fixtures
+        run: |
+          cd "$RUNNER_TEMP"
+          mkdir assets nib
+          base=https://github.com/pocketcontext-labs
+          get() { curl --fail --location --silent --show-error --retry 3 "$1" -o "$2"; }
+          for row in "baseline crew 0.45.4-drop.5" "crew crew 0.45.4-drop.6" "atlas atlas 0.25.0-drop.1"; do
+            read -r name product version <<<"$row"
+            get "$base/pocketcontext-$product-drop/releases/download/v$version/pocketcontext-$product-drop-linux-amd64" "assets/$name"
+          done
+          for name in crew-rehearsal.json crew-baseline-rehearsal.json; do
+            get "$base/pocketcontext-crew-drop/releases/download/v0.45.4-drop.6/$name" "assets/$name"
+          done
+          get "$base/pocketcontext-atlas-drop/releases/download/v0.25.0-drop.1/atlas-release-evidence.json" assets/atlas-release-evidence.json
+          for name in vmlinux rootfs.ext4; do
+            get "$base/pocketcontext-nibrunner/releases/download/v2026.11.20/$name" "nib/$name"
+          done
+          get "https://github.com/firecracker-microvm/firecracker/releases/download/v1.16.1/firecracker-v1.16.1-x86_64.tgz" firecracker.tgz
+          sha256sum -c <<'SUMS'
+          216f0e939b17555abc692f77f16f8c34be69fc3ca857d6e82783608bac37d14f  nib/vmlinux
+          53691fc12cace4b9c043a76d49039fe983cff9414ca11787cd5a0f9c524b1ac7  nib/rootfs.ext4
+          382a02a869e4d6d5cb14c40577f9545e8458021ea8b0b2d3fc10ec14d9c242e6  firecracker.tgz
+          SUMS
+          tar -xzf firecracker.tgz release-v1.16.1-x86_64/firecracker-v1.16.1-x86_64
+          chmod 0755 assets/{baseline,crew,atlas}
+      - name: Rehearse invitations, initial provisioning, resize and owner-selected upgrade
+        run: |
+          test -c /dev/kvm
+          sudo -n unshare --mount --propagation private sh -ec '
+            mount -t tmpfs -o mode=1777 tmpfs /run
+            touch /run/official-test-namespace
+            exec setpriv --reuid="$1" --regid="$2" --groups="$3" --no-new-privs "$4/mail/bin/python" tests/official_workspaces.py               --drop bin/drop --assets "$4/assets" --relay "$4/relay" --firecracker "$4/release-v1.16.1-x86_64/firecracker-v1.16.1-x86_64"               --nib "$4/nib" --report "$4/official-workspaces.json"
+          ' sh "$(id -u)" "$(id -g)" "$(stat -c %g /dev/kvm)" "$RUNNER_TEMP"
+          cat "$RUNNER_TEMP/official-workspaces.json" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: official-workspaces-evidence
+          path: ${{ runner.temp }}/official-workspaces.json
+          if-no-files-found: error
