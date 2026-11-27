@@ -43,7 +43,8 @@ it("lists nodes, adds one showing its password once, and places an app", async (
   const place = vi.spyOn(dropApi, "placeApp").mockResolvedValue({ moved: false });
   render(<App />);
   expect(await screen.findByRole("heading", { name: "Nodes", level: 2 })).toBeInTheDocument();
-  expect(await screen.findByText(/online · 1 app · 6 vCPU · 12288 MiB allocatable/)).toBeInTheDocument();
+  expect(await screen.findByText("Online")).toBeInTheDocument();
+  expect(screen.getByText("1 app · 6 vCPU · 12,288 MiB allocatable")).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("Name"), { target: { value: "second" } });
   fireEvent.change(screen.getByLabelText("Host id"), { target: { value: "host-0002" } });
   fireEvent.click(screen.getByRole("button", { name: "Add node" }));

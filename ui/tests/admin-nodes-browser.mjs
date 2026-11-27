@@ -33,6 +33,7 @@ export async function checkAdminNodeLayout(browser, origin) {
         const {op,input} = request.postDataJSON();
         let result;
         switch (op) {
+          case "private.shared": result={apps:[]}; break;
           case "me": result={...record, role:"admin", admin:true, hosted:true}; break;
           case "waitlist.list": result={entries:[],has_more:false}; break;
           case "user.list": result={users:[]}; break;
@@ -70,9 +71,9 @@ export async function checkAdminNodeLayout(browser, origin) {
       });
 
       async function checkPanel() {
-        const panel = page.locator("main.content > .panel");
+        const panel = page.locator("main.content > :is(.panel, .nodes-page)");
         const box=await panel.boundingBox();
-        assert.ok(Math.abs(box.x - (width - box.x - box.width)) < 2, "admin panel gutters are balanced");
+        assert.ok(Math.abs(box.x - ((await page.locator("html").boundingBox()).width - box.x - box.width)) < 2, "admin panel gutters are balanced");
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "no page overflow");
       }
       for (const [route, title] of [["waitlist","Waitlist"],["users","Users"],["nodes","Nodes"]]) {

@@ -61,9 +61,9 @@ function NodeForm({ onCreated }: { onCreated: (s: NodeSecret) => void }) {
     }
   };
   return (
-    <section aria-labelledby="node-add-title">
+    <section className="node-surface" aria-labelledby="node-add-title">
       <h3 id="node-add-title">Add a node</h3>
-      <form className="add" onSubmit={submit}>
+      <form className="node-form" onSubmit={submit}>
         <div className="node-add-fields">
           <label>
             Name
@@ -142,16 +142,16 @@ function PlaceForm({
     }
   };
   return (
-    <section aria-labelledby="place-title">
+    <section className="node-surface" aria-labelledby="place-title">
       <h3 id="place-title">Place an app</h3>
       <form
-        className="add"
+        className="node-form"
         onSubmit={(event) => {
           event.preventDefault();
           void run(false);
         }}
       >
-        <div className="row">
+        <div className="placement-fields">
           <label>
             App (id or slug)
             <input
@@ -209,7 +209,7 @@ function capacityText(node: DropNode): string {
   const vcpu = typeof a.vcpuCount === "number" ? a.vcpuCount : null;
   const memory = typeof a.memoryMib === "number" ? a.memoryMib : null;
   if (vcpu === null && memory === null) return "no report yet";
-  return `${vcpu ?? "?"} vCPU · ${memory ?? "?"} MiB allocatable`;
+  return `${vcpu ?? "?"} vCPU · ${memory?.toLocaleString() ?? "?"} MiB allocatable`;
 }
 
 function Nodes({
@@ -236,8 +236,7 @@ function Nodes({
     }
   };
   return (
-    <section aria-labelledby="nodes-title">
-      <h3 id="nodes-title">Nodes</h3>
+    <section className="node-surface node-directory" aria-label="Registered nodes">
       {error && (
         <p role="alert" className="error">
           {error}
@@ -246,21 +245,24 @@ function Nodes({
       {nodes.length === 0 ? (
         <p className="empty">No nodes yet.</p>
       ) : (
-        <ul className="apps node-list" aria-label="Nodes by name">
+        <ul className="node-list" aria-label="Nodes by name">
           {nodes.map((node) => (
             <li key={node.id}>
-              <p className="node-details">
-                <strong>{node.name}</strong>
-                <span className="quiet">
-                  {node.online ? "online" : "offline"} · {node.apps}{" "}
-                  {node.apps === 1 ? "app" : "apps"} · {capacityText(node)} ·
+              <div className="node-details">
+                <div className="node-identity">
+                  <strong>{node.name}</strong>
+                  <span className={node.online ? "node-status online" : "node-status"}>
+                    {node.online ? "Online" : "Offline"}
+                  </span>
+                </div>
+                <span>{node.apps} {node.apps === 1 ? "app" : "apps"} · {capacityText(node)}</span>
+                <small className="quiet">
+                  {node.agent_version && `agent ${node.agent_version} · `}
                   seq {node.desired_seq}
-                  {node.last_heartbeat
-                    ? ` · seen ${formatDate(node.last_heartbeat)}`
-                    : ""}
-                  {node.agent_version ? ` · agent ${node.agent_version}` : ""}
-                </span>
-              </p>
+                  {node.last_heartbeat && ` · seen ${formatDate(node.last_heartbeat)}`}
+                </small>
+              </div>
+              <div className="node-actions">
               <label>
                 State
                 <select
@@ -303,6 +305,7 @@ function Nodes({
               >
                 Rotate password
               </button>
+              </div>
             </li>
           ))}
         </ul>
@@ -339,9 +342,8 @@ export default function AdminNodes() {
     void load();
   };
   return (
-    <section className="panel nodes-panel" aria-labelledby="admin-nodes-title">
+    <section className="nodes-page" aria-labelledby="admin-nodes-title">
       <h2 id="admin-nodes-title">Nodes</h2>
-      <NodeForm onCreated={showSecret} />
       {secret && <SecretNotice secret={secret} />}
       {error && (
         <p role="alert" className="error">
@@ -349,17 +351,17 @@ export default function AdminNodes() {
         </p>
       )}
       {nodes ? (
-        <>
           <Nodes
             nodes={nodes}
             onChanged={() => void load()}
             onSecret={showSecret}
           />
-          <PlaceForm nodes={nodes} onPlaced={() => void load()} />
-        </>
+
       ) : (
         !error && <p className="quiet">Loading nodes…</p>
       )}
+      <NodeForm onCreated={showSecret} />
+      {nodes && <PlaceForm nodes={nodes} onPlaced={() => void load()} />}
     </section>
   );
 }

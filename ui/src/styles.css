@@ -299,28 +299,34 @@ select {
 .add .row input[type="number"] {
   width: 88px;
 }
-.node-add-fields {
-  display: grid;
-  grid-template-columns: minmax(10rem, 15rem) minmax(12rem, 20rem) max-content;
-  gap: 4px 12px;
-  align-items: end;
-}
+/* Admin node inventory and management forms share the page shell. */
+.nodes-page { display: grid; gap: 16px; min-width: 0; }
+.nodes-page h2, .nodes-page h3, .node-list { margin: 0; }
+.node-surface { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 20px; min-width: 0; }
+@media (prefers-color-scheme: light) { .node-surface { background: #fff; } }
+.node-directory { padding-block: 0; }
+.node-list { padding: 0; list-style: none; }
+.node-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 20px; align-items: center; padding-block: 16px; }
+.node-list li + li { border-top: 1px solid var(--border); }
+.node-details { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.node-identity, .node-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.node-status { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; border-radius: 999px; padding: 2px 8px; color: var(--muted); background: var(--bg); }
+.node-status.online { background: var(--accent-soft); color: var(--accent); }
+.node-status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.node-actions { align-items: end; }
+.node-form { margin-top: 12px; }
+.node-add-fields, .placement-fields { display: grid; gap: 6px 12px; align-items: end; grid-template-columns: minmax(0,1fr) minmax(0,1.4fr) auto; }
+.placement-fields { grid-template-columns: minmax(0,1.2fr) minmax(0,1fr) auto auto; }
+.node-form :is(input,select), .node-actions select { width: 100%; min-width: 0; }
+.node-form :is(input,select,button), .node-actions :is(select,button) { height: 40px; }
 .node-add-fields .hint { grid-column: 2; margin: 0; }
-.node-list li {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 8rem max-content;
-  align-items: center;
-  gap: 12px 20px;
-}
-.node-list .node-details { display: grid; gap: 3px; margin: 0; }
-.nodes-panel select { min-width: 0; max-width: 100%; }
-.nodes-panel .add label { min-width: 0; max-width: 100%; }
+.node-form > .quiet { margin: 8px 0 0; }
 @media (max-width: 640px) {
-  .node-add-fields { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .node-surface { padding-inline: 16px; }
+  .node-list li { grid-template-columns: minmax(0,1fr); }
+  .placement-fields, .node-add-fields { grid-template-columns: minmax(0,1fr); gap: 10px; }
   .node-add-fields .hint { grid-column: 1; grid-row: 3; }
-  .node-add-fields button { justify-self: start; }
-  .node-list li { grid-template-columns: minmax(0, 1fr); gap: 8px; }
-  .node-list button { justify-self: start; }
+  .node-form button { justify-self: start; }
 }
 .account-controls {
   display: grid;
