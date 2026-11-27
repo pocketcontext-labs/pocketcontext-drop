@@ -30,6 +30,24 @@ export default defineConfig({
   plugins: [
     react(),
     {
+      name: "drop-mobile-safari-hmr",
+      apply: "serve",
+      transform(code, id) {
+        if (!id.endsWith("/vite/dist/client/client.mjs")) return;
+        // Keep Vite's CSS and module helpers, but skip the HMR connection.
+        const connect = "transport.connect(createHMRHandler(handleMessage));";
+        if (!code.includes(connect)) this.error("Check the Vite HMR client after upgrading Vite.");
+        return code.replace(connect, `
+          const ua = navigator.userAgent;
+          const appleMobile = /iPhone|iPad|iPod/.test(ua) ||
+            (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+          const mobileSafari = appleMobile && /Version\\/.*Safari\\//.test(ua) &&
+            !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
+          if (!mobileSafari) ${connect}
+        `);
+      },
+    },
+    {
       name: "drop-guest-launcher",
       resolveId(id) {
         if (id === "virtual:drop-guest") return "\0" + id;
