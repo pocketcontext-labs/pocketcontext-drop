@@ -38,11 +38,13 @@ export function productName(id: string) {
 function Size({
   value,
   minimum = 1,
+  recommended = 4,
   diskMiB,
   onChange,
 }: {
   value: number;
   minimum?: number;
+  recommended?: number;
   diskMiB?: number;
   onChange: (n: number) => void;
 }) {
@@ -53,7 +55,7 @@ function Size({
       <select id="workspace-size" aria-describedby="workspace-rate" value={value} onChange={(e) => onChange(Number(e.target.value))}>
         {Array.from({ length: 9 - minimum }, (_, i) => i + minimum).map((n) => (
           <option value={n} key={n}>
-            {n}× · {n / 4} vCPU · {n * 256} MiB RAM · {(diskMiB ?? n * 2048) / 1024} GiB disk{n === 4 ? " · recommended" : ""}
+            {n}× · {n / 4} vCPU · {n * 256} MiB RAM · {(diskMiB ?? n * 2048) / 1024} GiB disk{n === recommended ? " · recommended" : ""}
           </option>
         ))}
       </select>
@@ -108,7 +110,7 @@ export function CreateWorkspace({ catalog, loadError, releaseSelection = true, p
   const choices = versions.filter(r => showArchived || !r.archived);
   const release = choices.find(r => r.sha256 === digest);
   const selected = privateBuild ? build : release;
-  const minimum = selected?.minimum_multiplier || 1;
+  const minimum = privateBuild ? 1 : selected?.minimum_multiplier || 1;
   const products = Array.from(new Set(published.map(r => r.product))).map(id =>
     published.find(r => r.product === id && !r.archived) ?? published.find(r => r.product === id)
   ).filter((r): r is Published => !!r);
@@ -149,6 +151,7 @@ export function CreateWorkspace({ catalog, loadError, releaseSelection = true, p
         >
           {privateBuild && <PrivateBuildSource disabled={busy} onChange={result => {
             setBuild(result);
+            if (result) setSize(result.minimum_multiplier || 1);
             if (result) setName(current => current.trim() ? current : "My " + productName(result.product));
             resetKey();
           }} />}
@@ -187,6 +190,7 @@ export function CreateWorkspace({ catalog, loadError, releaseSelection = true, p
           <Size
             value={Math.max(size, minimum)}
             minimum={minimum}
+            recommended={privateBuild ? build?.minimum_multiplier : undefined}
             onChange={(n) => {
               setSize(n);
               resetKey();

@@ -347,8 +347,9 @@ it("creates an owner-private app from the hosted developer route", async () => {
   expect(await screen.findByText("New Tool · 1.2")).toBeVisible();
   expect(call).toHaveBeenCalledWith("developer.build_import", {url: "https://example.test/tool"});
   expect(screen.getByLabelText("Resources")).toHaveValue("5");
+  fireEvent.change(screen.getByLabelText("Resources"), { target: { value: "1" } });
   fireEvent.click(screen.getByRole("button", { name: "Create app" }));
-  await vi.waitFor(() => expect(call).toHaveBeenCalledWith("developer.build_create", { name: "My experiment", sha256: digest, multiplier: 5 }, expect.any(String)));
+  await vi.waitFor(() => expect(call).toHaveBeenCalledWith("developer.build_create", { name: "My experiment", sha256: digest, multiplier: 1 }, expect.any(String)));
   expect(location.hash).toBe(`#/apps/${id}`);
 });
 

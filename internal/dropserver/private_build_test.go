@@ -71,9 +71,9 @@ func TestPrivateBuildCreateFromInspection(t *testing.T) {
 	}
 	wantUploadError(t, upload(t, h, link["path"].(string), body), 404, dropapi.CodeUploadLinkInvalid)
 	wantError(t, h.Op(other, "developer.build_create", input), 409, "inspection_expired")
-	input["multiplier"] = 1
+	input["multiplier"] = 0
 	wantError(t, h.Op(dev, "developer.build_create", input), 400, dropapi.CodeInvalidInput)
-	input["multiplier"] = 2
+	input["multiplier"] = 1
 	wantError(t, h.Op(dev, "developer.build_create", input), 409, "beta_no_capacity")
 	_, _, node := h.Node("test-node", hostA)
 	ready := reportOf(hostA)
@@ -84,7 +84,7 @@ func TestPrivateBuildCreateFromInspection(t *testing.T) {
 		t.Fatal(resp)
 	}
 	app := appOf(t, h.MustOp(dev, "developer.build_create", input))
-	if !strings.HasPrefix(app["slug"].(string), "dev-") || app["developer_private"] != true || app["kind"] == "crew" || app["executable_name"] != "field-notes" || num(app["http_port"]) != 8040 || num(app["memory_mib"]) != 512 || num(app["disk_mib"]) != 4096 {
+	if !strings.HasPrefix(app["slug"].(string), "dev-") || app["developer_private"] != true || app["kind"] == "crew" || app["executable_name"] != "field-notes" || num(app["http_port"]) != 8040 || num(app["memory_mib"]) != 256 || num(app["disk_mib"]) != 2048 {
 		t.Fatal(app)
 	}
 	r, err := h.App.FindRecordById("apps", app["id"].(string))

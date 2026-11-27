@@ -253,7 +253,7 @@ func checkPrivateManifest(tx core.App, app, release *core.Record) error {
 	if quarters := betaFractionalQuota(app); quarters != 0 {
 		cpuQuarters = quarters
 	}
-	if cpuQuarters < manifest.Minimum.CPUQuarters || app.GetInt("memory_mib") < manifest.Minimum.MemoryMiB || app.GetInt("disk_mib") < manifest.Minimum.DiskMiB {
+	if !app.GetBool("private_tiered") && (cpuQuarters < manifest.Minimum.CPUQuarters || app.GetInt("memory_mib") < manifest.Minimum.MemoryMiB || app.GetInt("disk_mib") < manifest.Minimum.DiskMiB) {
 		return Invalid("app", "The app is smaller than the private release's minimum resources.")
 	}
 	if (app.GetString("crew_enrollment") == "" && slices.Contains(manifest.Requires, "s3_replica")) ||

@@ -37,7 +37,6 @@ type inspectedBuild struct {
 	size               int64
 	manifest           dropapi.BetaManifest
 	raw                []byte
-	minimum            int
 	deadline           time.Time
 	timer              *time.Timer
 }
@@ -183,7 +182,7 @@ func inspectPrivateBuild(ctx context.Context, app core.App, link buildLink, hash
 	if err != nil {
 		return nil, err
 	}
-	build := &inspectedBuild{file: file, size: size, digest: digest, accountKey: link.AccountKey, manifest: m, minimum: minimum, raw: raw}
+	build := &inspectedBuild{file: file, size: size, digest: digest, accountKey: link.AccountKey, manifest: m, raw: raw}
 	err = app.RunInTransaction(func(tx core.App) error {
 		if err := checkBuildOwner(tx, link); err != nil {
 			return err
@@ -223,8 +222,8 @@ func privateBuildCreate(c *Ctx, in *dropapi.PrivateBuildCreate) (any, error) {
 		return nil, err
 	}
 	defer build.file.Close()
-	if in.Multiplier < build.minimum || in.Multiplier > 8 {
-		return nil, Invalid("multiplier", "Choose a multiplier between "+strconv.Itoa(build.minimum)+" and 8.")
+	if in.Multiplier < 1 || in.Multiplier > 8 {
+		return nil, Invalid("multiplier", "Choose a multiplier between 1 and 8.")
 	}
 	m := build.manifest
 	kind, features := manifestWorkspaceRuntime(m)
