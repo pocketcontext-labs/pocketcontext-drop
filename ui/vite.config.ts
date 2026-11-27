@@ -24,6 +24,9 @@ const legalDocuments = Object.fromEntries(
 );
 export default defineConfig({
   define: { __DROP_LEGAL_DOCUMENTS__: JSON.stringify(legalDocuments) },
+  // Go embeds directory entries with ordinary filenames. Vite otherwise
+  // emits _virtual_drop-guest for the lazy launcher and Go skips the file.
+  build: { rolldownOptions: { output: { chunkFileNames: "assets/chunk-[name]-[hash].js" } } },
   plugins: [
     react(),
     {
