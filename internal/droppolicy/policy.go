@@ -94,8 +94,9 @@ func Policy() appserver.Policy {
 	return appserver.Policy{
 		// Several accounts beside the owner; hosted mode only. Local serving
 		// keeps exactly one account and is meant for developing the reader.
-		Accounts:    appserver.AccountsMulti,
-		PublicRoute: func(core.App) func(method, path string) bool { return PublicRoute },
+		Accounts:         appserver.AccountsMulti,
+		AllowPublicUIDev: true,
+		PublicRoute:      func(core.App) func(method, path string) bool { return PublicRoute },
 		// The SQL and search reads stay usable with the owner's local key only:
 		// they read whole tables and are never public.
 		Maintenance: maintenance.Policy{

@@ -2,6 +2,7 @@ package client
 
 import (
 	"github.com/pocketcontext-labs/pocketcontext-core/appserver"
+	"os"
 )
 
 // hostedFlags are the serve options that exist only with --hosted.
@@ -62,6 +63,13 @@ func hostedServeOptions(a *args) (*appserver.ServeOptions, error) {
 			return nil, fail(2, "a hosted proxy needs both --hosted-proxy-header and --hosted-proxy-networks")
 		}
 		opts.HostedProxy = proxy
+	}
+	if upstream := os.Getenv("DROP_HOSTED_VITE_URL"); upstream != "" {
+		if err := appserver.ValidateDevHTTPAddress(opts.HostedHTTPAddress); err != nil {
+			return nil, fail(2, "DROP_HOSTED_VITE_URL requires a loopback hosted HTTP listener: %v", err)
+		}
+		opts.PublicUIDev = true
+		opts.UIDev = upstream
 	}
 	return opts, nil
 }
