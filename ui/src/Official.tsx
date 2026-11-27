@@ -28,7 +28,7 @@ function Size({
 }) {
   return (
     <div>
-      <label htmlFor="workspace-size">Resources</label>{" "}
+      <label className="size-label" htmlFor="workspace-size">Resources</label>{" "}
       <HelpTip topic="workspace size">The size sets how much memory and processing power your workspace gets. A larger size uses more credits while running. You can change it later in Workspace settings.</HelpTip>
       <select id="workspace-size" value={value} onChange={(e) => onChange(Number(e.target.value))}>
         {Array.from({ length: 9 - minimum }, (_, i) => i + minimum).map((n) => (
@@ -362,7 +362,7 @@ export function OfficialWorkspace({
     }
   }
   return (
-    <>
+    <div className="workspace-detail">
       <BetaStatus
         key={app.deployment_id}
         id={app.id}
@@ -432,8 +432,8 @@ export function OfficialWorkspace({
           Save resources
         </button>
         {(error || loadError) && <p role="alert">{error || loadError}</p>}
-        <DeleteApp app={app} />
+        <div className="workspace-delete"><DeleteApp app={app} /></div>
       </section>
-    </>
+    </div>
   );
 }

@@ -283,31 +283,31 @@ export function BetaStatus({
       setBusy(false);
     }
   };
+  const checks = (
+    <ol aria-label="Deployment progress">
+          <li>Release verification: complete</li>
+          <li>Startup: {processStarted ? "complete" : failed ? "failed" : "waiting"}</li>
+          <li>Public HTTP check: {url ? "complete" : processStarted ? "awaiting a successful response" : "waiting for startup"}</li>
+        </ol>
+  );
   return (
     <section className="panel beta-flow">
-      <a href={viewHashes.apps}>Your apps</a>
+      <a href={viewHashes.apps}>{officialDigest ? "← Workspaces" : "Your apps"}</a>
       <h1>{name}</h1>
       <p role="status">
         {url
-          ? "Your app is live."
+          ? (officialDigest ? "Your workspace is ready." : "Your app is live.")
           : failed
             ? "Your app could not start."
             : phase === "archived"
               ? "This app is archived."
               : (phases[phase ?? ""] ?? "Checking deployment…")}
       </p>
-      {release && phase !== "archived" && (
-        <ol aria-label="Deployment progress">
-          <li>Release verification: complete</li>
-          <li>Startup: {processStarted ? "complete" : failed ? "failed" : "waiting"}</li>
-          <li>Public HTTP check: {url ? "complete" : processStarted ? "awaiting a successful response" : "waiting for startup"}</li>
-        </ol>
-      )}
       <AppAddress hostname={status?.hostname || hostname} />
       {url && (
         <div className="beta-actions">
           <a className="button primary" href={url} target="_blank" rel="noreferrer">
-            Open app
+            {officialDigest ? "Open workspace" : "Open app"}
           </a>
           {!activeSetup && (
             <button className="secondary" onClick={() => setRefresh(x => x + 1)}>Refresh deployment status</button>
@@ -325,6 +325,12 @@ export function BetaStatus({
             </div>
           )}
         </div>
+      )}
+      {release && phase !== "archived" && (
+        officialDigest && url ? <details className="workspace-checks">
+          <summary>Startup checks</summary>
+          {checks}
+        </details> : checks
       )}
       {status?.log_tail && <details open={!!failed || !!error}><summary>Private startup output</summary><pre>{status.log_tail}</pre></details>}
       {failed && status && <details>

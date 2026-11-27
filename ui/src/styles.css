@@ -885,3 +885,28 @@ button.help-tip {
     font-size: max(16px, 1em);
   }
 }
+
+.workspace-detail {
+  display: grid;
+  gap: 16px;
+  width: min(100%, 48rem);
+  margin-inline: auto;
+  min-width: 0;
+}
+.workspace-detail > .panel {
+  width: 100%;
+  margin: 0;
+  padding: clamp(18px, 3vw, 28px);
+}
+.workspace-detail h1 {
+  margin: 16px 0 4px;
+  font-size: clamp(26px, 4vw, 36px);
+  overflow-wrap: anywhere;
+}
+.workspace-detail h2 { font-size: 22px; }
+.workspace-detail .workspace-checks, .workspace-detail .beta-actions { margin-top: 12px; }
+.workspace-checks summary { cursor: pointer; color: var(--muted); }
+.workspace-detail #workspace-size { margin: 4px 0 12px; }
+.official-page label.size-label { display: inline; }
+.workspace-delete { border-top: 1px solid var(--border); padding-top: 16px; margin-top: 20px; }
+.workspace-delete > button { background: var(--panel); color: var(--danger); border: 1px solid currentColor; }
