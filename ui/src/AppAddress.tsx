@@ -6,12 +6,12 @@ export function appURL(hostname?: string): string {
 }
 
 /** A user can follow or copy the assigned address before their app finishes starting. */
-export default function AppAddress({ hostname }: { hostname?: string }) {
+export default function AppAddress({ hostname, copyOnly = false }: { hostname?: string; copyOnly?: boolean }) {
   const url = appURL(hostname);
   if (!url) return null;
   return (
     <span className="app-address">
-      <a href={url} target="_blank" rel="noreferrer">{url}</a>
+      {copyOnly ? <code>{url}</code> : <a href={url} target="_blank" rel="noreferrer">{url}</a>}
       <CopyButton icon key={url} text={url} label="Copy app URL" />
     </span>
   );

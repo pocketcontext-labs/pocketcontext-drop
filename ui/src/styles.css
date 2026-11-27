@@ -948,7 +948,7 @@ button.connect-address { width: 100%; min-height: 48px; text-align: start; paddi
 .ready-pill { display: inline-flex; align-items: center; gap: 6px; background: var(--accent-soft); color: var(--text); border-radius: 20px; padding: 3px 9px; font-size: 13px; font-weight: 600; }
 .ready-pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .app-status-card .app-address { display: flex; flex-wrap: wrap; padding: 5px 8px 5px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; margin: 0; }
-.app-status-card .app-address a { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 14px/1.5 monospace; text-decoration: none; }
+.app-status-card .app-address :is(a, code) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 14px/1.5 monospace; text-decoration: none; }
 .app-status-card .app-address a:hover { text-decoration: underline; }
 .app-status-card .app-address button { display: grid; place-items: center; min-width: 36px; min-height: 36px; }
 .app-status-card .status-refresh { background: transparent; color: var(--muted); padding: 7px 0; font-size: 14px; }
@@ -1092,3 +1092,7 @@ html { scrollbar-gutter: stable; }
 @media (max-width: 520px) {
   .new-app-grid.identity, .new-app-grid.runtime { grid-template-columns: minmax(0, 1fr); }
 }
+
+.workspace-tools summary { cursor: pointer; font-weight: 600; }
+.workspace-tools .tabs { margin-block: .75rem; }
+.custom-app-label { color: var(--muted); font-size: .85rem; }

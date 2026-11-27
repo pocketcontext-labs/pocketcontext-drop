@@ -585,7 +585,8 @@ export function WorkspaceDetail({ app, reload, latest, loadError, children }: {
       <section className="panel app-status-card">
         <a className="status-back" href="#/apps">← Apps</a>
         <header className="status-header">
-          <div className="status-identity"><h1>{app.name}</h1><RuntimeState key={app.id} id={app.id} /></div>
+          <div className="status-identity"><h1>{app.name}</h1><RuntimeState key={app.id} id={app.id} />
+            {app.developer_private && <span className="custom-app-label">Custom</span>}</div>
           {app.developer_private ? <OpenPrivateApp app={app.id} hostname={app.hostname} primary
             disabled={!app.current_release || app.archived || app.desired_state === "stopped"} />
             : appURL(app.hostname) && <a className="button primary" href={appURL(app.hostname)} target="_blank" rel="noreferrer">Open app <OpenArrow /></a>}

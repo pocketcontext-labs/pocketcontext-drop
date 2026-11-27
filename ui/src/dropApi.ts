@@ -5,10 +5,7 @@ import { pb } from "./api";
 // input. OPS lists every operation name in the server's registry, in its
 // order: internal/dropapi's TestReaderKnowsEveryOperation compares them.
 export const OPS = [
-  "private.grant",
-  "private.revoke",
   "private.access",
-  "private.shared",
   "catalog.list",
   "catalog.import_url",
   "catalog.upload",
@@ -130,6 +127,7 @@ export type HealthKind = "tcp" | "http";
 /** An app (internal/dropapi App). Env holds plain values only. */
 export interface App {
   developer_private?: boolean;
+  private_tiered?: boolean;
   minimum_multiplier?:number;
   installed_version?:string;
   official_product?: string;

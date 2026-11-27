@@ -1,5 +1,4 @@
-import { OpenPrivateApp, PrivateTesters } from "./PrivateApps";
-import { OfficialWorkspace } from "./Official";
+import { OfficialWorkspace, WorkspaceDetail } from "./Official";
 import { DeleteApp, DeletionStatus } from "./AppDeletion";
 import {
   useCallback,
@@ -169,7 +168,7 @@ function Overview({
         </>}
         <dt>App URL</dt>
         <dd>
-          {app.developer_private ? <OpenPrivateApp app={app.id} hostname={app.hostname} disabled={!app.current_release || app.archived} /> : app.hostname ? (
+          {app.hostname ? (
             <AppAddress hostname={app.hostname} />
           ) : (
             <span className="quiet">None on this server</span>
@@ -192,7 +191,7 @@ function Overview({
         ) : (
           <>To add the first release, upload an app file in <a href={appHash(app.id, "releases")}>Releases</a>.</>
         )}{" "}
-        {app.developer_private ? "Deploy a release to run this app on a private-enabled node." : "An admin places the app on a node; until then nothing runs."}
+        An admin places the app on a node; until then nothing runs.
       </p>
       {error && (
         <p role="alert" className="error">
@@ -762,7 +761,25 @@ function AppDetailPage({ id, tab, official, canDeployBinary }: { id: string; tab
     setVersion((v) => v + 1);
   };
   if(app?.official_product)return <OfficialWorkspace app={app} reload={()=>void load()}/>;
-  if(official&&app&&!app.developer_private)return <><BetaStatus id={app.id} name={app.name} release={app.current_release} hostname={app.hostname}/><DeleteApp app={app} slider/></>;
+  if (app?.developer_private) return <WorkspaceDetail app={app} reload={() => void load()}>
+    <details key={tab} className="panel workspace-tools" open={tab !== "overview"}>
+      <summary>Developer tools</summary>
+      <nav className="nav tabs" aria-label="Developer tools">
+        {tabs.filter(t => t.tab !== "overview" && !(app.private_tiered && t.tab === "settings") && (canDeployBinary || t.tab !== "releases")).map(t =>
+          <a key={t.tab} href={appHash(id, t.tab)} aria-current={tab === t.tab ? "page" : undefined}>
+            {t.tab === "settings" ? "Runtime settings" : t.tab === "env" && app.private_tiered ? "Secrets" : t.label}
+          </a>)}
+      </nav>
+      {tab === "releases" && canDeployBinary && <Releases app={app} onChange={() => void load()} />}
+      {tab === "settings" && !app.private_tiered && <Settings key={app.id + version} app={app} onChange={setApp} />}
+      {tab === "env" && <>
+        {!app.private_tiered && <EnvVars app={app} secrets={secrets} onChange={changed} />}
+        <Secrets app={app} secrets={secrets} onChange={() => void load()} />
+      </>}
+      {tab === "usage" && <UsagePanel app={app} />}
+    </details>
+  </WorkspaceDetail>;
+  if(official&&app)return <><BetaStatus id={app.id} name={app.name} release={app.current_release} hostname={app.hostname}/><DeleteApp app={app} slider/></>;
   if (app?.beta_managed) return <>
     {canDeployBinary && !app.archived && (!app.current_release || updating === app.id)
       ? <BetaDeploy key={app.id} account={app.owner} initialFile={null} prepared={app} onComplete={() => { setUpdating(""); void load(); }} />
@@ -812,7 +829,6 @@ function AppDetailPage({ id, tab, official, canDeployBinary }: { id: string; tab
           </nav>
           {tab === "overview" && <>
             <Overview app={app} onChange={changed} />
-            {app.developer_private && canDeployBinary && <PrivateTesters app={app.id} />}
           </>}
           {tab === "settings" && (
             // Remount after a change elsewhere so the form shows saved values.

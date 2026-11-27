@@ -33,7 +33,6 @@ export async function checkAdminNodeLayout(browser, origin) {
         const {op,input} = request.postDataJSON();
         let result;
         switch (op) {
-          case "private.shared": result={apps:[]}; break;
           case "me": result={...record, role:"admin", admin:true, hosted:true}; break;
           case "waitlist.list": result={entries:[],has_more:false}; break;
           case "user.list": result={users:[]}; break;

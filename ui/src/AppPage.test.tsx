@@ -46,6 +46,18 @@ it("lists the apps and links each to its page", async () => {
   expect(screen.getByRole("link", { name: "Create app" })).toHaveAttribute("href", "#/catalog");
 });
 
+it("shows custom apps with their tier, product, copy action and owner-only open action", async () => {
+  const custom = { ...app, developer_private: true, private_tiered: true, executable_name: "field-notes", current_release: "release1" };
+  vi.spyOn(dropApi, "listApps").mockResolvedValue({ apps: [custom], quota: { used: 0, limit: 0, unlimited: true }, has_more: false });
+  render(<App />);
+  expect(await screen.findByText("Custom")).toBeVisible();
+  expect(screen.getByText("2×")).toBeVisible();
+  expect(screen.getByText("Field Notes")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Copy app URL" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Open" })).toBeEnabled();
+  expect(screen.queryByRole("link", { name: "Open" })).toBeNull();
+});
+
 it("offers developers one create action leading to both destinations", async () => {
   vi.spyOn(dropApi, "me").mockResolvedValue({ ...member, role: "developer" });
   vi.spyOn(dropApi, "listApps").mockResolvedValue({ apps: [], quota: { used: 0, limit: 10240, unlimited: false }, has_more: false });
@@ -352,6 +364,31 @@ it("creates an owner-private app from the hosted developer route", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Create app" }));
   await vi.waitFor(() => expect(call).toHaveBeenCalledWith("developer.build_create", { name: "My experiment", sha256: digest, multiplier: 1 }, expect.any(String)));
   expect(location.hash).toBe(`#/apps/${id}`);
+});
+
+it("shows the workspace overview and resizes a custom app without opening its runtime", async () => {
+  const apiModule = await import("./dropApi");
+  const call = vi.spyOn(apiModule, "op").mockResolvedValue({});
+  vi.spyOn(dropApi, "me").mockResolvedValue({ ...member, role: "developer", official_catalog: true });
+  vi.spyOn(dropApi, "getApp").mockResolvedValue({ app: { ...app, developer_private: true,
+    private_tiered: true, current_release: release.id, installed_version: "1.3", executable_name: "field-notes",
+    disk_resize_supported: true }, secrets: [] });
+  history.replaceState(null, "", `/#/apps/${id}`);
+  render(<App />);
+  expect(await screen.findByRole("heading", { name: "App settings" })).toBeVisible();
+  expect(screen.getByText(/Installed · Field Notes 1.3/)).toBeVisible();
+  expect(screen.getByRole("button", {name: "Open app"})).toBeEnabled();
+  expect(screen.getByText("Custom")).toBeVisible();
+  expect(screen.getByText("Developer tools").closest("details")).not.toHaveAttribute("open");
+  expect(screen.getByRole("button", {name: "Copy app URL"})).toBeVisible();
+  expect(screen.queryByRole("link", {name: "https://" + app.hostname})).toBeNull();
+  expect(screen.queryByText("Testers")).toBeNull();
+  const size = screen.getByLabelText("Resources");
+  expect(size.querySelectorAll("option")).toHaveLength(8);
+  fireEvent.change(size, {target: {value: "1"}});
+  fireEvent.click(screen.getByRole("button", {name: "Save resources"}));
+  await vi.waitFor(() => expect(call).toHaveBeenCalledWith("workspace.resize", {app: id, multiplier: 1}));
+  expect(call.mock.calls.some(([op]) => op === "private.access")).toBe(false);
 });
 
 it("uploads a private executable and deploys a selected release separately", async () => {
