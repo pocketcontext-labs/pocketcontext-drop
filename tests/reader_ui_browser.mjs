@@ -274,6 +274,11 @@ try {
   await modal.waitFor({state: 'hidden'});
   assert(await deleteButton.evaluate(el => el === document.activeElement), 'dismissal returns keyboard focus');
   await page.keyboard.press('Enter');
+  await modal.getByRole('heading').click();
+  assert(await modal.isVisible());
+  await page.mouse.click(1, 1);
+  await modal.waitFor({state: 'hidden'});
+  await deleteButton.click();
   const confirm = modal.getByRole('button', {name: 'Delete ' + messages[2], exact: true});
   assert(await confirm.isDisabled());
   await modal.getByLabel('Type third-app to confirm').fill('third-app');

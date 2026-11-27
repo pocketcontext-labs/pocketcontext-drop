@@ -1,3 +1,4 @@
+import { closeOnBackdropClick } from "./dialog";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ACCOUNT_EMAIL, api, pb, type SignInOptions } from "./api";
 import UserDirectory from "./UserDirectory";
@@ -261,10 +262,7 @@ function Workspace({
         </nav>
         {mobile ? (
           <dialog id="mobile-account" ref={moreSheet} aria-labelledby="more-title"
-            onClick={event => {
-              if (event.target === event.currentTarget && event.clientY < event.currentTarget.getBoundingClientRect().top)
-                moreSheet.current?.close();
-            }}>
+            onClick={closeOnBackdropClick}>
             <div className="sheet-heading">
               <h2 id="more-title" tabIndex={-1}>More</h2>
               <button type="button" className="primary" onClick={() => moreSheet.current?.close()}>Done</button>

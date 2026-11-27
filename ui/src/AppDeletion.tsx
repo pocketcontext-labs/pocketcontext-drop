@@ -1,10 +1,11 @@
+import { closeOnBackdropClick } from "./dialog";
 import DeleteSlider from "./DeleteSlider";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { dropApi, type App, type DeletionReceipt } from "./dropApi";
 import { message } from "./errors";
 import { viewHashes } from "./routes";
 
-export function DeleteApp({ app, slider = !!app.official_product }: { app: App; slider?:boolean }) {
+export function DeleteApp({ app, slider = !!(app.official_product || app.developer_private) }: { app: App; slider?:boolean }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -42,6 +43,7 @@ export function DeleteApp({ app, slider = !!app.official_product }: { app: App; 
       setSlug(""); setError(""); setDetail(undefined); setOpen(true);
     }}>Delete app permanently</button>
     {open && <dialog ref={dialog} className="delete-app-dialog" aria-labelledby="delete-app-title"
+      onClick={busy ? undefined : closeOnBackdropClick}
       onCancel={e => { if (busy) e.preventDefault(); }} onClose={() => setOpen(false)}>
       <h2 id="delete-app-title">Permanently delete {app.name}?</h2>
       <dl className="delete-identifiers">

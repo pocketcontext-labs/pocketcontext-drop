@@ -21,13 +21,15 @@ export default function RuntimeState({ id }: { id: string }) {
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     async function read() {
+      let refreshMs = 30000;
       try {
         const status = await dropApi.appStatus(id);
+        if (["pending", "starting", "staging", "deploying"].includes(status.phase)) refreshMs = 3000;
         if (active) setState(label(status));
       } catch {
         if (active) setState("Status unavailable");
       }
-      if (active) timer = setTimeout(read, 30000);
+      if (active) timer = setTimeout(read, refreshMs);
     }
     void read();
     return () => { active = false; clearTimeout(timer); };
