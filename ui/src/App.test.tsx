@@ -177,3 +177,16 @@ it("hides the admin waitlist from a hosted member including direct navigation", 
   expect(screen.queryByRole("link",{name:"Waitlist"})).toBeNull();
   expect(list).not.toHaveBeenCalled();
 });
+
+it("lists pinned deployments for a hosted user without preparing an app", async () => {
+  history.replaceState(null, "", "/#/catalog");
+  pb.authStore.save(token, user);
+  vi.spyOn(dropApi, "me").mockResolvedValue({ ...member, hosted: true });
+  vi.spyOn(api, "refreshSession").mockResolvedValue();
+  const prepare = vi.spyOn(dropApi, "prepareBeta");
+  render(<App />);
+  expect(await screen.findByRole("heading", { name: "App catalog" })).toBeVisible();
+  expect(screen.getByRole("link", { name: "Deploy PocketBase" })).toHaveAttribute("href", expect.stringContaining("/deploy?name=pocketbase&binary="));
+  expect(screen.getByRole("link", { name: "Deploy ZeroClaw" })).toBeVisible();
+  expect(prepare).not.toHaveBeenCalled();
+});

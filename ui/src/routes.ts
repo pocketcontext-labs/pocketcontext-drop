@@ -8,7 +8,10 @@
 // and `#/signin?next=/oauth/authorize?…` (OAuth consent sends the browser here
 // to sign in and come back).
 
+import { readDeployLink } from "./deployRecipes";
+
 export type View =
+  | "catalog"
   | "deploy"
   | "apps"
   | "app-new"
@@ -19,6 +22,7 @@ export type View =
   | "admin-users"
   | "admin-nodes";
 export const viewHashes: Record<Exclude<View, "app">, string> = {
+  catalog: "#/catalog",
   deploy: "#/deploy",
   apps: "#/apps",
   "app-new": "#/apps/new",
@@ -53,7 +57,8 @@ export function viewFromHash(hash: string): View {
   if (hash === viewHashes["admin-waitlist"]) return "admin-waitlist";
   if (/^#\/admin\/users(?:\?.*)?$/.test(hash)) return "admin-users";
   if (/^#\/admin\/nodes(?:\?.*)?$/.test(hash)) return "admin-nodes";
-  if (hash === viewHashes.deploy) return "deploy";
+  if (hash === viewHashes.catalog) return "catalog";
+  if (hash === viewHashes.deploy || hash.startsWith("#/deploy?")) return "deploy";
   if (hash === viewHashes["app-new"]) return "app-new";
   if (appRouteFromHash(hash)) return "app";
   return "apps";
@@ -155,6 +160,7 @@ export function loginReturnHash(hash: string): string | null {
     const target = oauthTargetFromHash(hash);
     return target ? signinHash(target) : null;
   }
+  if (hash.startsWith("#/deploy?")) return readDeployLink(hash).recipe ? hash : null;
   const view = viewFromHash(hash);
   if (view === "app") return appHash(appRouteFromHash(hash)!.id);
   return view === "apps" ? null : viewHashes[view];
@@ -174,6 +180,8 @@ export function rememberLoginReturn(hash: string) {
 /** Only the exact forms loginReturnHash writes; anything else in storage is refused. */
 function isStoredReturn(hash: string): boolean {
   if (
+    readDeployLink(hash).recipe ||
+    hash === viewHashes.catalog ||
     hash === viewHashes.deploy ||
     hash === viewHashes.connect ||
     hash === viewHashes["admin-waitlist"] ||

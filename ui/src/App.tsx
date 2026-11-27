@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ACCOUNT_EMAIL, api, pb, type SignInOptions } from "./api";
 import AdminNodes from "./AdminNodes";
 import AdminUsers from "./AdminUsers";
@@ -7,6 +7,8 @@ import Waitlist, {isWaitlistLeave, waitlistHash} from "./Waitlist";
 import AppNew from "./AppNew";
 import AppPage from "./AppPage";
 import Apps from "./Apps";
+import AppCatalog from "./AppCatalog";
+import { readDeployLink, type DeployRecipe } from "./deployRecipes";
 import Brand from "./Brand";
 import BetaDeploy, { BetaLanding } from "./BetaDeploy";
 import Credits from "./Credits";
@@ -64,7 +66,9 @@ function SignInGate({
   file,
   onSelect,
   options,
+  recipe,
 }: {
+  recipe?: DeployRecipe;
   options: SignInOptions;
   hash: string;
   file: File | null;
@@ -72,6 +76,7 @@ function SignInGate({
 }) {
   const [login, setLogin] = useState(false);
   if (options.mode === "email") {
+    const deployAccess = !!file || !!recipe;
     const landing = ["", "#/", viewHashes.deploy].includes(hash);
     if (landing && !login && !file)
       return (
@@ -88,9 +93,9 @@ function SignInGate({
       <Login
         documents={options.legal}
         initialEmail={inviteEmailFromHash(hash)}
-        deployAccess={!!file}
+        deployAccess={deployAccess}
         betaEnrollment={
-          !!file || hash === viewHashes.deploy || !!inviteEmailFromHash(hash)
+          deployAccess || hash === viewHashes.deploy || !!inviteEmailFromHash(hash)
         }
       />
     );
@@ -111,11 +116,13 @@ function NotFound({admin = false}: {admin?: boolean}) {
 
 function Workspace({
   fromSignIn,
+  recipe,
   view,
   hash,
   file,
 }: {
   fromSignIn: boolean;
+  recipe?: DeployRecipe;
   view: View;
   hash: string;
   file: File | null;
@@ -163,8 +170,9 @@ function Workspace({
     if (!me.admin || view === "admin-waitlist") page = <NotFound />;
     else page = view === "admin-users" ? <AdminUsers me={me} /> : <AdminNodes />;
   } else if (view === "connect") page = <Connect />;
+  else if (view === "catalog") page = me.hosted ? <AppCatalog /> : <NotFound />;
   else if (view === "deploy" || (view === "app-new" && me.hosted))
-    page = <BetaDeploy initialFile={file} account={me.id} />;
+    page = <BetaDeploy key={recipe ? hash : "generic"} recipe={recipe} initialFile={recipe ? null : file} account={me.id} />;
   else if (view === "app-new") page = <AppNew hosted={false} />;
   else if (app) page = <AppPage key={app.id} id={app.id} tab={app.tab} />;
   else page = <Apps beta={me.hosted === true} />;
@@ -183,6 +191,9 @@ function Workspace({
           >
             Apps
           </a>}
+          {me.hosted && !hostedAdmin && (
+            <a href={viewHashes.catalog} aria-current={view === "catalog" ? "page" : undefined}>Catalog</a>
+          )}
           {hostedAdmin && (
             <a href={viewHashes["admin-waitlist"]} aria-current={defaultPage || view === "admin-waitlist" ? "page" : undefined}>
               Waitlist
@@ -266,6 +277,7 @@ export default function App() {
   useEffect(() => {
     if (signedIn && hash !== viewHashes.deploy) setFile(null);
   }, [signedIn, hash]);
+  const deployLink = useMemo(() => readDeployLink(hash), [hash]);
   const [signinHash, setSigninHash] = useState(currentSigninHash);
   const [returning, setReturning] = useState(false);
   const [checkFailed, setCheckFailed] = useState(false);
@@ -376,8 +388,9 @@ export default function App() {
         }}
       />
     );
+  if (deployLink.error) return <Status><h1>Invalid deployment link</h1><p role="alert">{deployLink.error}</p><a href={viewHashes.deploy}>Open deployment form</a></Status>;
   if (!signedIn)
-    return <SignInGate options={options} hash={hash} file={file} onSelect={setFile} />;
+    return <SignInGate recipe={deployLink.recipe} options={options} hash={hash} file={file} onSelect={setFile} />;
   if (oauthTarget)
     return (
       <Status>
@@ -399,5 +412,5 @@ export default function App() {
       </Status>
     );
   // Remount per session so no state survives a change of identity.
-  return <Workspace key={signedIn} fromSignIn={signedIn !== initialIdentity.current} view={view} hash={hash} file={file} />;
+  return <Workspace recipe={deployLink.recipe} key={signedIn} fromSignIn={signedIn !== initialIdentity.current} view={view} hash={hash} file={file} />;
 }

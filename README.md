@@ -65,6 +65,12 @@ Without `--db`, the database is `bin/drop.db`. The server listens on `http://127
 
 **Local** (plain `serve`, for developing the reader): a project has exactly one account, created by `init`, with no name or email to choose (`users` holds one hidden record). The reader asks only for its password. `open` signs the browser in with a single-use link valid for two minutes; `login-code` issues one-time codes for remote clients (see below). The CLI needs no password: it reads a random key that the server writes to the private cache at start and exchanges it, in the `X-Drop-Local-Key` header, for an ordinary `users` token. Anyone who can read that key can already read the database. All APIs, including SQL and search, still require a token, CORS allows only the server's own origin, and requests for any other `Host` are refused, so web pages cannot reach the server through `127.0.0.1`. The local server listens on loopback only. `/api/bundle/instance` answers `{"app": "drop", ...}` so the CLI and the launcher can tell this server from another program on the port.
 
+### Deploy links and the app catalog
+
+Hosted users can open **Catalog** and choose **Deploy** beside a pinned PocketBase or ZeroClaw release. Each link opens the generic deployment form for review. Opening a link creates no app.
+
+To link to a release from another project, point to `/deploy` on the hosted Drop origin. Include `name` and the public HTTPS release URL in `binary`. Supply the archive SHA-256 in `sha256`, the HTTP port in `port`, and the exact argument list as a single JSON array in `arg`. Encode the fields with `URLSearchParams` or an equivalent URL builder so each argument retains its original spaces and punctuation. `minimal=true` requests the compact form. The deployment still requires sign-in and owner confirmation. Deploy links are public and should contain only public release settings.
+
 ### Creating a Crew app
 
 In hosted Drop, select **PocketContext Crew** when creating an app or pass `--kind crew` to `drop app create`. Drop copies your verified address to the new app. Crew and the node mail service use that address across restarts and moves. Configure the relay once on NibRunner. To pause delivery for a Crew app, change its sign-in email setting or run `drop app set APP --sign-in-email disabled`.
