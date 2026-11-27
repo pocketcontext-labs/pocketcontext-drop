@@ -57,6 +57,9 @@ func TestOfficialWorkspaceLifecycle(t *testing.T) {
 			}
 			if err == nil {
 				m := strings.NewReplacer(`"app":"crew"`, fmt.Sprintf(`"app":%q`, product), `"version":"0.45.4-drop.4"`, fmt.Sprintf(`"version":%q`, version), `"s3_replica",`, ``, `"minimum":`, `"optional":["s3_replica"],"minimum":`).Replace(validCrewManifest)
+				if product == "a-completely-new-app" {
+					m = fmt.Sprintf(`{"schema":"drop.manifest/v1","app":%q,"version":%q,"http_port":8181,"health":"tcp","minimum":{"memory_mib":256,"cpu_quarters":1,"disk_mib":1024}}`, product, version)
+				}
 				if product == "atlas" {
 					m = strings.ReplaceAll(strings.ReplaceAll(m, `"memory_mib":512`, `"memory_mib":256`), `"cpu_quarters":4`, `"cpu_quarters":1`)
 				}
@@ -92,8 +95,9 @@ func TestOfficialWorkspaceLifecycle(t *testing.T) {
 	if rows := h.MustOp(alice, "catalog.list", nil)["releases"].([]any); len(rows) != 0 {
 		t.Fatal(rows)
 	}
-	publish(crew, "")
 	wantError(t, h.Op(admin, "catalog.activate", nil), 409, "release_unavailable")
+	publish(crew, "")
+	h.MustOp(admin, "catalog.activate", nil)
 	atlas := stage("atlas", "1.0.0", 2)
 	publish(atlas, "")
 	h.MustOp(admin, "catalog.activate", nil)
@@ -196,6 +200,26 @@ func TestOfficialWorkspaceLifecycle(t *testing.T) {
 	}
 	if fallback := create(eve, "atlas", "Default version"); fallback["beta_sha256"] != atlas {
 		t.Fatal(fallback)
+	}
+	thirdProduct := "a-completely-new-app"
+	thirdDigest := stage(thirdProduct, "1.0.0", 99)
+	rehearse(thirdDigest, "")
+	ref = map[string]any{"sha256": thirdDigest}
+	wantError(t, h.Op(admin, "catalog.publish", ref), 400, dropapi.CodeInvalidInput)
+	ref["prefix"] = "dev"
+	wantError(t, h.Op(admin, "catalog.publish", ref), 400, dropapi.CodeInvalidInput)
+	ref["prefix"] = "dev-preview"
+	wantError(t, h.Op(admin, "catalog.publish", ref), 400, dropapi.CodeInvalidInput)
+	ref["prefix"] = "crew"
+	wantError(t, h.Op(admin, "catalog.publish", ref), 409, "prefix_taken")
+	ref["prefix"] = "notes"
+	h.MustOp(admin, "catalog.publish", ref)
+	ref["prefix"] = "renamed"
+	wantError(t, h.Op(admin, "catalog.publish", ref), 409, "prefix_assigned")
+	h.MustOp(admin, "catalog.publish", map[string]any{"sha256": thirdDigest})
+	thirdApp := appOf(t, h.MustOp(bob, "workspace.create", map[string]any{"product": thirdProduct, "name": "New app type", "multiplier": 4}))
+	if !strings.HasPrefix(thirdApp["slug"].(string), "notes-") || thirdApp["official_product"] != thirdProduct {
+		t.Fatal(thirdApp)
 	}
 	wantError(t, h.Op(alice, "user.directory", nil), 403, dropapi.CodeForbidden)
 	if users := h.MustOp(admin, "user.directory", map[string]any{"search": "alice", "status": "active", "workspaces": "yes", "credits": "no"})["users"].([]any); len(users) != 1 {

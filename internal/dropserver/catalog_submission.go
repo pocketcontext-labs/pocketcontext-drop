@@ -57,7 +57,7 @@ func submitPrivateRelease(c *Ctx, in *dropapi.ReleaseDeployInput) (any, error) {
 	if a.GetBool("archived") || a.GetString("current_release") != r.Id {
 		return nil, Conflict("release_not_deployed", "Submit the private app's currently deployed release.")
 	}
-	m, _, err := officialManifest([]byte(r.GetString("private_manifest")))
+	m, _, err := workspaceManifest([]byte(r.GetString("private_manifest")))
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +136,7 @@ func prepareCatalogAcceptance(re *core.RequestEvent, spec dropapi.Spec, in *drop
 		if fresh != s {
 			return Conflict("candidate_changed", "The submitted candidate has changed.")
 		}
-		m, _, err := officialManifest([]byte(r.GetString("private_manifest")))
+		m, _, err := workspaceManifest([]byte(r.GetString("private_manifest")))
 		if err != nil {
 			return err
 		}
@@ -169,7 +169,7 @@ func acceptCatalogSubmission(c *Ctx, in *dropapi.AcceptSubmission) (any, error) 
 		return nil, err
 	}
 	raw := []byte(r.GetString("private_manifest"))
-	m, minimum, err := officialManifest(raw)
+	m, minimum, err := workspaceManifest(raw)
 	if err != nil {
 		return nil, err
 	}

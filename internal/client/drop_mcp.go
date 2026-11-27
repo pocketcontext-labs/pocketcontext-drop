@@ -48,7 +48,7 @@ var dropReads = []dropRead{
 	{"status", "status", dropapi.RoleUser, "an app's runtime status (app)"},
 	{"usage", "usage.get", dropapi.RoleUser, "an app's S3 usage (app): last 24 hours by hour, month to date against its soft and hard limits, stored bytes and an estimated cost"},
 	{"events", "event.list", dropapi.RoleUser, "events (who changed what), newest first, of your apps or of one app (app); all:true (admins) lists every event"},
-	{"catalog", "catalog.list", dropapi.RoleUser, "current official Crew and Atlas releases"},
+	{"catalog", "catalog.list", dropapi.RoleUser, "published product releases in the workspace catalog"},
 	{"shared", "private.shared", dropapi.RoleUser, "private apps explicitly shared with your account"},
 	{"users", "user.list", dropapi.RoleAdmin, "every account with role, developer access, quota and suspension"},
 	{"invites", "invite.list", dropapi.RoleAdmin, "invites and their state (open, used, revoked, expired)"},
@@ -196,7 +196,7 @@ func dropInstructions(role dropapi.Role) string {
 	}
 	private := ""
 	if role == dropapi.RoleDeveloper {
-		private = " For unpublished apps use developer.create, developer.upload_link and developer.deploy. Send the Linux executable directly to the one-time PUT URL. Keep its bytes out of this conversation and read the app status after deployment."
+		private = " For a private build, obtain a one-time PUT URL with developer.build_upload or import a public HTTPS executable with developer.build_import. Keep executable bytes out of this conversation. After inspection, use developer.build_create with the returned sha256, app name and multiplier."
 	}
 	return "Drop runs people's apps (one Linux executable each) on PocketContext-managed hosts. Two tools, both with the account that approved this connection: drop_read reads (start with what=me, then apps), drop_write changes things through Drop's operations. Every call is checked on the server against your role and ownership." + admin + private +
 		" A change to what an app runs with starts a new deployment, which restarts it. " + secretWarning +

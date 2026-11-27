@@ -222,7 +222,7 @@ For imported archives Drop checks the assigned public HTTPS origin after the pro
 
 The status of a generic app can include a private, expiring `first_run` action for the current deployment. Its owner can open the PocketBase installer at the assigned HTTPS hostname or copy the ZeroClaw pairing code into the dashboard. Only the matching app owner can read the action and startup output.
 
-Once the official catalog is active, developers use `developer.create`, `developer.upload_link` and `developer.deploy` for private binaries. Users create workspaces from published catalog releases. Catalog and probe records stay out of account queries and the public route table.
+Developers can inspect a private binary with `developer.build_upload` (one-time file PUT) or `developer.build_import` (public HTTPS URL), then create an instance with `developer.build_create {sha256,name,multiplier}`. The server binds the inspected digest to the developer account and generates a `dev-` hostname. Users create workspaces from published catalog releases. Catalog and probe records stay out of account queries and the public route table.
 
 Install `deploy/drop-ax41/drop-manifest-probe.socket` and `drop-manifest-probe@.service` in the systemd unit directory on the NibRunner host serving Drop. Set the socket's owner to the Drop service account. Run `systemctl daemon-reload` and `systemctl enable --now drop-manifest-probe.socket`. Drop passes only validated bytes and their digest over the private socket. The worker calls `nibrunnerd probe-manifest` with the host's `/etc/nibrunner/config.toml`. NibRunner uses an isolated, time-limited microVM for `--drop-manifest`. The guest receives no account credentials, network or app volume. Infrastructure failures are retriable.
 
@@ -284,17 +284,17 @@ The administrator stages and checks both binaries before switching an existing
 installation. Use **Releases** in the hosted admin reader. All transitions also
 use the authenticated operation endpoint.
 
-A developer can submit a deployed private Crew or Atlas build for review with
+A developer can submit a deployed private build with a compatible Drop manifest for review with
 `developer.submit {app,release}`. The admin reviews explicitly submitted builds
 with `catalog.submissions {}` and stages one with
 `catalog.accept {app,release,sha256}`. Drop verifies the executable against that
 digest. Continue at step 2 using the accepted bytes and digest. Other private
 releases remain visible only to their owners.
 
-1. To stage an executable directly, call `catalog.upload` with `product` (`crew` or `atlas`) and `version`.
+1. To stage an executable directly, call `catalog.upload` with its manifest product identifier and version.
    PUT the Linux executable to its one-time path. Drop computes its digest,
    checks the ELF, runs the existing isolated manifest probe and checks the
-   product, version, hooks, verified sign-in and optional replica capabilities.
+   product, version, runtime requirements, and resource minimum.
 2. Exercise the actual candidate on disposable data. For a first release,
    create records and attachments, restart it and verify their contents.
    For an upgrade, seed the exact baseline, run the candidate against the
@@ -315,7 +315,7 @@ releases remain visible only to their owners.
    exact version pair and retains the immutable receipt; the operator runs
    the rehearsal and retains its evidence. Keep secrets and customer data
    out of these artifacts.
-4. `catalog.publish {sha256}` requires a matching receipt for the currently
+4. Publish with `catalog.publish {sha256,prefix}`. Choose a unique prefix on the first release of a new product. Later releases reuse the product’s prefix. Drop reserves `dev` for private instances and retains `crew` and `atlas` for the existing products. Publication preserves the source workspace’s private address and access rules. Publishing requires a matching receipt for the currently
    published baseline. Workspaces several versions behind need a receipt
    for their own installed baseline before upgrading. After publishing both
    products, call `catalog.activate {}` to switch hosted creation to the

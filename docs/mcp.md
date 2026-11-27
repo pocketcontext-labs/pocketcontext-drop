@@ -36,7 +36,7 @@ A `what` whose operation is not registered yet stays listed, marked "(not availa
 The op enum and the op table in the tool description (name, role, input signature such as `{app, name?, env?: {set?, unset?}}` and summary) are generated from the registry in `internal/dropapi`: the operations whose `Spec` has `MCP: true`, filtered to the role and capabilities of the account. `TestMCPWriteTableMatchesRegistry` checks the enum and table against the registry, and `TestMCPWriteOpsFollowTicket` checks the set against decision 11's list:
 
 - users: manage their own published catalog workspaces with `workspace.create`, `workspace.resize` and `workspace.upgrade`;
-- developers: user operations plus private apps, including `developer.create`, `developer.upload_link`, `developer.deploy` and `developer.submit`;
+- developers: user operations plus private apps, including build inspection, private workspace creation and release submission;
 - admins: `invite.create`, `invite.revoke`, `user.set`, `node.create`, `node.rotate_secret`, `node.set_state`, `placement.set`, `placement.clear`.
 
 Every operation on these lists is registered (`node.create` and `node.rotate_secret` return a node's agent password once: it passes through the conversation, so the instructions ask admins to hand it only to whoever installs the agent). Reads sent to `drop_write` are refused (use `drop_read`), and so are operations not offered through MCP (`app.archive`, `app.restore`).
@@ -44,9 +44,9 @@ Every operation on these lists is registered (`node.create` and `node.rotate_sec
 ### Test a private app
 
 1. Call `drop_read` with `{"what":"me"}`. Check that the account role is `developer`.
-2. Use `drop_write` with `developer.create` and an input such as `{"name":"Atlas preview","slug":"atlas-preview"}`. Keep the returned app ID.
-3. Call `developer.upload_link` with that app ID. Upload the local Linux executable with an HTTP PUT to the one-time URL, outside of MCP. Keep the returned release ID. The file belongs to the private app.
-4. Call `developer.deploy` with `{"app":"APP_ID","release":"RELEASE_ID"}`. Use `drop_read` with `{"what":"status","app":"APP_ID"}` to follow the deployment. For a later build, repeat the upload and deploy steps on the same app.
+2. For a local executable, call `developer.build_upload {}` and PUT the bytes to the one-time URL outside the conversation. For a public HTTPS download, call `developer.build_import {"url":"…"}`.
+3. Read the inspected product, version, minimum multiplier and SHA-256. Select a size from the minimum through 8×. Drop obtains the runtime settings from the executable’s `--drop-manifest`.
+4. Call `developer.build_create {"sha256":"DIGEST","name":"Upgrade test","multiplier":4}` with a stable idempotency key. Read the returned app ID and hostname. The private instance has a generated `dev-` prefix. Use `drop_read` with `{"what":"status","app":"APP_ID"}` to follow deployment.
 5. Use `private.grant` and `private.revoke` to manage who can open the running app. A collaborator can find their invitations with `drop_read` and `{"what":"shared"}`. Access to the running app grants no rights to download the binary, deploy a release, or manage collaborators.
 
 The private operations are also available when the official catalog is active. A private deployment creates no official catalog entry.
@@ -80,8 +80,7 @@ Native clients can register HTTP callbacks on literal `127.0.0.1`, `[::1]` or ex
 OAuth state is machine-local in the private cache, separate from the database. The reader's Connect page lists the account's connected apps and disconnects one (its tokens stop working at once); a browser visit to `/oauth/connections` leads there.
 
 On an installation with the official catalog enabled, read `what: "catalog"`
-to see the published Crew and Atlas releases. Customer writes offer
-`workspace.create`, `workspace.resize`, `workspace.upgrade`, `app.start`
-and `app.stop`. Creating a workspace needs a product, a name and a 1–8
+to see the published releases. Customer writes offer
+`workspace.create`, `workspace.resize` and `workspace.upgrade`. Creating a workspace needs a product, a name and a 1–8
 multiplier. Upgrading needs the workspace and exact reviewed digest. Use a
 stable idempotency key when retrying an operation.

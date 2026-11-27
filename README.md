@@ -74,6 +74,7 @@ Without `--db`, the database is `bin/drop.db`. The server listens on `http://127
 After the admin stages and publishes checked Crew and Atlas releases and
 enables the official catalog, customers create named workspaces from the
 catalog, choose a 1×–8× resource size, and install new releases individually.
+Developers can use the same form with a private Linux executable from a file or public HTTPS URL. Drop inspects its manifest before creation. Private instances receive a generated `dev-` address. When an admin publishes a new product, its catalog prefix applies to new catalog instances.
 The admin **Users** page combines waiting, invited and active accounts with
 search, filters and pagination. **Releases** manages official binaries and
 per-baseline rehearsal evidence. See [official workspace operations](docs/ops.md#official-crew-and-atlas-workspaces)

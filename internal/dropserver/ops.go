@@ -155,7 +155,7 @@ func (c *Ctx) checkRole(spec dropapi.Spec) error {
 			return err
 		}
 		if enabled {
-			return Forbidden("Choose a published Crew or Atlas workspace from the catalog.")
+			return Forbidden("Choose a published app from the catalog.")
 		}
 	}
 	role := dropapi.Role(c.Auth.GetString("role"))

@@ -102,7 +102,7 @@ var specs = []Spec{
 	{Name: "catalog.submissions", Role: RoleAdmin, Read: true, Input: &MeInput{}, Summary: "Review private releases explicitly submitted for the catalog."},
 	{Name: "catalog.accept", Role: RoleAdmin, Input: &AcceptSubmission{}, Summary: "Stage the reviewed private release digest for rehearsal and publication."},
 	{Name: "developer.submit", Role: RoleDeveloper, Input: &ReleaseDeployInput{}, MCP: true, Summary: "Submit the currently deployed private release of your app for official catalog review."},
-	{Name: "catalog.publish", Role: RoleAdmin, Input: &BetaDigest{}, Summary: "Publish a checked candidate for new workspaces."},
+	{Name: "catalog.publish", Role: RoleAdmin, Input: &OfficialPublish{}, Summary: "Publish a checked candidate for new workspaces."},
 	{Name: "catalog.activate", Role: RoleAdmin, Input: &MeInput{}, Summary: "Switch hosted customer deployment to the official catalog."},
 	{Name: "workspace.create", Role: RoleUser, Input: &WorkspaceCreate{}, MCP: true, Summary: "Provision an official workspace at a selected size."},
 	{Name: "workspace.resize", Role: RoleUser, Input: &WorkspaceResize{}, MCP: true, Summary: "Change workspace resources and resize the disk on a supported node."},

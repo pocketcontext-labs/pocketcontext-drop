@@ -86,12 +86,8 @@ func betaPrepare(c *Ctx, in *dropapi.BetaPrepareInput) (any, error) {
 		return nil, releasesUnavailable()
 	}
 	generic := m.Schema == ""
-	features := slices.Concat(m.Requires, m.Optional)
-	runtime := runtimeFeatures{storage: slices.Contains(features, "s3_replica"), signInEmail: slices.Contains(features, "sign_in_email"), ownerEmail: slices.Contains(features, "verified_owner_email")}
-	kind := "ordinary"
-	if runtime.storage || runtime.signInEmail || runtime.ownerEmail {
-		kind = "crew"
-	}
+	kind, runtime := manifestWorkspaceRuntime(m)
+	runtime.tieredDisk = false // Legacy beta deployments have their original fixed disks.
 	name := betaDisplayName(m)
 	if generic && in.Name != "" {
 		name = in.Name
@@ -312,4 +308,14 @@ func betaFractionalQuota(a *core.Record) int {
 		return units
 	}
 	return 0
+}
+
+func manifestWorkspaceRuntime(m dropapi.BetaManifest) (string, runtimeFeatures) {
+	features := slices.Concat(m.Requires, m.Optional)
+	runtime := runtimeFeatures{tieredDisk: true, storage: slices.Contains(features, "s3_replica"), signInEmail: slices.Contains(features, "sign_in_email"), ownerEmail: slices.Contains(features, "verified_owner_email")}
+	kind := "ordinary"
+	if runtime.storage || runtime.signInEmail || runtime.ownerEmail {
+		kind = "crew"
+	}
+	return kind, runtime
 }

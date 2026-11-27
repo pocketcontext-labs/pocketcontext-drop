@@ -1,5 +1,10 @@
 package dropapi
 
+type OfficialPublish struct {
+	SHA256 string `json:"sha256"`
+	Prefix string `json:"prefix,omitempty"`
+}
+
 type OfficialUpload struct {
 	Product string `json:"product"`
 	Version string `json:"version"`

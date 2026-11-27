@@ -3,8 +3,10 @@ package dropserver
 import (
 	"database/sql"
 	"errors"
+	"regexp"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"ganigeorgiev.com/pocketbase/dbx"
@@ -26,6 +28,7 @@ func init() {
 }
 
 type officialRelease struct {
+	Prefix    string `db:"prefix" json:"prefix,omitempty"`
 	Archived  bool   `db:"archived" json:"archived"`
 	Minimum   int    `db:"min_size" json:"minimum_multiplier"`
 	Rehearsed bool   `db:"rehearsed" json:"rehearsed,omitempty"`
@@ -46,16 +49,17 @@ func officialList(c *Ctx, in *dropapi.CatalogListInput) (any, error) {
 	rows := []officialRelease{}
 	// Only current published releases are public to customers. Operators also
 	// see the last 50 candidate and superseded versions.
-	query := `SELECT * FROM drop_official_releases r WHERE archived=0 AND published>0 AND NOT EXISTS
+	const columns = "r.*,COALESCE((SELECT prefix FROM drop_official_products WHERE product=r.product),'') AS prefix"
+	query := "SELECT " + columns + ` FROM drop_official_releases r WHERE archived=0 AND published>0 AND NOT EXISTS
 	(SELECT 1 FROM drop_official_releases n WHERE n.product=r.product AND n.archived=0 AND n.published>r.published) ORDER BY product`
 	if c.Admin {
-		query = `SELECT r.*,EXISTS(SELECT 1 FROM drop_official_rehearsals h WHERE h.candidate=r.digest AND h.baseline=
+		query = "SELECT " + columns + `,EXISTS(SELECT 1 FROM drop_official_rehearsals h WHERE h.candidate=r.digest AND h.baseline=
 	    COALESCE((SELECT digest FROM drop_official_releases p WHERE p.product=r.product AND archived=0 AND published>0 ORDER BY published DESC LIMIT 1),'')) rehearsed
 	    FROM drop_official_releases r WHERE r.digest IN (SELECT digest FROM drop_official_releases ORDER BY rowid DESC LIMIT 50)
 	    OR (r.published>0 AND NOT EXISTS(SELECT 1 FROM drop_official_releases n WHERE n.product=r.product AND n.archived=0 AND n.published>r.published)) ORDER BY r.rowid DESC`
 	}
 	if in.AllVersions || in.IncludeArchived {
-		query = `SELECT * FROM drop_official_releases r WHERE published>0
+		query = "SELECT " + columns + ` FROM drop_official_releases r WHERE published>0
 		AND (archived=0 OR {:include_archived})
 		AND ({:all_versions} OR NOT EXISTS (SELECT 1 FROM drop_official_releases n
 		  WHERE n.product=r.product AND n.published>r.published AND (n.archived=0 OR {:include_archived})))
@@ -69,8 +73,8 @@ func officialList(c *Ctx, in *dropapi.CatalogListInput) (any, error) {
 }
 
 func officialUpload(c *Ctx, in *dropapi.OfficialUpload) (any, error) {
-	if !slices.Contains([]string{"atlas", "crew"}, in.Product) || !betaVersionPattern.MatchString(in.Version) {
-		return nil, Invalid("version", "Choose Crew or Atlas and enter a release version.")
+	if !slugPattern.MatchString(in.Product) || !betaVersionPattern.MatchString(in.Version) {
+		return nil, Invalid("version", "Enter a valid manifest product and release version.")
 	}
 	if servicesOf(c.App).Releases == nil {
 		return nil, releasesUnavailable()
@@ -84,7 +88,36 @@ func officialUpload(c *Ctx, in *dropapi.OfficialUpload) (any, error) {
 	return map[string]string{"path": dropapi.UploadRoutePrefix + token}, err
 }
 
-func officialPublish(c *Ctx, in *dropapi.BetaDigest) (any, error) {
+var catalogPrefixPattern = regexp.MustCompile(`^[a-z]([a-z0-9-]{0,14}[a-z0-9])?$`)
+
+func assignCatalogPrefix(app core.App, product, prefix string) error {
+	var assigned string
+	p := dbx.Params{"p": product, "prefix": prefix}
+	err := app.DB().NewQuery("SELECT prefix FROM drop_official_products WHERE product={:p}").Bind(p).Row(&assigned)
+	if err == nil {
+		if prefix != "" && prefix != assigned {
+			return Conflict("prefix_assigned", "This product already has a permanent catalog prefix.")
+		}
+		return nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if !catalogPrefixPattern.MatchString(prefix) || prefix == "dev" || strings.HasPrefix(prefix, "dev-") {
+		return Invalid("prefix", "Choose a catalog prefix of 1–16 lowercase letters, digits or hyphens, starting with a letter and ending with a letter or digit. Prefixes beginning with dev- and the prefix dev are reserved.")
+	}
+	result, err := app.DB().NewQuery("INSERT INTO drop_official_products(product,prefix) VALUES({:p},{:prefix}) ON CONFLICT(prefix) DO NOTHING").Bind(p).Execute()
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err == nil && n == 0 {
+		return Conflict("prefix_taken", "This catalog prefix belongs to another product.")
+	}
+	return err
+}
+
+func officialPublish(c *Ctx, in *dropapi.OfficialPublish) (any, error) {
 	p := dbx.Params{"digest": in.SHA256}
 	var r officialRelease
 	if err := c.App.DB().NewQuery("SELECT * FROM drop_official_releases WHERE digest={:digest}").Bind(p).One(&r); err != nil {
@@ -97,6 +130,9 @@ func officialPublish(c *Ctx, in *dropapi.BetaDigest) (any, error) {
 		return nil, Conflict("release_archived", "This release is archived.")
 	}
 	if _, err := betaRelease(c.App, r.Digest); err != nil {
+		return nil, err
+	}
+	if err := assignCatalogPrefix(c.App, r.Product, in.Prefix); err != nil {
 		return nil, err
 	}
 	// A repeated publish of an older version never moves it ahead of newer releases.
@@ -140,14 +176,16 @@ func officialArchive(c *Ctx, in *dropapi.BetaDigest) (any, error) {
 }
 
 func officialActivate(c *Ctx, _ *dropapi.MeInput) (any, error) {
-	for _, product := range []string{"crew", "atlas"} {
-		r, err := currentOfficial(c.App, product)
-		if err != nil {
-			return nil, err
-		}
-		if _, err = betaRelease(c.App, r.Digest); err != nil {
-			return nil, err
-		}
+	var digest string
+	err := c.App.DB().NewQuery("SELECT digest FROM drop_official_releases WHERE archived=0 AND published>0 ORDER BY published DESC LIMIT 1").Row(&digest)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, Conflict("release_unavailable", "Publish a checked release before enabling the catalog.")
+	}
+	if err != nil {
+		return nil, err
+	}
+	if _, err = betaRelease(c.App, digest); err != nil {
+		return nil, err
 	}
 	if err := waitExec(c.App, "UPDATE drop_official_config SET enabled=1 WHERE id=1", nil); err != nil {
 		return nil, err
@@ -217,7 +255,15 @@ func workspaceCreate(c *Ctx, in *dropapi.WorkspaceCreate) (any, error) {
 	if disk < m.Minimum.DiskMiB {
 		return nil, Invalid("multiplier", "Choose a larger size for this release.")
 	}
-	raw, err := createApp(c, &dropapi.AppCreateInput{Name: in.Name, Slug: r.Product + "-" + core.GenerateDefaultRandomId(), Kind: "crew", ExecutableName: r.Product, VCPU: &cpu, MemoryMiB: &mem, DiskMiB: &disk, Env: map[string]string{"PORT": strconv.Itoa(port)}, HTTPPort: &port, HookPort: &hook, HealthKind: "tcp"}, runtimeFeatures{tieredDisk: true, storage: true, signInEmail: true, ownerEmail: true})
+	if err := allowRequiredStorage(c.App, c.Auth.Id, m); err != nil {
+		return nil, err
+	}
+	var prefix string
+	if err := c.App.DB().NewQuery("SELECT prefix FROM drop_official_products WHERE product={:p}").Bind(dbx.Params{"p": r.Product}).Row(&prefix); err != nil {
+		return nil, err
+	}
+	kind, features := manifestWorkspaceRuntime(m)
+	raw, err := createApp(c, &dropapi.AppCreateInput{Name: in.Name, Slug: prefix + "-" + core.GenerateDefaultRandomId(), Kind: kind, ExecutableName: r.Product, VCPU: &cpu, MemoryMiB: &mem, DiskMiB: &disk, Env: map[string]string{"PORT": strconv.Itoa(port)}, HTTPPort: &port, HookPort: &hook, HealthKind: "tcp"}, features)
 	if err != nil {
 		return nil, err
 	}
@@ -225,6 +271,7 @@ func workspaceCreate(c *Ctx, in *dropapi.WorkspaceCreate) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	a.Set("required_s3", slices.Contains(m.Requires, "s3_replica"))
 	a.Set("official_product", r.Product)
 	a.Set("official_target", r.Digest)
 	a.Set("beta_digest", r.Digest)
@@ -378,5 +425,13 @@ func workspaceUpgrade(c *Ctx, in *dropapi.WorkspaceUpgrade) (any, error) {
 	if m.App != product || m.HTTPPort != a.GetInt("http_port") || m.HookPort != a.GetInt("hook_port") || m.Minimum.DiskMiB > a.GetInt("disk_mib") {
 		return nil, Conflict("incompatible_upgrade", "The new release requires a different workspace configuration.")
 	}
+	_, features := manifestWorkspaceRuntime(m)
+	if features.storage != (a.GetString("crew_enrollment") != "") || features.signInEmail != a.GetBool("sign_in_email_enabled") || features.ownerEmail != (a.GetString("crew_owner_email") != "" && !a.GetBool("private_owner_email")) {
+		return nil, Conflict("incompatible_upgrade", "The release requests different managed services from this workspace.")
+	}
+	if err := allowRequiredStorage(c.App, a.GetString("owner"), m); err != nil {
+		return nil, err
+	}
+	a.Set("required_s3", slices.Contains(m.Requires, "s3_replica"))
 	return installOfficial(c, a, r)
 }

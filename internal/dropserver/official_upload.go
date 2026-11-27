@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"os"
-	"slices"
 
 	"ganigeorgiev.com/pocketbase/dbx"
 	"ganigeorgiev.com/pocketbase/pocketbase/core"
@@ -64,7 +63,7 @@ func (u *uploader) candidateOrProbe(re *core.RequestEvent, hash string) error {
 	if err != nil {
 		return writeError(re, Conflict("probe_pending", "The release checker is unavailable. Retry this upload."))
 	}
-	m, minimum, err := officialManifest(raw)
+	m, minimum, err := workspaceManifest(raw)
 	if err != nil {
 		return writeError(re, err)
 	}
@@ -101,14 +100,10 @@ func (u *uploader) candidateOrProbe(re *core.RequestEvent, hash string) error {
 	return re.JSON(http.StatusOK, map[string]any{"sha256": digest, "product": m.App, "version": m.Version, "size_bytes": size})
 }
 
-// officialManifest applies the same public catalog requirements to direct uploads
-// and to private executables whose isolated probe result is stored on the release.
-func officialManifest(raw []byte) (dropapi.BetaManifest, int, error) {
+func workspaceManifest(raw []byte) (dropapi.BetaManifest, int, error) {
 	m, err := parseBetaManifest(raw)
-	if err != nil || !slices.Contains([]string{"crew", "atlas"}, m.App) || m.HookPort == 0 ||
-		!slices.Contains(m.Optional, "s3_replica") || !slices.Contains(m.Requires, "persistent_volume") ||
-		!slices.Contains(m.Requires, "sign_in_email") || !slices.Contains(m.Requires, "verified_owner_email") {
-		return m, 0, Invalid("manifest", "An official Crew or Atlas release must declare lifecycle hooks, owner sign-in, a persistent volume and optional backup storage.")
+	if err != nil {
+		return m, 0, err
 	}
 	if m.Minimum.CPUQuarters > 8 || m.Minimum.MemoryMiB > 2048 || m.Minimum.DiskMiB > 16384 {
 		return m, 0, Invalid("minimum", "The manifest exceeds the workspace resource allowance.")

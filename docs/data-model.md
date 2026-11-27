@@ -249,3 +249,9 @@ WHERE a.developer_private = 1 AND u.role = 'admin';
 ```
 
 If any rows appear, identify a separate developer account with the owner before proceeding. The migration stops in that case. Keep the previous binary and matching database backup together for rollback.
+
+### Private builds and catalog hostnames
+
+Drop keeps one pending upload link per developer in `drop_private_build_links`. A successful file upload or URL import runs the manifest probe and temporarily retains the inspected executable for that developer. The staging file expires and a server restart clears it. Creating the workspace binds the inspected digest to its private release and assigns a generated `dev-` hostname.
+
+`drop_official_products` maps each published product to its unique hostname prefix. Crew and Atlas have existing mappings. The administrator assigns a new product’s prefix when publishing its first release. Future catalog instances use that prefix. Publication preserves the hostname and access rules of the developer’s original workspace.
