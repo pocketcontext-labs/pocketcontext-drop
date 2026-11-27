@@ -52,4 +52,4 @@ Existing owner-admin apps continue serving. Deployment and app changes must come
 
 ## From 0.7.0 to 0.8.0
 
-Back up the hosted project before starting the new server. The archive provenance and private setup migrations change the database schema. Keep the old binaries and the pre-upgrade backup for rollback. Upgrade the server and all Drop agents so the status page can receive the current deployment’s first-run details. Use an invited test account to open a pinned catalog link, verify HTTP readiness on the assigned hostname, and check its private setup action.
+Back up the hosted project before starting the new server. The archive provenance and private setup migrations change the database schema. Keep the old binaries and the pre-upgrade backup for rollback. Upgrade the server first, then all Drop agents so the status page can receive the current deployment’s first-run details. Use an invited test account to open a pinned catalog link, verify HTTP readiness on the assigned hostname, and check its private setup action.
