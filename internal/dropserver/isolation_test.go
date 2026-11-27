@@ -866,3 +866,71 @@ func TestLinkedReleaseEntryAndImportAccess(t *testing.T) {
 		t.Errorf("nonpublic release returned %d", result.Status)
 	}
 }
+
+func TestOwnerPrivateFirstRunAction(t *testing.T) {
+	h := droptest.NewHosted(t, droptest.Options{})
+	admin := h.Token(h.Owner())
+	_, a := h.User("appowner@example.test", "user")
+	_, b := h.User("otherowner@example.test", "user")
+	node, _, agent := h.Node("node-one", hostA)
+	app := deployedApp(t, h, a, "first-run", 1)
+	h.MustOp(admin, "placement.set", map[string]any{"app": app, "node": node})
+	record := appRecord(t, h, app)
+	record.Set("generic_beta", true)
+	if err := h.App.Save(record); err != nil {
+		t.Fatal(err)
+	}
+	nib := record.GetString("nib_app_id")
+	dep := nib + "-dep-" + record.GetString("deployment_seq")
+	observed := appReport(nib, dep, "running")
+	code := strings.Repeat("Z", 32)
+	expiry := time.Now().UTC().Add(8 * time.Minute)
+	observed["firstRun"] = map[string]string{"kind": "zeroclaw_pairing", "value": code, "expires_at": expiry.Format(time.RFC3339)}
+	send := func() {
+		t.Helper()
+		if status, _ := report(t, h, agent, reportOf(hostA, observed)); status != 200 {
+			t.Fatalf("report rejected: %d", status)
+		}
+	}
+	send()
+	filter := map[string]any{"app": app}
+	if action, ok := h.MustOp(a, "status", filter)["first_run"].(map[string]any); !ok || action["value"] != code {
+		t.Fatal("owner missing private setup")
+	}
+	if h.MustOp(admin, "status", filter)["first_run"] != nil {
+		t.Fatal("setup exposed to hosted admin")
+	}
+	wantError(t, h.Op(b, "status", filter), 404, "not_found")
+	for _, route := range []string{"/api/collections/node_reports/records", "/api/collections/events/records"} {
+		for _, token := range []string{admin, a, b, agent} {
+			response := routerGet(h, route, token)
+			if strings.Contains(response.Body.String(), code) {
+				t.Fatal("setup entered collection output")
+			}
+		}
+	}
+	delete(observed, "firstRun")
+	send()
+	if h.MustOp(a, "status", filter)["first_run"] == nil {
+		t.Fatal("rotation removed active setup")
+	}
+	observed["restartCount"] = 1
+	send()
+	if h.MustOp(a, "status", filter)["first_run"] != nil {
+		t.Fatal("stale setup crossed process restart")
+	}
+	observed["firstRun"] = map[string]string{"kind": "zeroclaw_pairing", "value": code, "expires_at": time.Now().UTC().Add(-time.Minute).Format(time.RFC3339)}
+	send()
+	if h.MustOp(a, "status", filter)["first_run"] != nil {
+		t.Fatal("expired setup remained available")
+	}
+	observed["firstRun"] = map[string]string{"kind": "zeroclaw_pairing", "value": code, "expires_at": expiry.Format(time.RFC3339)}
+	observed["logTail"] = code
+	send()
+	if err := dropserver.Hooks().OnHostedRestore(h.App); err != nil {
+		t.Fatal(err)
+	}
+	if result := h.MustOp(a, "status", filter); result["first_run"] != nil || result["log_tail"] != nil {
+		t.Fatal("restore retained pre-restore guest bootstrap output")
+	}
+}

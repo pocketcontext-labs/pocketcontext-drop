@@ -445,6 +445,9 @@ func appStatus(c *Ctx, in *dropapi.StatusInput) (any, error) {
 	out.ReportedDeploymentID = row.GetString("deployment_id")
 	if app.GetBool("generic_beta") && out.ReportedDeploymentID == out.DeploymentID && app.GetString("owner") == c.Auth.Id {
 		out.LogTail = row.GetString("log_tail")
+		if setup := storedFirstRun(row); setup.Available(state.clock()) {
+			out.FirstRun = setup
+		}
 	}
 	out.RestartCount = row.GetInt("restart_count")
 	if row.GetBool("has_exit_code") {
@@ -463,7 +466,17 @@ func appStatus(c *Ctx, in *dropapi.StatusInput) (any, error) {
 	if in.VerifyURL && out.ReportedDeploymentID == out.DeploymentID &&
 		(out.Phase == "running" || out.Phase == "sleeping") {
 		if app.GetString("beta_digest") != "" && (app.GetString("executable_name") != "crew" || app.GetBool("generic_beta") || app.GetString("crew_owner_email") == "") {
-			out.URLReady = betaURLReady(c.Request.Context(), servicesOf(c.App).AppDomain, app.GetString("slug"), out.Hostname, readinessClient)
+			var executable string
+			if app.GetBool("generic_beta") {
+				release, err := c.App.FindRecordById("releases", app.GetString("current_release"))
+				if err != nil {
+					return nil, err
+				}
+				if release.GetString("archive_sha256") != "" {
+					executable = release.GetString("executable_path")
+				}
+			}
+			out.URLReady = betaURLReady(c.Request.Context(), servicesOf(c.App).AppDomain, app.GetString("slug"), out.Hostname, executable, readinessClient)
 		} else if app.GetString("crew_owner_email") != "" {
 			out.URLReady = crewURLReady(c.Request.Context(), servicesOf(c.App).AppDomain, app.GetString("slug"), out.Hostname, readinessClient)
 		}

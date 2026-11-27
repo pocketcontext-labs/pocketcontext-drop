@@ -184,6 +184,7 @@ func (c *AwakeCounter) Valid() bool {
 }
 
 type AppReport struct {
+	FirstRun     *FirstRun     `json:"firstRun,omitempty"`
 	LogTail      string        `json:"logTail,omitempty"`
 	AwakeCounter *AwakeCounter `json:"awakeCounter,omitempty"`
 	LastHook     *HookResult   `json:"lastHook,omitempty"`

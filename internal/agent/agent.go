@@ -518,7 +518,7 @@ func (a *Agent) report(ctx context.Context) error {
 		for i := range body.Apps {
 			app := &body.Apps[i]
 			if app.AppID == intent.AppID && app.DeploymentID == intent.DeploymentID {
-				app.LogTail = genericLogTail(logs, app.AppID, app.DeploymentID)
+				app.LogTail, app.FirstRun = genericOutput(logs, app.AppID, app.DeploymentID)
 				break
 			}
 		}

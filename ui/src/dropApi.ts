@@ -232,6 +232,7 @@ export interface NodeSecret {
 }
 /** An app's runtime status (internal/dropapi Status). */
 export interface AppStatus {
+  first_run?: { kind: "pocketbase_installer" | "zeroclaw_pairing"; value: string; expires_at: string };
   log_tail?: string;
   url_ready?: boolean;
   app: string;

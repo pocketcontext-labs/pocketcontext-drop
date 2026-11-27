@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"path"
 	"time"
 )
 
@@ -38,18 +39,32 @@ func crewURLReady(ctx context.Context, domain, slug, hostname string, client *ht
 	return err == nil && len(body) <= limit && json.Unmarshal(body, &mode) == nil && mode.Mode == "email"
 }
 
-func betaURLReady(ctx context.Context, domain, slug, hostname string, client *http.Client) bool {
+// betaURLReady checks the assigned public origin. A raw release retains the
+// original HEAD probe. For an imported release, GET the dashboard or, for
+// PocketBase (which serves 404 at "/" until files are published), its health URL.
+func betaURLReady(ctx context.Context, domain, slug, hostname, executable string, client *http.Client) bool {
 	if !ValidAppDomain(domain) || !slugPattern.MatchString(slug) || hostname != slug+"."+domain {
 		return false
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodHead, "https://"+hostname+"/", nil)
+	method, endpoint := http.MethodHead, "/"
+	if executable != "" {
+		method = http.MethodGet
+		if path.Base(executable) == "pocketbase" {
+			endpoint = "/api/health"
+		}
+	}
+	req, err := http.NewRequestWithContext(ctx, method, "https://"+hostname+endpoint, nil)
 	if err != nil {
 		return false
 	}
+	req.Header.Set("Cache-Control", "no-cache")
 	resp, err := client.Do(req)
 	if err != nil {
 		return false
 	}
 	defer resp.Body.Close()
-	return resp.StatusCode >= 200 && resp.StatusCode < 500
+	if executable == "" {
+		return resp.StatusCode >= 200 && resp.StatusCode < 500
+	}
+	return resp.StatusCode >= 200 && resp.StatusCode < 400 || resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden
 }

@@ -26,6 +26,11 @@ func InvalidateNodeTokens(app core.App) error {
 				return err
 			}
 		}
+		// Guest setup credentials from the backup belong to the original
+		// deployment. Fresh reports can supply the restored owner's output.
+		if err := waitExec(tx, "UPDATE node_reports SET log_tail = '', first_run = 'null'", nil); err != nil {
+			return err
+		}
 		if err := waitExec(tx, "DELETE FROM drop_manifest_uploads", nil); err != nil {
 			return err
 		}

@@ -4,6 +4,7 @@ import ArchiveImport from "./ArchiveImport";
 import type {DeployRecipe} from "./deployRecipes";
 import {archiveName} from "./releaseArchive";
 import Credits from "./Credits";
+import CopyButton from "./CopyButton";
 import type { PublishedLegal } from "./api";
 import AppAddress, { appURL } from "./AppAddress";
 import { BetaLegalLinks } from "./BetaLegal";
@@ -235,7 +236,9 @@ export function BetaStatus({
           if (Date.now() < deadline) timer = setTimeout(poll, 4000);
           else
             setError(
-              "The deployment is taking longer than expected. Check again for an update.",
+              result.phase === "running" || result.phase === "sleeping"
+                ? "The public HTTP check has not succeeded. Check the configured port and the private startup output, then check again."
+                : "The deployment is taking longer than expected. Check again for an update.",
             );
         }
       } catch {
@@ -254,6 +257,16 @@ export function BetaStatus({
   const phase = deploymentPhase(status);
   const failed = phase && failurePhases.includes(phase);
   const url = liveUrl(status);
+  const processStarted = status?.reported_deployment_id === status?.deployment_id &&
+    (phase === "running" || phase === "sleeping");
+  const setup = status?.first_run;
+  const expires = setup ? Date.parse(setup.expires_at) : 0;
+  useEffect(() => {
+    if (!expires || expires <= Date.now()) return;
+    const timer = window.setTimeout(() => setRefresh(x => x + 1), expires - Date.now() + 1);
+    return () => window.clearTimeout(timer);
+  }, [expires]);
+  const activeSetup = url && expires > Date.now() ? setup : undefined;
   const retry = async () => {
     setBusy(true);
     try {
@@ -282,15 +295,37 @@ export function BetaStatus({
               ? "This app is archived."
               : (phases[phase ?? ""] ?? "Checking deployment…")}
       </p>
+      {release && phase !== "archived" && (
+        <ol aria-label="Deployment progress">
+          <li>Release verification: complete</li>
+          <li>Startup: {processStarted ? "complete" : failed ? "failed" : "waiting"}</li>
+          <li>Public HTTP check: {url ? "complete" : processStarted ? "awaiting a successful response" : "waiting for startup"}</li>
+        </ol>
+      )}
       <AppAddress hostname={status?.hostname || hostname} />
       {url && (
         <div className="beta-actions">
           <a className="button primary" href={url} target="_blank" rel="noreferrer">
             Open app
           </a>
+          {!activeSetup && (
+            <button className="secondary" onClick={() => setRefresh(x => x + 1)}>Refresh deployment status</button>
+          )}
+          {activeSetup?.kind === "pocketbase_installer" && (
+            <a className="button secondary" href={url + "/_/#/pbinstall/" + encodeURIComponent(activeSetup.value)} target="_blank" rel="noreferrer">
+              Open PocketBase installer
+            </a>
+          )}
+          {activeSetup?.kind === "zeroclaw_pairing" && (
+            <div>
+              <p>Open the dashboard and enter this private pairing code.</p>
+              <code>{activeSetup.value}</code>{" "}
+              <CopyButton text={activeSetup.value} label="Copy pairing code" />
+            </div>
+          )}
         </div>
       )}
-      {status?.log_tail && <details open={!!failed}><summary>Recent app output</summary><pre>{status.log_tail}</pre></details>}
+      {status?.log_tail && <details open={!!failed || !!error}><summary>Private startup output</summary><pre>{status.log_tail}</pre></details>}
       {failed && status && <details>
         <summary>Deployment diagnostics</summary>
         <p>{status.message}</p>

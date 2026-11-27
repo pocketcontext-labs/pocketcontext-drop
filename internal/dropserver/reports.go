@@ -234,6 +234,9 @@ func checkReport(r *dropapi.Report) error {
 		if err := checkHostUsage(a, field); err != nil {
 			return err
 		}
+		if !a.FirstRun.Valid() {
+			return reportInvalid(field+".firstRun", "Invalid first-run action.")
+		}
 		if len(a.LogTail) > 1024 {
 			return reportInvalid(field+".logTail", "A log tail is at most 1024 bytes.")
 		}
@@ -330,7 +333,9 @@ func ingestApps(app core.App, nodeID string, reports []dropapi.AppReport, now ti
 			out.ignored = append(out.ignored, r.AppID)
 			continue
 		}
-		if !appRecord.GetBool("generic_beta") || r.DeploymentID != deploymentID(appRecord) {
+		privateOutput := appRecord.GetBool("generic_beta") && r.DeploymentID == deploymentID(appRecord)
+		if !privateOutput {
+			r.FirstRun = nil
 			r.LogTail = ""
 		}
 		out.accepted++
@@ -345,9 +350,17 @@ func ingestApps(app core.App, nodeID string, reports []dropapi.AppReport, now ti
 		previousPhase := ""
 		if row != nil {
 			previousPhase = row.GetString("phase")
-			if sameReport(row, r) && !hostUsageDue(row, r, now) {
-				continue
+			// Startup output can rotate before the owner opens the app. Keep the
+			// private action only within this deployment and process lifetime.
+			if privateOutput && r.FirstRun == nil && row.GetString("deployment_id") == r.DeploymentID && row.GetInt("restart_count") == r.RestartCount {
+				r.FirstRun = storedFirstRun(row)
 			}
+		}
+		if !r.FirstRun.Available(now) {
+			r.FirstRun = nil
+		}
+		if row != nil && sameReport(row, r) && !hostUsageDue(row, r, now) {
+			continue
 		}
 		out.changes++
 		if !apply {
@@ -358,6 +371,7 @@ func ingestApps(app core.App, nodeID string, reports []dropapi.AppReport, now ti
 			row.Set("node", nodeID)
 			row.Set("nib_app_id", r.AppID)
 		}
+		row.Set("first_run", r.FirstRun)
 		row.Set("app", appRecord.Id)
 		row.Set("deployment_id", r.DeploymentID)
 		row.Set("phase", r.Phase)
@@ -391,6 +405,12 @@ func ingestApps(app core.App, nodeID string, reports []dropapi.AppReport, now ti
 	return out, nil
 }
 
+func storedFirstRun(row *core.Record) *dropapi.FirstRun {
+	var setup *dropapi.FirstRun
+	_ = row.UnmarshalJSONField("first_run", &setup)
+	return setup
+}
+
 func storedHook(row *core.Record) *dropapi.HookResult {
 	var hook *dropapi.HookResult
 	_ = row.UnmarshalJSONField("last_hook", &hook)
@@ -400,7 +420,7 @@ func storedHook(row *core.Record) *dropapi.HookResult {
 // sameReport reports whether a stored row already says what r says.
 func sameReport(row *core.Record, r dropapi.AppReport) bool {
 	exitSame := row.GetBool("has_exit_code") == (r.LastExitCode != nil) && (r.LastExitCode == nil || row.GetInt("last_exit_code") == *r.LastExitCode)
-	return reflect.DeepEqual(storedHook(row), r.LastHook) && exitSame && row.GetString("deployment_id") == r.DeploymentID && row.GetString("phase") == r.Phase &&
+	return reflect.DeepEqual(storedFirstRun(row), r.FirstRun) && reflect.DeepEqual(storedHook(row), r.LastHook) && exitSame && row.GetString("deployment_id") == r.DeploymentID && row.GetString("phase") == r.Phase &&
 		row.GetString("log_tail") == r.LogTail && row.GetString("message") == r.Message && row.GetInt("restart_count") == r.RestartCount &&
 		row.GetString("converged_at") == r.ConvergedAt
 }

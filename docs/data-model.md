@@ -111,6 +111,8 @@ What the node needs to run a release (M7 and M9) is `sha256`, `s3_key` and `size
 
 `pb_migrations/1820001200_node_reports.js` creates `node_reports`, the last phase each node reported for each app placed on it: `node`, `app`, `nib_app_id` (unique with `node`), `deployment_id`, `phase` (`pending`, `staging`, `staging_failed`, `secret_failed`, `deploying`, `starting`, `running`, `sleeping`, `unhealthy`, `stopped`, `failed`, `unknown`), `message` (at most 2000), `restart_count`, `last_exit_code` with `has_exit_code`, `converged_at`, optional `last_hook` (event, outcome, time and duration), `observed_at` (when the phase was first reported). A row is rewritten only when something in it changes. `pb_migrations/1820001900_host_usage.js` adds the host services usage: `host_usage_deployment`, `host_usage_seq` and `host_usage` (the last counters taken), `host_usage_total` (the running sum of their differences) and `host_usage_at`. List and view: admins, and the app's owner; writes closed. The `status` operation reads it.
 
+Migration `1820002590_private_setup.js` adds the hidden `first_run` field. Like the hidden `log_tail`, it belongs to one app and reported deployment. The owner’s status can return the short-lived installer token or pairing code. SQL reads, record responses and phase events omit it.
+
 ## Usage
 
 `pb_migrations/1820001700_usage.js` creates two collections written only by the usage collector (`internal/dropserver/usage.go`, [Hosting](hosting.md#usage-metering)). List and view rules as `node_reports` (admins, and the app's owner); writes closed. Neither is a public record route: the reader and MCP read them with `usage.get`.
