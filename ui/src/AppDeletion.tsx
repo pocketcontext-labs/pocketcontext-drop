@@ -44,7 +44,10 @@ export function DeleteApp({ app, slider = !!app.official_product }: { app: App; 
     {open && <dialog ref={dialog} className="delete-app-dialog" aria-labelledby="delete-app-title"
       onCancel={e => { if (busy) e.preventDefault(); }} onClose={() => setOpen(false)}>
       <h2 id="delete-app-title">Permanently delete {app.name}?</h2>
-      <p>Slug <code>{app.slug}</code>{app.hostname && <> · Hostname <code>{app.hostname}</code></>}</p>
+      <dl className="delete-identifiers">
+        <dt>Slug</dt><dd><code>{app.slug}</code></dd>
+        {app.hostname && <><dt>Hostname</dt><dd><code>{app.hostname}</code></dd></>}
+      </dl>
       {inventory && detail && <ul>
         <li>{detail.app.disk_locked ? `Its persistent disk (${detail.app.disk_mib} MiB) and files will be erased.` : "This app has never been placed on a node. Its disk allocation will be released."}</li>
         {inventory.replica_mode === "enabled" && <li>All versions of this app’s S3 replica objects will be erased.</li>}
