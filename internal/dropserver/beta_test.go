@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/droptest"
@@ -16,7 +17,7 @@ import (
 const validCrewManifest = `{"schema":"drop.manifest/v1","app":"crew","version":"0.45.4-drop.4","http_port":8080,"hook_port":8081,"health":"tcp","hooks":["suspend","resume","terminate"],"requires":["persistent_volume","s3_replica","verified_owner_email","sign_in_email"],"minimum":{"memory_mib":512,"cpu_quarters":4,"disk_mib":1024}}`
 
 func TestBetaProbeLeasesAndDeployment(t *testing.T) {
-	h := droptest.NewHosted(t, droptest.Options{BetaNodes: []string{"beta-node"}, BetaOwnerNodes: []string{"owner-node"}})
+	h := droptest.NewHosted(t, droptest.Options{BetaNodes: []string{"beta-node", "another-node"}, BetaOwnerNodes: []string{"owner-node"}})
 	admin := h.Token(h.Owner())
 	_, alice := h.User("alice@example.test", "user")
 	_, bob := h.User("bob@example.test", "user")
@@ -104,9 +105,32 @@ func TestBetaProbeLeasesAndDeployment(t *testing.T) {
 	if code, r := report(t, h, token, ready); code != http.StatusOK {
 		t.Fatal(code, r)
 	}
+	// The earlier busy node is still eligible, but its observed RAM peak
+	// leaves less room than the second node. Retries must keep the volume
+	// on the chosen node even after the relative headroom changes.
+	_, _, anotherToken := h.Node("another-node", hostB)
+	reportMemory := func(host, token string, used int, at time.Time) {
+		t.Helper()
+		doc := reportOf(host)
+		nib := doc["nibrunner"].(map[string]any)
+		nib["reportedAt"] = at.Format(time.RFC3339Nano)
+		nib["guestMemory"] = map[string]any{"at": at.Unix(), "used_mib": used, "running_vms": 2}
+		nib["versions"].(map[string]any)["cpuQuarterQuota"] = true
+		if code, r := report(t, h, token, doc); code != http.StatusOK {
+			t.Fatal(code, r)
+		}
+	}
+	now := time.Now().UTC()
+	reportMemory(hostA, token, 8000, now.Add(-30*time.Second))
+	reportMemory(hostA, token, 300, now.Add(-15*time.Second))
+	reportMemory(hostB, anotherToken, 2000, now.Add(-15*time.Second))
 	if r := h.MustOp(alice, "beta.deploy", deploy); r["deployment_bumped"] != true {
 		t.Fatal(r)
 	}
+	if d, _ := desired(t, h, anotherToken); len(d.Apps) != 1 {
+		t.Fatalf("node with more headroom did not receive the deployment: %+v", d.Apps)
+	}
+	reportMemory(hostB, anotherToken, 12000, now)
 	if r := h.MustOp(alice, "beta.deploy", deploy); r["deployment_bumped"] != false {
 		t.Fatal(r)
 	}

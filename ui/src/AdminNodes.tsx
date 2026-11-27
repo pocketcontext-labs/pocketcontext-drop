@@ -233,6 +233,33 @@ function PlaceForm({
   );
 }
 
+function MemoryHistory({ node }: { node: DropNode }) {
+  const samples = node.memory_history;
+  if (!samples?.length) {
+    return <small className="quiet node-memory-history">No memory samples in the last 24 hours.</small>;
+  }
+  const peak = samples.reduce((best, sample) => sample.used_mib >= best.used_mib ? sample : best);
+  return (
+    <details className="node-memory-history">
+      <summary>
+        24-hour memory peak · {peak.used_mib.toLocaleString()} MiB · {peak.running_vms} {peak.running_vms === 1 ? "VM" : "VMs"} running
+      </summary>
+      <table>
+        <caption>Highest combined guest memory observed each hour. Hours without samples are omitted.</caption>
+        <thead><tr><th scope="col">Time of peak</th><th scope="col">Memory used</th><th scope="col">VMs running</th></tr></thead>
+        <tbody>{samples.map(sample => {
+          const time = new Date(sample.at * 1000).toISOString();
+          return <tr key={sample.at}>
+            <td><time dateTime={time}>{formatDate(time)}</time></td>
+            <td>{sample.used_mib.toLocaleString()} MiB</td>
+            <td>{sample.running_vms}</td>
+          </tr>;
+        })}</tbody>
+      </table>
+    </details>
+  );
+}
+
 function capacityText(node: DropNode): string {
   const a = node.allocatable;
   const vcpu = typeof a.vcpuCount === "number" ? a.vcpuCount : null;
@@ -335,6 +362,7 @@ function Nodes({
                 Rotate password
               </button>
               </div>
+              <MemoryHistory node={node} />
             </li>
           ))}
         </ul>

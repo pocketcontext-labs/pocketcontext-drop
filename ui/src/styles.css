@@ -309,6 +309,12 @@ select {
 .node-list { padding: 0; list-style: none; }
 .node-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 20px; align-items: center; padding-block: 16px; }
 .node-list li + li { border-top: 1px solid var(--border); }
+.node-memory-history { grid-column: 1 / -1; min-width: 0; }
+.node-memory-history summary { cursor: pointer; }
+.node-memory-history table { width: 100%; margin-top: 8px; font-size: 0.875rem; border-collapse: collapse; }
+.node-memory-history caption { text-align: left; color: var(--muted); padding-block: 4px; }
+.node-memory-history th, .node-memory-history td { padding: 5px; text-align: end; border-bottom: 1px solid var(--border); }
+.node-memory-history :is(th, td):first-child { text-align: start; }
 .node-details { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
 .node-identity, .node-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .node-status { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; border-radius: 999px; padding: 2px 8px; color: var(--muted); background: var(--bg); }

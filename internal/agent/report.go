@@ -13,7 +13,7 @@ import (
 
 // nibReported is the part of nibrunner's reported.json the agent reads.
 // Everything else (cron with its tenant environment, checkpoints, exports,
-// compute, guest addresses, restart details) is never decoded, so it can
+// guest addresses, restart details) is never decoded, so it can
 // never reach a report.
 type nibReported struct {
 	HostID           string          `json:"hostId"`
@@ -32,7 +32,14 @@ type nibReported struct {
 	Instances []nibInstance `json:"instances"`
 }
 
+type guestCompute struct {
+	UsedBytes  *uint64 `json:"memoryUsedBytes"`
+	TotalBytes uint64  `json:"memoryTotalBytes"`
+	MeasuredAt string  `json:"measuredAt"`
+}
+
 type nibInstance struct {
+	Compute      *guestCompute         `json:"compute"`
 	AwakeCounter *dropapi.AwakeCounter `json:"awakeCounter"`
 	LastHook     *dropapi.HookResult   `json:"lastHook"`
 	AppID        string                `json:"appId"`
@@ -258,6 +265,7 @@ func buildReport(hostID, version string, seq int64, intents []appIntent, r *nibR
 	if r != nil {
 		rep.AcceptedRevision = cut(deref(r.AcceptedRevision), 128)
 		rep.Nibrunner = hostReport(r)
+		rep.Nibrunner.GuestMemory = guestMemory(r, now)
 	}
 	return rep
 }

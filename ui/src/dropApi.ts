@@ -230,6 +230,7 @@ export interface UploadResult {
 export type NodeState = "active" | "draining" | "disabled";
 /** A node (host) as admins see it (internal/dropapi Node). */
 export interface DropNode {
+  memory_history?: { at: number; used_mib: number; running_vms: number }[];
   id: string;
   name: string;
   host_id: string;

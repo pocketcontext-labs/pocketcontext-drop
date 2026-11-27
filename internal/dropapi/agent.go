@@ -143,7 +143,16 @@ type Report struct {
 // HostReport is the host part of nibrunner's reported.json. Capacity and
 // Allocatable are {vcpuCount, memoryMib, cacheBytes}; Versions
 // {agent, firecracker, guestImage, zerofs}.
+// GuestMemory is one complete node-wide measurement. The timestamp identifies
+// the guest sampling pass; usedMiB is rounded up after summing all guests.
+type GuestMemory struct {
+	At         int64 `json:"at" db:"at"`
+	UsedMiB    int   `json:"used_mib" db:"used_mib"`
+	RunningVMs int   `json:"running_vms" db:"running_vms"`
+}
+
 type HostReport struct {
+	GuestMemory *GuestMemory   `json:"guestMemory,omitempty"`
 	State       string         `json:"state"`
 	Message     string         `json:"message"`
 	ReportedAt  string         `json:"reportedAt"`

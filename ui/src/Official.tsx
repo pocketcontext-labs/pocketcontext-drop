@@ -25,27 +25,26 @@ const names: Record<string, string> = { crew: "Crew", atlas: "Atlas" };
 function Size({
   value,
   minimum = 1,
-  separateRate = false,
+  diskMiB,
   onChange,
 }: {
   value: number;
   minimum?: number;
-  separateRate?: boolean;
+  diskMiB?: number;
   onChange: (n: number) => void;
 }) {
   return (
     <div>
       <label className="size-label" htmlFor="workspace-size">Resources</label>{" "}
-      <HelpTip topic="app size">The size sets how much memory and processing power your app gets. A larger size uses more credits while running. You can change it later in App settings.</HelpTip>
-      <select id="workspace-size" aria-describedby={separateRate ? "workspace-rate" : undefined} value={value} onChange={(e) => onChange(Number(e.target.value))}>
+      <HelpTip topic="app size">CPU sets processing power, RAM holds work in progress, and disk stores files between runs. A larger size uses more credits while running. You can change it later in App settings.</HelpTip>
+      <select id="workspace-size" aria-describedby="workspace-rate" value={value} onChange={(e) => onChange(Number(e.target.value))}>
         {Array.from({ length: 9 - minimum }, (_, i) => i + minimum).map((n) => (
           <option value={n} key={n}>
-            {n}×{n === 4 ? " · recommended" : ""}
-            {!separateRate && ` · ${n} ${n === 1 ? "credit" : "credits"} per awake hour`}
+            {n}× · {n / 4} vCPU · {n * 256} MiB RAM · {(diskMiB ?? n * 2048) / 1024} GiB disk{n === 4 ? " · recommended" : ""}
           </option>
         ))}
       </select>
-      {separateRate && <small id="workspace-rate" className="quiet">{value} {value === 1 ? "credit" : "credits"} per awake hour</small>}
+      <small id="workspace-rate" className="quiet">{value} {value === 1 ? "credit" : "credits"} per awake hour</small>
     </div>
   );
 }
@@ -152,7 +151,7 @@ export function OfficialCatalog({ releaseSelection = true }: { releaseSelection?
             }} />
             Include archived releases
           </label>}
-          <Size separateRate
+          <Size
             value={Math.max(size, minimum)}
             minimum={minimum}
             onChange={(n) => {
@@ -520,6 +519,7 @@ export function OfficialWorkspace({
         <Size
           value={size}
           minimum={app.minimum_multiplier}
+          diskMiB={app.disk_mib}
           onChange={setSize}
         />
         <button

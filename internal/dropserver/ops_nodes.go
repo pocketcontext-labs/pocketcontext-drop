@@ -55,6 +55,10 @@ func (c *Ctx) nodeOut(r *core.Record) (dropapi.Node, error) {
 		return dropapi.Node{}, err
 	}
 	state := agentStateOf(c.App)
+	history, err := nodeMemoryHistory(c.App, r.Id, state.clock())
+	if err != nil {
+		return dropapi.Node{}, err
+	}
 	seen := state.lastSeen(r)
 	heartbeat := ""
 	if !seen.IsZero() {
@@ -68,7 +72,7 @@ func (c *Ctx) nodeOut(r *core.Record) (dropapi.Node, error) {
 		HostState: r.GetString("host_state"), AgentVersion: r.GetString("agent_version"),
 		AcceptedRevision: r.GetString("accepted_revision"),
 		Capacity:         jsonMap(r, "capacity"), Allocatable: jsonMap(r, "allocatable"), Versions: jsonMap(r, "versions"),
-		Apps: placed, Created: dateString(r, "created"),
+		MemoryHistory: history, Apps: placed, Created: dateString(r, "created"),
 	}, nil
 }
 
@@ -253,14 +257,21 @@ func checkPlacedAppRoom(app core.App, placed *core.Record) error {
 // check). A stopped or on-request app still counts: it can start at any time
 // without another placement.
 func checkNodeRoom(app core.App, node, placed *core.Record) error {
+	_, err := nodeMemoryRoom(app, node, placed)
+	return err
+}
+
+// nodeMemoryRoom returns the unreserved MiB after admission, while enforcing
+// both CPU and RAM commitments for all placements (including sleeping apps).
+func nodeMemoryRoom(app core.App, node, placed *core.Record) (int, error) {
 	vcpu, memory := allocatable(node)
 	if vcpu < 0 && memory < 0 {
-		return nil
+		return 0, nil
 	}
 	need := placed.GetInt("vcpu")
 	needMemory := placed.GetInt("memory_mib")
 	if (vcpu >= 0 && need > vcpu) || (memory >= 0 && needMemory > memory) {
-		return Conflict(dropapi.CodeNodeTooSmall, "The app needs more vCPUs or memory than node "+node.GetString("name")+" can allocate.")
+		return 0, Conflict(dropapi.CodeNodeTooSmall, "The app needs more vCPUs or memory than node "+node.GetString("name")+" can allocate.")
 	}
 	var used struct {
 		VCPU   int `db:"vcpu"`
@@ -271,13 +282,13 @@ func checkNodeRoom(app core.App, node, placed *core.Record) error {
 		WHERE p.node = {:node} AND p.app != {:app} AND a.archived = FALSE`).
 		Bind(dbx.Params{"node": node.Id, "app": placed.Id}).One(&used)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if (vcpu >= 0 && used.VCPU+need > vcpu) || (memory >= 0 && used.Memory+needMemory > memory) {
-		return Conflict(dropapi.CodeNodeTooSmall, fmt.Sprintf("Node %s has room for %d vCPUs and %d MiB; its other apps already take %d vCPUs and %d MiB, and this app needs %d and %d.",
+		return 0, Conflict(dropapi.CodeNodeTooSmall, fmt.Sprintf("Node %s has room for %d vCPUs and %d MiB; its other apps already take %d vCPUs and %d MiB, and this app needs %d and %d.",
 			node.GetString("name"), vcpu, memory, used.VCPU, used.Memory, need, needMemory))
 	}
-	return nil
+	return memory - used.Memory - needMemory, nil
 }
 
 func placementSet(c *Ctx, in *dropapi.PlacementSetInput) (any, error) {

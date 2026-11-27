@@ -171,6 +171,9 @@ func betaPlacement(c *Ctx, a *core.Record) error {
 		names = slices.Concat(services.BetaOwnerNodes, names)
 	}
 	state := agentStateOf(c.App)
+	now := state.clock()
+	var best *core.Record
+	bestHeadroom, bestUnreserved := -1, -1
 	for _, name := range names {
 		node, err := c.findNode(name)
 		if err != nil {
@@ -188,10 +191,11 @@ func betaPlacement(c *Ctx, a *core.Record) error {
 			continue
 		}
 		cpu, mem := allocatable(node)
-		if node.GetString("host_state") != "ready" || node.GetString("state") != dropapi.NodeActive || !online(state, node, state.clock()) || cpu < 1 || mem < 1 {
+		if node.GetString("host_state") != "ready" || node.GetString("state") != dropapi.NodeActive || !online(state, node, now) || cpu < 1 || mem < 1 {
 			continue
 		}
-		if err := checkNodeRoom(c.App, node, a); err != nil {
+		unreserved, err := nodeMemoryRoom(c.App, node, a)
+		if err != nil {
 			var conflict *dropapi.Error
 			if errors.As(err, &conflict) && conflict.Code == dropapi.CodeNodeTooSmall {
 				continue
@@ -201,10 +205,28 @@ func betaPlacement(c *Ctx, a *core.Record) error {
 		if p != nil {
 			return nil
 		}
-		_, err = placementSet(c, &dropapi.PlacementSetInput{App: a.Id, Node: node.Id})
-		return err
+		peak, known, err := nodeMemoryPeak(c.App, node.Id, now)
+		if err != nil {
+			return err
+		}
+		headroom := unreserved
+		if known {
+			headroom = mem - peak - a.GetInt("memory_mib")
+		}
+		if headroom < 0 {
+			continue
+		}
+		// More unreserved RAM breaks peak ties, including multiple placements
+		// between reports. Equal nodes retain their configured preference.
+		if best == nil || headroom > bestHeadroom || (headroom == bestHeadroom && unreserved > bestUnreserved) {
+			best, bestHeadroom, bestUnreserved = node, headroom, unreserved
+		}
 	}
-	return betaCapacityError()
+	if best == nil {
+		return betaCapacityError()
+	}
+	_, err = placementSet(c, &dropapi.PlacementSetInput{App: a.Id, Node: best.Id})
+	return err
 }
 
 func betaDeploy(c *Ctx, in *dropapi.ReleaseDeployInput) (any, error) {

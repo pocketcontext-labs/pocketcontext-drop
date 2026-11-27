@@ -76,7 +76,14 @@ func serveReport(re *core.RequestEvent, state *agentState) error {
 	if err != nil {
 		return writeError(re, err)
 	}
-	if writeNode || outcome.changes > 0 || len(report.Deleted) > 0 {
+	var memory *dropapi.GuestMemory
+	if h := report.Nibrunner; h != nil && h.State == "ready" && h.GuestMemory != nil {
+		m := h.GuestMemory
+		if m.At <= sampleAt && m.At >= now.Unix()-60 {
+			memory = m
+		}
+	}
+	if memory != nil || writeNode || outcome.changes > 0 || len(report.Deleted) > 0 {
 		err = re.App.RunInTransaction(func(tx core.App) error {
 			fresh, err := tx.FindRecordById(dropapi.NodeCollection, node.Id)
 			if err != nil {
@@ -97,6 +104,11 @@ func serveReport(re *core.RequestEvent, state *agentState) error {
 			}
 			if outcome, err = ingest(tx, true); err != nil {
 				return err
+			}
+			if memory != nil {
+				if err := saveGuestMemory(tx, node.Id, memory, now); err != nil {
+					return err
+				}
 			}
 			if !writeNode {
 				return nil
@@ -183,6 +195,9 @@ func checkReport(r *dropapi.Report) error {
 	if h := r.Nibrunner; h != nil {
 		if !shortText(h.State, 32) || !shortText(h.ReportedAt, 40) {
 			return reportInvalid("nibrunner", "nibrunner state and reportedAt are short text.")
+		}
+		if m := h.GuestMemory; m != nil && (m.At <= 0 || m.RunningVMs < 0 || m.RunningVMs > dropapi.MaxReportApps || m.UsedMiB < 0 || m.UsedMiB > 1<<30 || (m.RunningVMs == 0 && m.UsedMiB != 0)) {
+			return reportInvalid("nibrunner.guestMemory", "Invalid guest memory measurement.")
 		}
 		h.Message = cleanMessage(h.Message)
 		for name, value := range map[string]map[string]any{"capacity": h.Capacity, "allocatable": h.Allocatable, "versions": h.Versions} {

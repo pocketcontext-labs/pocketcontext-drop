@@ -32,6 +32,7 @@ const NodeOnlineSeconds = 90
 // the last NodeOnlineSeconds. Capacity, Allocatable and Versions are
 // nibrunner's, from the agent's reports; Apps counts the apps placed on it.
 type Node struct {
+	MemoryHistory    []GuestMemory  `json:"memory_history"`
 	ID               string         `json:"id"`
 	Name             string         `json:"name"`
 	HostID           string         `json:"host_id"`

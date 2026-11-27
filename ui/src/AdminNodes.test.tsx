@@ -56,3 +56,16 @@ it("lists nodes, adds one showing its password once, and places an app", async (
   expect(await screen.findByText("hello-app is placed on walter-aws.")).toBeInTheDocument();
   expect(place).toHaveBeenCalledWith("hello-app", "walter-aws");
 });
+
+
+it("shows the concurrent VM count from the hour of highest measured memory", async () => {
+  vi.spyOn(dropApi, "me").mockResolvedValue({ ...member, role: "admin", admin: true });
+  vi.spyOn(dropApi, "listNodes").mockResolvedValue([{ ...node, memory_history: [
+    { at: 1795784400, used_mib: 700, running_vms: 3 },
+    { at: 1795788000, used_mib: 950, running_vms: 2 },
+  ] }]);
+  render(<App />);
+  fireEvent.click(await screen.findByText("24-hour memory peak · 950 MiB · 2 VMs running"));
+  expect(screen.getByRole("cell", { name: "700 MiB" })).toBeVisible();
+  expect(screen.getByRole("cell", { name: "950 MiB" })).toBeVisible();
+});
