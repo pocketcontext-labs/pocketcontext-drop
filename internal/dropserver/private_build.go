@@ -157,7 +157,7 @@ func inspectPrivateBuild(ctx context.Context, app core.App, link buildLink, hash
 	if services.Releases == nil {
 		return nil, releasesUnavailable()
 	}
-	file, size, digest, err := spool(body, services.ReleaseMaxBytes)
+	file, size, digest, err := spoolBuild(body, services.ReleaseMaxBytes)
 	if file != nil {
 		defer func() {
 			if file != nil {

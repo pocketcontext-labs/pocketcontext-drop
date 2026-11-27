@@ -1,8 +1,10 @@
 package dropserver_test
 
 import (
+	"archive/tar"
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,6 +18,34 @@ import (
 )
 
 func TestPrivateBuildCreateFromInspection(t *testing.T) {
+	t.Run("executable", func(t *testing.T) { testPrivateBuild(t, false) })
+	t.Run("tar.gz", func(t *testing.T) { testPrivateBuild(t, true) })
+}
+
+func tarGzipBuild(t *testing.T, files ...[]byte) []byte {
+	t.Helper()
+	var output bytes.Buffer
+	gz := gzip.NewWriter(&output)
+	tw := tar.NewWriter(gz)
+	for index, file := range files {
+		name := fmt.Sprintf("release/member%d", index)
+		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0644, Size: int64(len(file))}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write(file); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return output.Bytes()
+}
+
+func testPrivateBuild(t *testing.T, archive bool) {
 	socket := filepath.Join(t.TempDir(), "probe")
 	ln, err := net.Listen("unix", socket)
 	if err != nil {
@@ -58,7 +88,14 @@ func TestPrivateBuildCreateFromInspection(t *testing.T) {
 	}
 	wantError(t, h.Op(dev, "developer.build_import", map[string]any{"url": "http://example.org/bin"}), 400, dropapi.CodeInvalidInput)
 	link := h.MustOp(dev, "developer.build_upload", nil)
-	reply := h.Upload(link["path"].(string), body)
+	payload := body
+	if archive {
+		payload = tarGzipBuild(t, body, []byte("license"))
+		for _, invalid := range [][]byte{tarGzipBuild(t, body, body), tarGzipBuild(t, []byte("no executable")), payload[:len(payload)-1]} {
+			wantUploadError(t, upload(t, h, link["path"].(string), invalid), 400, dropapi.CodeInvalidRelease)
+		}
+	}
+	reply := h.Upload(link["path"].(string), payload)
 	if reply.Code != 200 {
 		t.Fatal(reply.Body)
 	}

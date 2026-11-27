@@ -122,7 +122,7 @@ export default function PrivateBuildSource({
         </>
       )}
       <small className="quiet">
-        The executable must support <code>--drop-manifest</code>. Private apps receive a <code>dev-</code>
+        Choose a Linux executable or a .tar.gz archive containing one executable. The executable must support <code>--drop-manifest</code>. Private apps receive a <code>dev-</code>
         hostname.
       </small>
       {busy && <span role="status">Checking build…</span>}
