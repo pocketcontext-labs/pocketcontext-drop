@@ -265,7 +265,7 @@ it("shows published products beyond Crew and Atlas in the catalog", async () => 
   fireEvent.click(await screen.findByRole("button", {name: "Choose New Product"}));
   expect(screen.getByLabelText("App name")).toHaveValue("My New Product");
   expect(screen.getByLabelText("Release")).toHaveValue("abc");
-  expect(screen.getByLabelText("Resources").querySelectorAll("option")).toHaveLength(7);
+  expect(screen.getByLabelText("Resources").querySelectorAll("option")).toHaveLength(8);
 });
 
 it("stages an administrator's HTTPS release URL for rehearsal", async () => {
