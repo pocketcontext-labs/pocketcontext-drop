@@ -65,7 +65,7 @@ export default function Apps({ beta = false, official=false }: { beta?: boolean;
   }, [load]);
   const full = quota !== null && !quota.unlimited && quota.used >= quota.limit;
   return (
-    <section className="panel wide" aria-labelledby="apps-title">
+    <section className={"panel wide" + (official ? " workspace-list" : "")} aria-labelledby="apps-title">
       <div className="row heading">
         <h2 id="apps-title">{official?"Your workspaces":"Your apps"}</h2>
         {full ? (
@@ -86,7 +86,7 @@ export default function Apps({ beta = false, official=false }: { beta?: boolean;
         !error && <p className="quiet">Loading apps…</p>
       ) : apps.length === 0 ? (
         <p className="empty">
-          No apps yet. Create the first one.
+          {official ? "No workspaces yet." : "No apps yet. Create the first one."}
         </p>
       ) : (
         <ol className="apps" aria-label="Apps, newest first">
