@@ -114,6 +114,11 @@ func TestBetaProbeLeasesAndDeployment(t *testing.T) {
 		doc := reportOf(host)
 		nib := doc["nibrunner"].(map[string]any)
 		nib["reportedAt"] = at.Format(time.RFC3339Nano)
+		if host == hostB {
+			// The node still has enough immediate room for this app, but subtracting
+			// its earlier peak from already-free RAM would rank it last.
+			nib["allocatable"].(map[string]any)["memoryMib"] = 3500
+		}
 		nib["guestMemory"] = map[string]any{"at": at.Unix(), "used_mib": used, "running_vms": 2}
 		nib["versions"].(map[string]any)["cpuQuarterQuota"] = true
 		if code, r := report(t, h, token, doc); code != http.StatusOK {

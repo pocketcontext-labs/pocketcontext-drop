@@ -210,8 +210,9 @@ func betaPlacement(c *Ctx, a *core.Record) error {
 			return err
 		}
 		headroom := unreserved
-		if known {
-			headroom = mem - peak - a.GetInt("memory_mib")
+		_, guestCapacity := nodeResources(node, "capacity")
+		if known && guestCapacity >= 0 {
+			headroom = guestCapacity - peak - a.GetInt("memory_mib")
 		}
 		if headroom < 0 {
 			continue

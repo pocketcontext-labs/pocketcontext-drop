@@ -192,6 +192,7 @@ func TestPlacementChecksNodeTotal(t *testing.T) {
 	n1, _, t1 := h.Node("node-one", hostA)
 	small := reportOf(hostA)
 	small["nibrunner"].(map[string]any)["allocatable"] = map[string]any{"vcpuCount": 3, "memoryMib": 2048, "cacheBytes": 0}
+	small["nibrunner"].(map[string]any)["capacity"] = map[string]any{"vcpuCount": 3, "memoryMib": 2048, "cacheBytes": 0}
 	if status, out := report(t, h, t1, small); status != 200 {
 		t.Fatalf("report %v", out)
 	}
@@ -200,11 +201,20 @@ func TestPlacementChecksNodeTotal(t *testing.T) {
 	}
 	one, two, three := mk("app-one", 2, 512), mk("app-two", 1, 512), mk("app-three", 1, 512)
 	h.MustOp(owner, "placement.set", map[string]any{"app": one, "node": n1})
+	// The running first app has already been subtracted in allocatable.
+	small["nibrunner"].(map[string]any)["allocatable"] = map[string]any{"vcpuCount": 1, "memoryMib": 1536}
+	if code, out := report(t, h, t1, small); code != 200 {
+		t.Fatal(out)
+	}
 	h.MustOp(owner, "placement.set", map[string]any{"app": two, "node": n1}) // 3 of 3 vCPUs
 	r := h.Op(owner, "placement.set", map[string]any{"app": three, "node": n1})
 	wantError(t, r, 409, dropapi.CodeNodeTooSmall)
 	if !strings.Contains(r.Raw, "3 vCPUs") {
 		t.Errorf("the refusal explains the totals: %s", r.Raw)
+	}
+	small["nibrunner"].(map[string]any)["allocatable"] = small["nibrunner"].(map[string]any)["capacity"]
+	if code, out := report(t, h, t1, small); code != 200 {
+		t.Fatal(out)
 	}
 	// Placing an app again on its node does not count it twice.
 	h.MustOp(owner, "placement.set", map[string]any{"app": one, "node": n1})

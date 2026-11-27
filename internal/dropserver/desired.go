@@ -205,11 +205,15 @@ func desiredApp(app core.App, record *core.Record, services Services) (dropapi.D
 // A missing measurement permits initial placement before the first report.
 // A reported zero is known and leaves no room for an additional placement.
 func allocatable(node *core.Record) (vcpu, memoryMib int) {
+	return nodeResources(node, "allocatable")
+}
+
+func nodeResources(node *core.Record, field string) (vcpu, memoryMib int) {
 	var a struct {
 		VCPUCount *int `json:"vcpuCount"`
 		MemoryMib *int `json:"memoryMib"`
 	}
-	_ = node.UnmarshalJSONField("allocatable", &a)
+	_ = node.UnmarshalJSONField(field, &a)
 	vcpu, memoryMib = -1, -1
 	if a.VCPUCount != nil && *a.VCPUCount >= 0 && *a.VCPUCount < 1<<20 {
 		vcpu = *a.VCPUCount
