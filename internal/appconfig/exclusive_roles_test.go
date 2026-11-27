@@ -68,3 +68,40 @@ func TestExclusiveRolesMigration(t *testing.T) {
 		t.Fatal("private workspace ownership changed", err)
 	}
 }
+
+func TestOwnerOnlyPrivateAppsMigration(t *testing.T) {
+	app := newHookApp(t)
+	const filename = "1820002800_owner_only_private_apps.js"
+	var old, upgrade core.MigrationsList
+	for _, m := range core.AppMigrations.Items() {
+		if m.File < filename {
+			old.Add(m)
+		} else if m.File == filename {
+			upgrade.Add(m)
+		}
+	}
+	if _, err := core.NewMigrationsRunner(app, old).Up(); err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		"INSERT INTO users(id,email,role,tokenKey) VALUES ('dev','dev@example.test','developer','d'),('user','user@example.test','user','u')",
+		"INSERT INTO apps(id,slug,owner,developer_private,nib_app_id,volume_id) VALUES ('solo','solo','dev',1,'d-solo','v-solo'),('shared','shared','dev',1,'d-shared','v-shared')",
+		"INSERT INTO drop_private_testers(app,account) VALUES ('shared','user')",
+		"CREATE TABLE old_keys AS SELECT * FROM drop_private_keys",
+	} {
+		if _, err := app.DB().NewQuery(q).Execute(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := core.NewMigrationsRunner(app, upgrade).Up(); err != nil {
+		t.Fatal(err)
+	}
+	var rotated string
+	if err := app.DB().NewQuery("SELECT k.app FROM drop_private_keys k JOIN old_keys o ON o.app=k.app WHERE k.seed != o.seed").Row(&rotated); err != nil || rotated != "shared" {
+		t.Fatalf("expected to fence tickets for the formerly shared app; affected %q, err %v", rotated, err)
+	}
+	var tables int
+	if err := app.DB().NewQuery("SELECT count(*) FROM sqlite_schema WHERE name='drop_private_testers'").Row(&tables); err != nil || tables != 0 {
+		t.Fatalf("tester table remains after migration: %d, err %v", tables, err)
+	}
+}

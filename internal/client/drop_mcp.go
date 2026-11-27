@@ -49,7 +49,6 @@ var dropReads = []dropRead{
 	{"usage", "usage.get", dropapi.RoleUser, "an app's S3 usage (app): last 24 hours by hour, month to date against its soft and hard limits, stored bytes and an estimated cost"},
 	{"events", "event.list", dropapi.RoleUser, "events (who changed what), newest first, of your apps or of one app (app); all:true (admins) lists every event"},
 	{"catalog", "catalog.list", dropapi.RoleUser, "published product releases in the workspace catalog"},
-	{"shared", "private.shared", dropapi.RoleUser, "private apps explicitly shared with your account"},
 	{"users", "user.list", dropapi.RoleAdmin, "every account with role, developer access, quota and suspension"},
 	{"invites", "invite.list", dropapi.RoleAdmin, "invites and their state (open, used, revoked, expired)"},
 	{"nodes", "node.list", dropapi.RoleAdmin, "hosts and their state"},
@@ -260,7 +259,7 @@ func (p mcpProfile) writeNames() []string {
 	}
 	names := []string{"workspace.create", "workspace.resize", "workspace.upgrade"}
 	for _, spec := range dropapi.Specs() {
-		if p.role == dropapi.RoleDeveloper && (strings.HasPrefix(spec.Name, "developer.") || strings.HasPrefix(spec.Name, "private.") || spec.PrivateOwnerWrite()) && spec.MCP && spec.Allows(p.role) && !slices.Contains(names, spec.Name) {
+		if p.role == dropapi.RoleDeveloper && (strings.HasPrefix(spec.Name, "developer.") || spec.PrivateOwnerWrite()) && spec.MCP && spec.Allows(p.role) && !slices.Contains(names, spec.Name) {
 			names = append(names, spec.Name)
 		}
 	}

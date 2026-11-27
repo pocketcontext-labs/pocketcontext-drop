@@ -754,7 +754,7 @@ func TestMCPSecretSentinel(t *testing.T) {
 func TestMCPDeveloperAccess(t *testing.T) {
 	h := hostedMCP(t)
 	admin := h.Token(h.Owner())
-	tester, testerSession := h.User("preview@sample.test", "user")
+	_, testerSession := h.User("preview@sample.test", "user")
 	testerToken := h.OAuthToken(testerSession)
 	query := h.App.DB().NewQuery("UPDATE drop_official_config SET enabled = 1 WHERE id = 1")
 	if _, err := query.Execute(); err != nil {
@@ -773,11 +773,11 @@ func TestMCPDeveloperAccess(t *testing.T) {
 			enabled := assigned == "developer"
 			h.MustOp(admin, "user.set", map[string]any{"user": account.Id, "role": assigned})
 			tools := listTools(t, h, token)
-			if len(tools) != 2 || !slices.Contains(tools[0].InputSchema.Properties["what"].Enum, "shared") {
+			if len(tools) != 2 || slices.Contains(tools[0].InputSchema.Properties["what"].Enum, "shared") {
 				t.Fatalf("%s unexpected tools: %+v", role, tools)
 			}
 			names := tools[1].InputSchema.Properties["op"].Enum
-			for _, name := range []string{"developer.create", "developer.upload_link", "developer.deploy", "private.grant", "private.revoke"} {
+			for _, name := range []string{"developer.create", "developer.upload_link", "developer.deploy"} {
 				if slices.Contains(names, name) != enabled || strings.Contains(tools[1].Description, "- "+name+" ") != enabled {
 					t.Errorf("%s wrong exposure of %s (developer %t): %v", role, name, enabled, names)
 				}
@@ -801,15 +801,7 @@ func TestMCPDeveloperAccess(t *testing.T) {
 			if path, _ := dig(upload, "result", "path").(string); !strings.HasPrefix(path, dropapi.UploadRoutePrefix) {
 				t.Fatalf("missing one-time upload path for %s", role)
 			}
-			ref := map[string]any{"app": app["id"], "email": tester.Email()}
-			for _, op := range []string{"private.grant", "private.revoke"} {
-				mustTool(t, h, token, "drop_write", map[string]any{"op": op, "input": ref})
-				shared := mustTool(t, h, testerToken, "drop_read", map[string]any{"what": "shared"})["apps"].([]any)
-				if op == "private.grant" && (len(shared) != 1 || dig(shared[0], "id") != app["id"]) || op == "private.revoke" && len(shared) != 0 {
-					t.Fatalf("tester apps after %s: %v", op, shared)
-				}
-				wantToolError(t, callTool(t, h, testerToken, "drop_read", map[string]any{"what": "releases", "app": app["id"]}), 404, "not_found")
-			}
+			wantToolError(t, callTool(t, h, testerToken, "drop_read", map[string]any{"what": "releases", "app": app["id"]}), 404, "not_found")
 		}
 	}
 }

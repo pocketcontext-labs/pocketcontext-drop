@@ -91,10 +91,7 @@ var opName = regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`)
 // Later milestones add their operations here (and their handlers in
 // internal/dropserver); a test checks that both sides agree.
 var specs = []Spec{
-	{Name: "private.grant", Role: RoleDeveloper, MCP: true, Input: &PrivateTesterInput{}, Summary: "Give an existing account runtime-only access to your private app."},
-	{Name: "private.revoke", Role: RoleDeveloper, MCP: true, Input: &PrivateTesterInput{}, Summary: "Remove an account's runtime access to your private app."},
-	{Name: "private.access", Role: RoleUser, OnceResult: true, Input: &PrivateAccessInput{}, Summary: "Issue short-lived runtime access to a private app you own or may test."},
-	{Name: "private.shared", Role: RoleUser, Read: true, Input: &MeInput{}, Summary: "List private apps you have been invited to test."},
+	{Name: "private.access", Role: RoleDeveloper, OnceResult: true, Input: &PrivateAccessInput{}, Summary: "Issue short-lived runtime access to a private app you own."},
 	{Name: "catalog.list", Role: RoleUser, Input: &CatalogListInput{}, Read: true, Summary: "List current official workspace releases."},
 	{Name: "catalog.import_url", Role: RoleAdmin, Standalone: true, Input: &OfficialImportURL{}, Summary: "Download and check a catalog candidate from a public HTTPS URL."},
 	{Name: "catalog.upload", Role: RoleAdmin, Input: &OfficialUpload{}, OnceResult: true, Summary: "Upload a candidate for product and version checks."},

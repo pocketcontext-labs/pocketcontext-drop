@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"ganigeorgiev.com/pocketbase/dbx"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/agent"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/awsx"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
@@ -126,6 +127,15 @@ func testPrivateDeveloperRelease(t *testing.T, withManifest bool) {
 	d, _ := desired(t, h, node)
 	if len(d.Apps) != 1 || d.Apps[0].PrivateRoute == nil || d.Apps[0].Release.PrivateKey == "" || len(d.Apps[0].Hostnames) != 0 {
 		t.Fatal("missing protected deployment")
+	}
+	// A migration rotates signing keys directly in the database. Nodes must
+	// receive the new key on their next pull even without a write operation.
+	if _, err := h.App.DB().NewQuery("UPDATE drop_private_keys SET seed=randomblob(32) WHERE app={:id}").Bind(dbx.Params{"id": id}).Execute(); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := desired(t, h, node)
+	if len(after.Apps) != 1 || after.Apps[0].PrivateRoute == nil || after.DesiredSeq <= d.DesiredSeq || bytes.Equal(after.Apps[0].PrivateRoute.PublicKey, d.Apps[0].PrivateRoute.PublicKey) {
+		t.Fatal("node failed to reconcile rotated private app key")
 	}
 	inactive, doc := desired(t, h, oldNode)
 	if len(inactive.Apps) != 0 || strings.Contains(doc, d.Apps[0].Release.PrivateKey) {

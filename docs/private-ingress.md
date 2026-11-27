@@ -1,12 +1,6 @@
 # Opening private developer apps
 
-An app owner can grant runtime access to an existing Drop account with
-`private.grant` and its email address. The grant follows that account's ID.
-Invited testers find the app with `private.shared` or the **Shared with you**
-section of the reader. Opening the app signs a five-minute credential scoped
-to this immutable app ID. When a session expires, open the app from Drop again.
-An invitation grants access to the running app only. The app can also have
-its own sign-in, for example Crew's owner email verification.
+Only the developer who owns the private app can open it. Drop signs a five-minute credential scoped to the app ID. Open the app from Drop again when the credential expires. The guest can also require its own sign-in.
 
 ## Node and ingress configuration
 
@@ -62,14 +56,8 @@ for its own authentication. The `/.well-known/drop/app-session` path and
 Authenticated HTTP clients can call `private.access` directly and send the
 returned token in the named header to the returned HTTPS origin. Keep the
 credential private and omit it from logs and command-line arguments. The
-operation authorizes only the owner or an explicitly granted account and
+operation authorizes only the developer who owns the app and
 returns the credential once. A repeat using the same idempotency key does
 not recover it.
 
-Revocation removes the tester's grant immediately in the control plane and
-rotates the app verification key. After the node applies the rotation,
-existing credentials fail on new requests. A disconnected node can accept
-its last key until the issued token expires. A previously upgraded WebSocket
-can remain open until it disconnects. The control plane rotates affected
-keys when a tester is suspended or an owner loses developer access. A hosted
-restore also rotates keys and clears tester grants.
+Drop rotates the verification key when the owner loses developer access or the control plane is restored. Nodes reject earlier credentials as soon as they apply the new key. A disconnected node can accept its last key until the token expires. An established WebSocket can remain open until it disconnects.
