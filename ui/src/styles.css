@@ -987,3 +987,20 @@ html { scrollbar-gutter: stable; }
 .directory-credit-actions { display: flex; gap: 4px; }
 .directory-credit-actions button { flex: 1; padding: 4px 6px; font-size: 13px; }
 .directory-credit-editor [role="alert"] { margin: 0; overflow-wrap: anywhere; color: var(--danger); }
+
+.credit-account-picker { grid-template-columns: minmax(0, 1fr); }
+.credit-account-picker label, .credit-account-picker select { min-width: 0; max-width: 100%; }
+.credit-account-picker select { width: 100%; text-overflow: ellipsis; }
+.credit-adjustment { margin-bottom: 8px; }
+@media (max-width: 640px) {
+  .credits-page { min-width: 0; }
+  .credits-page .row { flex-wrap: wrap; }
+  .credit-history .row > label { width: 100%; min-width: 0; }
+  .credit-usage thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .credit-usage :is(table, tbody) { display: block; }
+  .credit-usage tr { display: grid; gap: 4px; padding-block: 10px; border-top: 1px solid var(--border); }
+  .credit-usage td { padding: 0; border: 0; overflow-wrap: anywhere; }
+  .credit-usage td:first-child { font-weight: 600; }
+  .credit-usage td[data-label] { display: flex; justify-content: space-between; gap: 12px; }
+  .credit-usage td[data-label]::before { content: attr(data-label); color: var(--muted); text-align: start; }
+}

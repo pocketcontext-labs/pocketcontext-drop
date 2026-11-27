@@ -101,7 +101,7 @@ export default function Credits({ admin, onPurchase }: { admin: boolean; onPurch
   return <section className="panel wide credits-page">
     <h2>Credits</h2>
     {error && <p role="alert">{error}</p>}
-    {admin && <fieldset>
+    {admin && <fieldset className="credit-account-picker">
       <legend>Account</legend>
       <label>Find an account <input type="search" value={query} placeholder="Email or user ID" onChange={e => {
         setQuery(e.target.value); setOffset(0);
@@ -126,12 +126,12 @@ export default function Credits({ admin, onPurchase }: { admin: boolean; onPurch
       {rate > 0 && data.state.balance > 0 && <p>About {(data.state.balance / 1_000_000 / rate).toFixed(1)} hours left at this compute rate.</p>}
       {data.state.balance === 0 && <p>{Math.ceil((3600 - data.state.trial_seconds) / 60)} shared awake minutes left. Apps run locally until the buffer runs out, then stop with their data retained. A top-up resets the buffer to 60 minutes.</p>}
       {admin ?
-        <label>Adjustment in credits <input type="number" step="0.000001" value={delta} onChange={e => setDelta(e.target.value)} /></label> :
+        <label className="credit-adjustment">Adjustment in credits <input type="number" step="0.000001" value={delta} onChange={e => setDelta(e.target.value)} /></label> :
         <p>Simulated purchase. No payment is collected.</p>}
       <button className="primary" disabled={busy || (admin && !Number(delta))} onClick={() => void submit()}>{admin ? "Apply adjustment" :
         `Buy ${data.settings.pack} credits (€${(data.settings.pack * data.settings.euro_micros_per_credit / 1_000_000).toFixed(2)})`}</button>
-      {data.apps.length > 0 && <><h3>App usage</h3><div className="credit-table"><table><thead><tr><th>App</th><th>Credits/hour</th><th>Running costs (credits)</th><th>Storage costs (credits)</th></tr></thead><tbody>
-        {data.apps.map(a => <tr key={a.id}><td>{a.name}</td><td>{a.rate}</td><td>{credits(a.compute)}</td><td>{credits(a.s3)}</td></tr>)}
+      {data.apps.length > 0 && <><h3>App usage</h3><div className="credit-table credit-usage"><table><thead><tr><th>App</th><th>Credits/hour</th><th>Running costs (credits)</th><th>Storage costs (credits)</th></tr></thead><tbody>
+        {data.apps.map(a => <tr key={a.id}><td>{a.name}</td><td data-label="Credits/hour">{a.rate}</td><td data-label="Running costs (credits)">{credits(a.compute)}</td><td data-label="Storage costs (credits)">{credits(a.s3)}</td></tr>)}
       </tbody></table></div></>}
       <details className="credit-history"><summary>Transaction history</summary>
       <div className="row">
