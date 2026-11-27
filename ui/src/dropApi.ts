@@ -10,6 +10,7 @@ export const OPS = [
   "private.access",
   "private.shared",
   "catalog.list",
+  "catalog.import_url",
   "catalog.upload",
   "catalog.rehearse",
   "catalog.archive",

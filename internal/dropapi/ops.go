@@ -96,6 +96,7 @@ var specs = []Spec{
 	{Name: "private.access", Role: RoleUser, OnceResult: true, Input: &PrivateAccessInput{}, Summary: "Issue short-lived runtime access to a private app you own or may test."},
 	{Name: "private.shared", Role: RoleUser, Read: true, Input: &MeInput{}, Summary: "List private apps you have been invited to test."},
 	{Name: "catalog.list", Role: RoleUser, Input: &CatalogListInput{}, Read: true, Summary: "List current official workspace releases."},
+	{Name: "catalog.import_url", Role: RoleAdmin, Standalone: true, Input: &OfficialImportURL{}, Summary: "Download and check a catalog candidate from a public HTTPS URL."},
 	{Name: "catalog.upload", Role: RoleAdmin, Input: &OfficialUpload{}, OnceResult: true, Summary: "Upload a candidate for product and version checks."},
 	{Name: "catalog.rehearse", Role: RoleAdmin, Input: &OfficialRehearsal{}, Summary: "Record fixture evidence for an exact candidate and baseline."},
 	{Name: "catalog.archive", Role: RoleAdmin, Input: &BetaDigest{}, Summary: "Archive a published release and retain installed copies."},

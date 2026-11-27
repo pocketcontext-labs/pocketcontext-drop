@@ -28,6 +28,12 @@ func TestOfficialWorkspaceLifecycle(t *testing.T) {
 	admin := h.Token(h.Owner())
 	_, alice := h.User("alice@example.test", "user")
 	_, bob := h.User("bob@example.test", "user")
+	_, developer := h.User("developer@example.test", "developer")
+	badURL := map[string]any{"product": "crew", "version": "1.2", "url": "http://example.test/file.tar.gz"}
+	for _, token := range []string{alice, developer} {
+		wantError(t, h.Op(token, "catalog.import_url", badURL), 403, dropapi.CodeForbidden)
+	}
+	wantError(t, h.Op(admin, "catalog.import_url", badURL), 400, dropapi.CodeInvalidInput)
 	node := h.MustOp(admin, "node.create", map[string]any{"name": "official-node", "host_id": hostA})
 	_, nodeToken := h.NodeLogin("official-node", node["password"].(string))
 	ready := reportOf(hostA)

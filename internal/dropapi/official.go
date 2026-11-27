@@ -9,6 +9,11 @@ type OfficialUpload struct {
 	Product string `json:"product"`
 	Version string `json:"version"`
 }
+type OfficialImportURL struct {
+	Product string `json:"product"`
+	Version string `json:"version"`
+	URL     string `json:"url"`
+}
 type CatalogListInput struct {
 	AllVersions     bool `json:"all_versions,omitempty"`
 	IncludeArchived bool `json:"include_archived,omitempty"`

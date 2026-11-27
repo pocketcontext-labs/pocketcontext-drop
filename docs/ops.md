@@ -291,8 +291,7 @@ with `catalog.submissions {}` and stages one with
 digest. Continue at step 2 using the accepted bytes and digest. Other private
 releases remain visible only to their owners.
 
-1. To stage an executable directly, call `catalog.upload` with its manifest product identifier and version.
-   PUT the Linux executable to its one-time path. Drop computes its digest,
+1. Choose **File** or **Download URL** in **Releases**. For a file, call `catalog.upload` with its manifest product identifier and version, then PUT the release to the one-time path. For a public HTTPS release, call `catalog.import_url {product,version,url}`. Both paths stage the extracted Linux executable for rehearsal. Drop computes its digest,
    checks the ELF, runs the existing isolated manifest probe and checks the
    product, version, runtime requirements, and resource minimum.
 2. Exercise the actual candidate on disposable data. For a first release,

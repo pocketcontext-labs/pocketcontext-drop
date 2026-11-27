@@ -1,9 +1,11 @@
 package dropserver
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
+	"io"
 	"net/http"
 	"os"
 
@@ -51,53 +53,86 @@ func (u *uploader) candidateOrProbe(re *core.RequestEvent, hash string) error {
 	if re.Request.ContentLength > services.ReleaseMaxBytes {
 		return writeError(re, releaseTooLarge(services.ReleaseMaxBytes))
 	}
-	file, size, digest, err := spool(re.Request.Body, services.ReleaseMaxBytes)
+	result, err := checkAndStageCandidate(re.Request.Context(), re.App, re.Request.Body, link, func(tx core.App) error {
+		fresh, err := loadCandidateLink(tx, hash)
+		if err != nil || fresh != link {
+			return uploadLinkInvalid()
+		}
+		return waitExec(tx, "DELETE FROM drop_official_uploads WHERE token_hash={:hash}", dbx.Params{"hash": hash})
+	})
+	if err != nil {
+		return writeError(re, err)
+	}
+	return re.JSON(http.StatusOK, result)
+}
+
+func officialImportURL(c *Ctx, in *dropapi.OfficialImportURL) (any, error) {
+	if err := validateCandidate(in.Product, in.Version); err != nil {
+		return nil, err
+	}
+	if servicesOf(c.App).Releases == nil {
+		return nil, releasesUnavailable()
+	}
+	link := candidateLink{Owner: c.Auth.Id, Product: in.Product, Version: in.Version}
+	return downloadReleaseURL(c, &dropapi.ImportURLInput{URL: in.URL}, func(data []byte, _ string) (any, error) {
+		return checkAndStageCandidate(c.Request.Context(), c.App, bytes.NewReader(data), link, func(tx core.App) error {
+			admin, err := tx.FindRecordById("users", link.Owner)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
+			if admin == nil || admin.GetBool("suspended") || admin.GetString("role") != "admin" || admin.TokenKey() != c.Auth.TokenKey() {
+				return Forbidden("An active administrator account is required.")
+			}
+			return nil
+		})
+	})
+}
+
+func checkAndStageCandidate(ctx context.Context, app core.App, body io.Reader, link candidateLink, authorize func(core.App) error) (any, error) {
+	services := servicesOf(app)
+	file, size, digest, err := spoolBuild(body, services.ReleaseMaxBytes)
 	if file != nil {
 		defer os.Remove(file.Name())
 		defer file.Close()
 	}
 	if err != nil {
-		return writeError(re, err)
+		return nil, err
 	}
-	outcome, raw, err := probeFile(re.Request.Context(), services.ProbeSocket, file, size, digest)
+	outcome, raw, err := probeFile(ctx, services.ProbeSocket, file, size, digest)
 	if err != nil {
-		return writeError(re, Conflict("probe_pending", "The release checker is unavailable. Retry this upload."))
+		return nil, Conflict("probe_pending", "The release checker is unavailable. Retry the check.")
 	}
 	m, minimum, err := workspaceManifest(raw)
 	if err != nil {
-		return writeError(re, err)
+		return nil, err
 	}
 	if outcome != "success" || m.App != link.Product || m.Version != link.Version {
-		return writeError(re, Invalid("manifest", "The product and version must match the uploaded executable."))
+		return nil, Invalid("manifest", "The product and version must match the executable manifest.")
 	}
 	key, err := awsx.ReleaseKey(digest)
 	if err != nil {
-		return writeError(re, err)
+		return nil, err
 	}
 	releaseBlobMu.Lock()
 	defer releaseBlobMu.Unlock()
-	err = re.App.RunInTransaction(func(tx core.App) error {
-		fresh, err := loadCandidateLink(tx, hash)
-		if err != nil || fresh != link {
-			return uploadLinkInvalid()
+	err = app.RunInTransaction(func(tx core.App) error {
+		if err := authorize(tx); err != nil {
+			return err
 		}
 		if err := stageOfficial(tx, m, raw, minimum, digest, size); err != nil {
 			return err
 		}
-		ctx, cancel := context.WithTimeout(re.Request.Context(), uploadStoreTimeout)
+		ctx, cancel := context.WithTimeout(ctx, uploadStoreTimeout)
 		defer cancel()
 		if _, err = services.Releases.PutIfAbsent(ctx, key, file, size, digest); err != nil {
 			return Conflict("store_unavailable", "The release store is unavailable. Retry this upload.")
 		}
-		if err := waitExec(tx, "DELETE FROM drop_official_uploads WHERE token_hash={:hash}", dbx.Params{"hash": hash}); err != nil {
-			return err
-		}
 		return WriteEvent(tx, EventRecord{Actor: link.Owner, Action: "catalog.checked", Detail: map[string]any{"product": m.App, "version": m.Version, "sha256": digest}})
 	})
 	if err != nil {
-		return writeError(re, err)
+		return nil, err
 	}
-	return re.JSON(http.StatusOK, map[string]any{"sha256": digest, "product": m.App, "version": m.Version, "size_bytes": size})
+	return map[string]any{"sha256": digest, "product": m.App, "version": m.Version, "size_bytes": size}, nil
 }
 
 func workspaceManifest(raw []byte) (dropapi.BetaManifest, int, error) {

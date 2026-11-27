@@ -19,6 +19,7 @@ import (
 func init() {
 	register("catalog.list", officialList)
 	register("catalog.upload", officialUpload)
+	register("catalog.import_url", officialImportURL)
 	register("catalog.publish", officialPublish)
 	register("catalog.archive", officialArchive)
 	register("catalog.activate", officialActivate)
@@ -72,9 +73,16 @@ func officialList(c *Ctx, in *dropapi.CatalogListInput) (any, error) {
 	return map[string]any{"enabled": enabled, "releases": rows}, err
 }
 
+func validateCandidate(product, version string) error {
+	if !slugPattern.MatchString(product) || !betaVersionPattern.MatchString(version) {
+		return Invalid("version", "Enter a valid manifest product and release version.")
+	}
+	return nil
+}
+
 func officialUpload(c *Ctx, in *dropapi.OfficialUpload) (any, error) {
-	if !slugPattern.MatchString(in.Product) || !betaVersionPattern.MatchString(in.Version) {
-		return nil, Invalid("version", "Enter a valid manifest product and release version.")
+	if err := validateCandidate(in.Product, in.Version); err != nil {
+		return nil, err
 	}
 	if servicesOf(c.App).Releases == nil {
 		return nil, releasesUnavailable()

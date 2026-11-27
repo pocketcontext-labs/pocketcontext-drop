@@ -268,6 +268,8 @@ export function OfficialReleases({
   const { catalog, error: loadError, refresh } = useCatalog();
   const [product, setProduct] = useState("crew"),
     [version, setVersion] = useState(""),
+    [source, setSource] = useState("file"),
+    [url, setURL] = useState(""),
     [file, setFile] = useState<File>(),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
@@ -310,27 +312,43 @@ export function OfficialReleases({
         className="release-upload"
         onSubmit={(e) => {
           e.preventDefault();
-          if (!file) return;
           void act(async () => {
-            const { path } = await op<{ path: string }>("catalog.upload", {
-              product,
-              version,
-            });
-            const res = await fetch(path, {
-              method: "PUT",
-              body: file,
-              credentials: "omit",
-              redirect: "error",
-            });
-            if (!res.ok) {
-              const body = await res.json().catch(() => ({}));
-              throw new Error(body.message || "The release check failed.");
+            if (source === "url") {
+              await op("catalog.import_url", { product, version, url: url.trim() });
+            } else {
+              if (!file) throw new Error("Choose a release file.");
+              const { path } = await op<{ path: string }>("catalog.upload", {
+                product,
+                version,
+              });
+              const res = await fetch(path, {
+                method: "PUT",
+                body: file,
+                credentials: "omit",
+                redirect: "error",
+              });
+              if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.message || "The release check failed.");
+              }
             }
             return "Manifest checked. Attach a successful data rehearsal before publishing.";
           });
         }}
       >
-        <h3>Upload a release</h3>
+        <h3>Stage a release</h3>
+        <label>
+          Source
+          <select value={source} onChange={e => {
+            setSource(e.target.value);
+            setFile(undefined);
+            setError("");
+            setStatus("");
+          }}>
+            <option value="file">File</option>
+            <option value="url">Download URL</option>
+          </select>
+        </label>
         <label>
           App
           <input value={product} required maxLength={32} onChange={e => setProduct(e.target.value)} />
@@ -345,8 +363,11 @@ export function OfficialReleases({
             maxLength={80}
           />
         </label>
-        <label>
-          Linux executable
+        {source === "url" ? <label>
+          Release URL
+          <input type="url" placeholder="https://" required value={url} onChange={e => setURL(e.target.value)} />
+        </label> : <label>
+          Linux executable or archive
           <span className="release-file">
             <span className="release-file-button" aria-hidden="true">
               Choose file
@@ -365,9 +386,9 @@ export function OfficialReleases({
               onChange={(e) => setFile(e.target.files?.[0])}
             />
           </span>
-        </label>
+        </label>}
         <button className="primary" disabled={busy}>
-          Upload and check
+          {source === "url" ? "Download and check" : "Upload and check"}
         </button>
       </form>
       {(error || loadError) && <p role="alert">{error || loadError}</p>}

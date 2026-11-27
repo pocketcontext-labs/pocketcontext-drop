@@ -265,3 +265,16 @@ it("shows published products beyond Crew and Atlas in the catalog", async () => 
   expect(screen.getByLabelText("Release")).toHaveValue("abc");
   expect(screen.getByLabelText("Resources").querySelectorAll("option")).toHaveLength(7);
 });
+
+it("stages an administrator's HTTPS release URL for rehearsal", async () => {
+  const ops = vi.spyOn(api, "op").mockImplementation(async name =>
+    name === "catalog.list" ? { enabled: true, releases: [] } : { submissions: [] });
+  render(<OfficialReleases />);
+  const url = "https://releases.example.test/crew.tar.gz";
+  fireEvent.change(screen.getByLabelText("Source"), { target: { value: "url" } });
+  fireEvent.change(screen.getByLabelText("Release URL"), { target: { value: url } });
+  fireEvent.change(screen.getByLabelText("Version"), { target: { value: "1.2" } });
+  fireEvent.click(screen.getByRole("button", { name: "Download and check" }));
+  expect(await screen.findByText(/Manifest checked/)).toBeVisible();
+  expect(ops).toHaveBeenCalledWith("catalog.import_url", { product: "crew", version: "1.2", url });
+});
