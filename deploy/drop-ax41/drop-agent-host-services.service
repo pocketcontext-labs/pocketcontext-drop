@@ -20,6 +20,7 @@ Before=nibrunnerd.service
 Type=exec
 ExecStart=/usr/local/bin/drop agent host-services
 EnvironmentFile=/etc/drop/agent.env
+LoadCredential=node-secret:/etc/drop/agent.secret
 RuntimeDirectory=drop-agent
 RuntimeDirectoryMode=0700
 StateDirectory=drop-agent

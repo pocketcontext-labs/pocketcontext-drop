@@ -32,6 +32,10 @@ func storageCost(counts usage.Counts, stored usage.Stored, days int, s dropapi.C
 }
 
 func chargeS3(tx core.App, id, source string, c usage.Counts, stored usage.Stored, days int) error {
+	return chargeS3At(tx, id, source, c, stored, days, nil)
+}
+
+func chargeS3At(tx core.App, id, source string, c usage.Counts, stored usage.Stored, days int, pricing *dropapi.CreditSettings) error {
 	a, err := tx.FindRecordById("apps", id)
 	if err != nil {
 		return err
@@ -52,12 +56,16 @@ func chargeS3(tx core.App, id, source string, c usage.Counts, stored usage.Store
 	}
 	// Retained versions remain visible to inventory even at zero. A
 	// late observation cannot cause an overdraft or a charge on replay.
-	if state.Balance == 0 {
+	available := state.Balance - state.Reserved
+	if available <= 0 {
 		return nil
 	}
 	settings, err := creditSettings(tx)
 	if err != nil {
 		return err
+	}
+	if pricing != nil {
+		settings = *pricing
 	}
 	cost := storageCost(c, stored, days, settings)
 	var saved string
@@ -74,8 +82,8 @@ func chargeS3(tx core.App, id, source string, c usage.Counts, stored usage.Store
 	}
 	amount := new(big.Int).Quo(cost.Num(), cost.Denom())
 	remainder := new(big.Rat).Sub(cost, new(big.Rat).SetInt(amount))
-	if amount.Cmp(big.NewInt(state.Balance)) >= 0 {
-		amount.SetInt64(state.Balance)
+	if amount.Cmp(big.NewInt(available)) >= 0 {
+		amount.SetInt64(available)
 		remainder.SetInt64(0)
 	}
 	_, err = tx.DB().NewQuery("INSERT INTO drop_credit_s3_carry(app,fraction) VALUES({:a},{:f}) ON CONFLICT(app) DO UPDATE SET fraction=excluded.fraction").Bind(dbx.Params{"a": id, "f": remainder.RatString()}).Execute()
@@ -84,6 +92,10 @@ func chargeS3(tx core.App, id, source string, c usage.Counts, stored usage.Store
 	}
 	if err := appendCredit(tx, owner, id, "s3", key, -amount.Int64()); err != nil {
 		return err
+	}
+	if pricing != nil {
+		// Reconciliation nets the provisional credit and final charge before applying a transition.
+		return nil
 	}
 	state.Balance -= amount.Int64()
 	if state.Balance == 0 {

@@ -12,7 +12,7 @@ import (
 )
 
 func creditBlocked(state creditAccount) bool {
-	return state.Balance == 0 && state.Trial >= 3600
+	return state.Balance <= state.Reserved && state.Trial >= 3600
 }
 func allowCreditDeployment(app core.App, owner string) error {
 	state, err := balanceOf(app, owner)
@@ -195,7 +195,8 @@ func settleCompute(tx core.App, app *core.Record, node, deployment string, at, s
 	}
 	bufferSeconds := seconds
 	depleted := false
-	if state.Balance > 0 {
+	available := state.Balance - state.Reserved
+	if available > 0 {
 		var rem int64
 		if err := tx.DB().NewQuery("SELECT COALESCE((SELECT remainder FROM drop_credit_compute_carry WHERE app={:a}),0)").Bind(dbx.Params{"a": app.Id}).Row(&rem); err != nil {
 			return false, err
@@ -203,10 +204,10 @@ func settleCompute(tx core.App, app *core.Record, node, deployment string, at, s
 		// Saturate before multiplication. The wallet cap fits 10^12 microcredits
 		// and units is constrained to 1..16 when the deployment is recorded.
 		rate := units * microcredits
-		paidSeconds := min(seconds, (state.Balance*3600-rem+rate-1)/rate)
+		paidSeconds := min(seconds, (available*3600-rem+rate-1)/rate)
 		bufferSeconds -= paidSeconds
 		numerator := paidSeconds*rate + rem
-		amount := min(state.Balance, numerator/3600)
+		amount := min(available, numerator/3600)
 		if _, err := tx.DB().NewQuery("INSERT INTO drop_credit_compute_carry(app,remainder) VALUES({:a},{:r}) ON CONFLICT(app) DO UPDATE SET remainder=excluded.remainder").Bind(dbx.Params{"a": app.Id, "r": numerator % 3600}).Execute(); err != nil {
 			return false, err
 		}

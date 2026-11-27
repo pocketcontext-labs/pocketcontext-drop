@@ -55,6 +55,7 @@ type UsageCounters struct {
 	RejectedRequests int64 `json:"rejectedRequests"`
 	BytesIn          int64 `json:"bytesIn"`
 	BytesOut         int64 `json:"bytesOut"`
+	BudgetRefusals   int64 `json:"budgetRefusals,omitempty"`
 }
 
 // MaxUsageCounter bounds each counter.
@@ -71,13 +72,13 @@ func (c UsageCounters) Valid() bool {
 }
 
 func (c UsageCounters) values() []int64 {
-	return []int64{c.ReadRequests, c.WriteRequests, c.ListRequests, c.DeleteRequests, c.RejectedRequests, c.BytesIn, c.BytesOut}
+	return []int64{c.ReadRequests, c.WriteRequests, c.ListRequests, c.DeleteRequests, c.RejectedRequests, c.BytesIn, c.BytesOut, c.BudgetRefusals}
 }
 
 // Minus returns c - prev, or ok false when any counter went down.
 func (c UsageCounters) Minus(prev UsageCounters) (UsageCounters, bool) {
 	d := UsageCounters{c.ReadRequests - prev.ReadRequests, c.WriteRequests - prev.WriteRequests, c.ListRequests - prev.ListRequests,
-		c.DeleteRequests - prev.DeleteRequests, c.RejectedRequests - prev.RejectedRequests, c.BytesIn - prev.BytesIn, c.BytesOut - prev.BytesOut}
+		c.DeleteRequests - prev.DeleteRequests, c.RejectedRequests - prev.RejectedRequests, c.BytesIn - prev.BytesIn, c.BytesOut - prev.BytesOut, c.BudgetRefusals - prev.BudgetRefusals}
 	for _, v := range d.values() {
 		if v < 0 {
 			return UsageCounters{}, false
@@ -90,5 +91,5 @@ func (c UsageCounters) Minus(prev UsageCounters) (UsageCounters, bool) {
 func (c UsageCounters) Plus(d UsageCounters) UsageCounters {
 	add := func(a, b int64) int64 { return min(a+b, MaxUsageCounter) }
 	return UsageCounters{add(c.ReadRequests, d.ReadRequests), add(c.WriteRequests, d.WriteRequests), add(c.ListRequests, d.ListRequests),
-		add(c.DeleteRequests, d.DeleteRequests), add(c.RejectedRequests, d.RejectedRequests), add(c.BytesIn, d.BytesIn), add(c.BytesOut, d.BytesOut)}
+		add(c.DeleteRequests, d.DeleteRequests), add(c.RejectedRequests, d.RejectedRequests), add(c.BytesIn, d.BytesIn), add(c.BytesOut, d.BytesOut), add(c.BudgetRefusals, d.BudgetRefusals)}
 }

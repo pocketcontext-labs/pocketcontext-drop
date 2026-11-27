@@ -197,6 +197,7 @@ export default function UsagePanel({ app }: { app: App }) {
           ))}
         </ul>
       )}
+      {(usage.budget_refusals ?? 0) > 0 && <p role="status">The node has blocked {usage.budget_refusals?.toLocaleString()} storage requests because it could not reserve credits.</p>}
       <h3>This month ({usage.month}, UTC)</h3>
       <ul className="limits">
         {usage.limits.map((l) => (

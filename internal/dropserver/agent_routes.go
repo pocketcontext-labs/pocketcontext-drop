@@ -43,6 +43,9 @@ func registerAgentRoutes(e *core.ServeEvent) {
 		return serveDesired(re, state)
 	})
 	e.Router.POST(dropapi.AgentReportRoute, func(re *core.RequestEvent) error {
+		if re.Request.Header.Get("Content-Type") == dropapi.StorageBudgetMedia {
+			return serveStorageBudget(re, state)
+		}
 		return serveReport(re, state)
 	}).Bind(apis.BodyLimit(dropapi.MaxReportBytes))
 }
@@ -64,7 +67,11 @@ func agentNode(re *core.RequestEvent, state *agentState) (*core.Record, error) {
 	if node.GetString("state") == dropapi.NodeDisabled {
 		return nil, &dropapi.Error{Status: http.StatusForbidden, Code: dropapi.CodeNodeDisabled, Message: "This node is disabled."}
 	}
-	if !state.allowRoute(node.Id) {
+	if re.Request.URL.Path == dropapi.AgentReportRoute && re.Request.Header.Get("Content-Type") == dropapi.StorageBudgetMedia {
+		if !state.storageRequests.allow(node.Id, state.clock()) {
+			return nil, &dropapi.Error{Status: 429, Code: dropapi.CodeRateLimited, Message: "Too many storage budget reports."}
+		}
+	} else if !state.allowRoute(node.Id) {
 		re.Response.Header().Set("Retry-After", "5")
 		return nil, &dropapi.Error{Status: http.StatusTooManyRequests, Code: dropapi.CodeRateLimited, Message: "Too many agent requests. Slow down."}
 	}

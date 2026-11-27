@@ -56,9 +56,6 @@ const (
 var usageRunMu sync.Mutex
 
 func runUsageCollector(ctx context.Context, app core.App) {
-	if !servicesOf(app).metering() {
-		return
-	}
 	timer := time.NewTimer(time.Minute)
 	defer timer.Stop()
 	for {
@@ -66,6 +63,13 @@ func runUsageCollector(ctx context.Context, app core.App) {
 		case <-ctx.Done():
 			return
 		case <-timer.C:
+		}
+		if err := expireStorageReservations(app); err != nil && ctx.Err() == nil {
+			app.Logger().Error("Drop storage reservation expiry failed", "error", err.Error())
+		}
+		if !servicesOf(app).metering() {
+			timer.Reset(usageInterval)
+			continue
 		}
 		r, err := CollectUsage(ctx, app, time.Now())
 		if err != nil && ctx.Err() == nil {
@@ -208,7 +212,19 @@ func collectLogObject(ctx context.Context, app core.App, store awsx.LogReader, k
 			if err := addHourly(tx, id, k.Hour, *c); err != nil {
 				return err
 			}
-			if err := chargeS3(tx, id, "access:"+key+":"+k.Hour, *c, usage.Stored{}, 1); err != nil {
+			legacy := *c
+			for _, observation := range summary.Budget[k] {
+				handled, err := reconcileStorageBudget(tx, id, observation)
+				if err != nil {
+					return err
+				}
+				if handled {
+					legacy.ClassA -= observation.Counts.ClassA
+					legacy.ClassB -= observation.Counts.ClassB
+					legacy.BytesOut -= observation.Counts.BytesOut
+				}
+			}
+			if err := chargeS3(tx, id, "access:"+key+":"+k.Hour, legacy, usage.Stored{}, 1); err != nil {
 				return err
 			}
 			hours++

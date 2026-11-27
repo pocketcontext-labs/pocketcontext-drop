@@ -15,6 +15,7 @@ package usage
 import (
 	"bufio"
 	"bytes"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -28,13 +29,14 @@ import (
 
 // Line is one parsed access-log record: the fields Drop uses.
 type Line struct {
-	Time       time.Time
-	Operation  string // REST.GET.OBJECT, BATCH.DELETE.OBJECT, S3.EXPIRE.OBJECT, ...
-	Key        string // URL-encoded object key, "" for "-"
-	RequestURI string // "GET /key HTTP/1.1", "" for "-"
-	Status     int
-	BytesSent  int64
-	ObjectSize int64
+	Reservation string // node-generated request correlation token; raw user agents are discarded
+	Time        time.Time
+	Operation   string // REST.GET.OBJECT, BATCH.DELETE.OBJECT, S3.EXPIRE.OBJECT, ...
+	Key         string // URL-encoded object key, "" for "-"
+	RequestURI  string // "GET /key HTTP/1.1", "" for "-"
+	Status      int
+	BytesSent   int64
+	ObjectSize  int64
 }
 
 // minFields is the number of fields up to and including the version id;
@@ -156,7 +158,13 @@ func ParseLine(line string) (Line, error) {
 	if err != nil {
 		return Line{}, err
 	}
-	return Line{Time: t.UTC(), Operation: op, Key: dash(f[7]), RequestURI: dash(f[8]), Status: status, BytesSent: sent, ObjectSize: size}, nil
+	var token string
+	if suffix, ok := strings.CutPrefix(f[16], "drop-s3/"); ok && len(suffix) == 32 {
+		if _, err := hex.DecodeString(suffix); err == nil {
+			token = suffix
+		}
+	}
+	return Line{Reservation: token, Time: t.UTC(), Operation: op, Key: dash(f[7]), RequestURI: dash(f[8]), Status: status, BytesSent: sent, ObjectSize: size}, nil
 }
 
 // Class is how S3 bills a request.
@@ -279,7 +287,12 @@ type HourKey struct {
 func HourOf(t time.Time) string { return t.UTC().Truncate(time.Hour).Format("2006-01-02T15:00:00Z") }
 
 // Summary is what one log object contributed.
+type BudgetUsage struct {
+	Token  string
+	Counts Counts
+}
 type Summary struct {
+	Budget       map[HourKey][]BudgetUsage
 	Lines        int // records read, malformed ones included
 	Malformed    int // lines that are not access-log records, skipped
 	Unattributed int // records whose key or prefix names no app
@@ -305,27 +318,37 @@ func (s *Summary) Record(l Line) {
 		c = &Counts{}
 		s.Hours[k] = c
 	}
+	var one Counts
+	defer func() {
+		c.Add(one)
+		if l.Reservation != "" {
+			if s.Budget == nil {
+				s.Budget = make(map[HourKey][]BudgetUsage)
+			}
+			s.Budget[k] = append(s.Budget[k], BudgetUsage{l.Reservation, one})
+		}
+	}()
 	switch {
 	case l.Status >= 400 && l.Status < 500:
-		c.Status4xx++
+		one.Status4xx++
 	case l.Status >= 500:
-		c.Status5xx++
+		one.Status5xx++
 	}
 	if l.Status == 401 || l.Status == 403 {
-		c.Denied++
+		one.Denied++
 		return
 	}
 	switch class {
 	case ClassA:
-		c.ClassA++
+		one.ClassA++
 	case ClassB:
-		c.ClassB++
+		one.ClassB++
 	case Delete:
-		c.Deletes++
+		one.Deletes++
 	}
-	c.BytesOut += l.BytesSent
+	one.BytesOut += l.BytesSent
 	if uploadOperations[l.Operation] && l.Status >= 200 && l.Status < 300 {
-		c.BytesIn += l.ObjectSize
+		one.BytesIn += l.ObjectSize
 	}
 }
 

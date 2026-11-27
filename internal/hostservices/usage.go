@@ -29,6 +29,7 @@ type Counters struct {
 	WriteRequests    int64 `json:"writeRequests"`
 	ListRequests     int64 `json:"listRequests"`
 	DeleteRequests   int64 `json:"deleteRequests"`
+	BudgetRefusals   int64 `json:"budgetRefusals,omitempty"`
 	RejectedRequests int64 `json:"rejectedRequests"`
 	BytesIn          int64 `json:"bytesIn"`
 	BytesOut         int64 `json:"bytesOut"`

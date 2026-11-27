@@ -59,6 +59,8 @@ func hostServicesEnabled(getenv func(string) string) (bool, error) {
 
 // HostServicesConfig configures `drop agent host-services`.
 type HostServicesConfig struct {
+	nodeConfig  Config
+	budget      hostservices.Budget
 	identity    identityConfig
 	Desired     string
 	StateDir    string
@@ -85,11 +87,11 @@ func endpointOK(raw string) bool {
 
 // LoadHostServicesConfig reads the same environment file as `drop agent run`.
 func LoadHostServicesConfig(getenv func(string) string, o Overrides) (HostServicesConfig, error) {
-	base, err := LoadConfig(getenv, o, false)
+	base, err := LoadConfig(getenv, o, true)
 	if err != nil {
 		return HostServicesConfig{}, err
 	}
-	c := HostServicesConfig{identity: base.identity, Desired: base.Desired, StateDir: base.StateDir,
+	c := HostServicesConfig{nodeConfig: base, identity: base.identity, Desired: base.Desired, StateDir: base.StateDir,
 		Socket: getenv(EnvHostServicesSocket), S3Endpoint: getenv(EnvHostServicesS3), STSEndpoint: getenv(EnvHostServicesSTS),
 		STSRegion: getenv(EnvHostServicesRegion)}
 	if v := o["socket"]; v != "" {
@@ -197,6 +199,25 @@ func RunHostServices(ctx context.Context, c HostServicesConfig, logf func(string
 	if signer == nil {
 		return errors.New("host services need the workload identity settings")
 	}
+	secret, err := ReadSecret(c.nodeConfig.SecretFile)
+	if err != nil {
+		return err
+	}
+	node := NewClient(c.nodeConfig, secret, "storage-proxy")
+	c.budget = func(ctx context.Context, in dropapi.StorageBudget) error {
+		ctx, cancel := context.WithTimeout(ctx, PullTimeout)
+		defer cancel()
+		var out struct {
+			Accepted bool `json:"accepted"`
+		}
+		if err := node.authed(ctx, http.MethodPost, dropapi.AgentReportRoute, in, &out); err != nil {
+			return err
+		}
+		if !out.Accepted {
+			return errors.New("storage budget authorization unavailable")
+		}
+		return nil
+	}
 	return runHostServices(ctx, c, signer, nil, logf)
 }
 
@@ -218,7 +239,7 @@ func runHostServices(ctx context.Context, c HostServicesConfig, signer *workload
 	creds := &stsSessions{signer: signer, region: region, endpoint: c.STSEndpoint, client: client, now: time.Now}
 	registry := &hostservices.Registry{DesiredPath: c.Desired, AppsPath: c.appsPath()}
 	srv := &hostservices.Server{Socket: c.Socket, PeerUID: c.PeerUID, Lookup: registry.Lookup, Logf: logf,
-		Proxy: &hostservices.Proxy{Upstream: hostservices.Upstream{Endpoint: c.S3Endpoint, Client: client}, Creds: creds, Usage: usage, Logf: logf}}
+		Proxy: &hostservices.Proxy{Budget: c.budget, Upstream: hostservices.Upstream{Endpoint: c.S3Endpoint, Client: client}, Creds: creds, Usage: usage, Logf: logf}}
 	l, err := srv.Listen()
 	if err != nil {
 		return err
@@ -271,7 +292,7 @@ func hostUsage(path string) map[string]*dropapi.HostUsage {
 		c := d.Counters
 		u := &dropapi.HostUsage{DeploymentID: d.DeploymentID, Seq: d.Seq, Counters: dropapi.UsageCounters{
 			ReadRequests: c.ReadRequests, WriteRequests: c.WriteRequests, ListRequests: c.ListRequests, DeleteRequests: c.DeleteRequests,
-			RejectedRequests: c.RejectedRequests, BytesIn: c.BytesIn, BytesOut: c.BytesOut}}
+			RejectedRequests: c.RejectedRequests, BudgetRefusals: c.BudgetRefusals, BytesIn: c.BytesIn, BytesOut: c.BytesOut}}
 		if !u.Counters.Valid() {
 			continue
 		}

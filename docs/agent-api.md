@@ -139,3 +139,9 @@ SELECT app, deployment,
 FROM intervals
 GROUP BY app, deployment;
 ```
+
+### Storage reservations
+
+The host S3 proxy sends a typed storage report to `POST /api/drop/agent/report` with its node token and media type `application/vnd.pocketcontext.storage-budget+json`. Its body contains `schema: "drop.storage-budget/v1"`, `action` (reserve or observed), a random 32-character hexadecimal `token`, `app`, `deployment`, `class` (read, write, list or delete), and `bytes` (maximum response bytes on reserve and observed bytes on completion). A successful response contains `{"accepted":true}`. A grant covers one upstream exchange. The server verifies the current placement, deployment, storage entitlement and unreserved owner balance before granting it. Requests are limited separately from heartbeats to 100 per second per node with a burst of 200. An ambiguous reserve response leaves the request unforwarded. An unconfirmed hold expires after seven days. Drop absorbs costs first reported after that hold expires.
+
+The proxy supplies its own request marker in S3 access logs. On a known response it converts the hold into a provisional usage charge. Collection reconciles that charge against the provider record under the reserved price and deduplicates late observations. Inventory continues counting retained remote versions during zero-credit periods. The service covers retained storage charges beyond available credits without carrying debt into a later top-up.

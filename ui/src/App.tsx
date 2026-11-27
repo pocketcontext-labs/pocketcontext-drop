@@ -149,13 +149,13 @@ function Workspace({
     };
   }, [fromSignIn]);
   useEffect(() => {
-    if (me?.trial_remaining_seconds === undefined) return;
+    if (!me?.hosted || me.admin) return;
     let active = true;
     const update = () => { void dropApi.me().then(next => { if (active) setMe(next); }).catch(() => {}); };
     const timer = window.setInterval(update, 30_000);
     window.addEventListener("drop-credits-changed", update);
     return () => { active = false; window.clearInterval(timer); window.removeEventListener("drop-credits-changed", update); };
-  }, [me?.trial_remaining_seconds]);
+  }, [me?.hosted, me?.admin]);
   if (!me) return <Status>{meFailed ? <p role="alert">Could not load your account. Reload the page to retry.</p> : <p role="status">Loading account…</p>}</Status>;
   const hostedAdmin = me.admin && me.hosted === true;
   const defaultPage = ["", "#/", "#/login", "#/account"].includes(hash) || hash.startsWith("#/invite?");

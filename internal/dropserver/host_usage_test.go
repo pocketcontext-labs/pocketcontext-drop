@@ -13,7 +13,7 @@ import (
 
 func usageOf(seq int64, dep string, write, in int64) map[string]any {
 	return map[string]any{"deploymentId": dep, "seq": seq, "counters": map[string]any{
-		"readRequests": 0, "writeRequests": write, "listRequests": 0, "deleteRequests": 0, "rejectedRequests": 0, "bytesIn": in, "bytesOut": 0}}
+		"readRequests": 0, "writeRequests": write, "listRequests": 0, "deleteRequests": 0, "rejectedRequests": write, "budgetRefusals": write, "bytesIn": in, "bytesOut": 0}}
 }
 
 // Host services usage: taken once per sequence, differences added to the
@@ -67,6 +67,9 @@ func TestHostUsageReports(t *testing.T) {
 	}
 	if r := row(); r["seq"] != 1 || r["total"].(dropapi.UsageCounters).WriteRequests != 3 {
 		t.Fatalf("first %v", r)
+	}
+	if n := num(h.MustOp(owner, "usage.get", map[string]any{"app": app})["budget_refusals"]); n != 3 {
+		t.Fatalf("operator sees %d funding denials", n)
 	}
 	// The same or an older sequence never counts twice; a newer one within
 	// five minutes waits (the counters are cumulative).

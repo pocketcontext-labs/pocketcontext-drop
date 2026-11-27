@@ -111,6 +111,7 @@ func (f *fakeS3) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprint(w, "<Error><Code>NoSuchKey</Code></Error>")
 			return
 		}
+		w.Header().Set("ETag", fmt.Sprintf("\"%x\"", sha256.Sum256(b)))
 		w.Header().Set("Content-Length", fmt.Sprint(len(b)))
 		if r.Method == http.MethodGet {
 			_, _ = w.Write(b)
@@ -272,7 +273,7 @@ func TestHostServicesEndToEnd(t *testing.T) {
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	cfg := HostServicesConfig{Desired: desired, StateDir: state, Socket: filepath.Join(dir, "run", "host-services.sock"), PeerUID: uint32(os.Getuid()),
+	cfg := HostServicesConfig{budget: func(context.Context, dropapi.StorageBudget) error { return nil }, Desired: desired, StateDir: state, Socket: filepath.Join(dir, "run", "host-services.sock"), PeerUID: uint32(os.Getuid()),
 		S3Endpoint: s3srv.URL, STSEndpoint: stssrv.URL, STSRegion: "eu-north-1"}
 	var logs bytes.Buffer
 	var logMu sync.Mutex
@@ -471,7 +472,7 @@ func TestHostServicesRefuseOtherPeers(t *testing.T) {
 }
 
 func TestHostServicesConfig(t *testing.T) {
-	base := map[string]string{
+	base := map[string]string{EnvHost: "drop.example", EnvNode: "dev-node", EnvSecretFile: "/test/secret", EnvReported: "/test/reported", EnvArtifacts: "/test/artifacts",
 		"DROP_AGENT_ALLOWED_HOST_SUFFIX": ".example.test", EnvDesired: "/var/lib/nibrunner/desired.json",
 		"DROP_IDENTITY_ISSUER": "https://issuer.example", "DROP_IDENTITY_ROLE_ARN": "arn:aws:iam::123456789012:role/shared", "DROP_IDENTITY_KEY_FILE": "/etc/drop/key.pem",
 	}

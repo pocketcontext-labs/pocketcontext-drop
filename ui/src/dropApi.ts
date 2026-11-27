@@ -529,6 +529,7 @@ export interface Usage {
   app: string;
   month: string;
   hourly: (UsageCounts & { hour: string })[];
+  budget_refusals?: number;
   month_to_date: UsageCounts;
   stored: {
     day: string;

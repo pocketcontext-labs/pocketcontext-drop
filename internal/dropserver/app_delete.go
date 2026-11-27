@@ -82,6 +82,10 @@ func deleteApp(c *Ctx, in *dropapi.AppDeleteInput) (any, error) {
 		return nil, err
 	}
 	// A top-up must never restart an app after its owner confirms deletion.
+	// Preserve booked charges while returning ambiguous in-flight holds on removal.
+	if _, err := c.App.DB().Update("drop_storage_reservations", dbx.Params{"held": 0, "state": "waived"}, dbx.HashExp{"app": a.Id, "state": "pending"}).Execute(); err != nil {
+		return nil, err
+	}
 	if _, err := c.App.DB().Delete("drop_credit_holds", dbx.HashExp{"app": a.Id}).Execute(); err != nil {
 		return nil, err
 	}

@@ -32,6 +32,13 @@ func usageGet(c *Ctx, in *dropapi.UsageGetInput) (any, error) {
 		Hourly: []dropapi.UsageHour{}, Limits: []dropapi.UsageLimit{}, Exceeded: []dropapi.UsageExceeded{},
 		Metered:      servicesOf(c.App).metering(),
 		EstimateNote: "Estimated S3 cost of the month to date at list prices (Class A $0.005 per 1,000, Class B $0.0004 per 1,000, egress $0.09 per GB, storage $0.023 per GB-month). An estimate, not a bill."}
+	reported, err := c.App.FindRecordsByFilter("node_reports", "app={:app}", "", 0, 0, dbx.Params{"app": app.Id})
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range reported {
+		out.BudgetRefusals = min(dropapi.MaxUsageCounter, out.BudgetRefusals+storedUsage(row, "host_usage_total").BudgetRefusals)
+	}
 	since := usage.HourOf(now.Add(-23 * time.Hour))
 	hours, err := c.App.FindRecordsByFilter("app_usage_hourly", "app = {:app} && hour >= {:since}", "hour", 0, 0,
 		dbx.Params{"app": app.Id, "since": since})

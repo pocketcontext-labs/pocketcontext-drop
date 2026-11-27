@@ -62,6 +62,7 @@ type Credentials interface {
 
 // Proxy is the S3 proxy shared by every app on the node.
 type Proxy struct {
+	Budget   Budget
 	Upstream Upstream
 	Creds    Credentials
 	Usage    *Usage
@@ -171,22 +172,57 @@ func (p *Proxy) ServeApp(w http.ResponseWriter, r *http.Request, app App) {
 		fail(refuse(http.StatusServiceUnavailable, "ServiceUnavailable", "Credentials are temporarily unavailable."))
 		return
 	}
+	// Bound ordinary XML/error replies; listings may contain 1,000 long keys.
+	limit := int64(64 << 10)
+	if req.op == OpListObjectsV2 || req.op == OpDeleteObjects {
+		limit = 16 << 20
+	}
+	if req.op == OpHeadObject {
+		limit = 0
+	}
+	if req.op == OpGetObject {
+		// HEAD returns the length of the requested range. Bind the GET to the
+		// same object version via ETag so a concurrent replacement cannot
+		// exceed the reserved size.
+		head := r.Clone(r.Context())
+		head.Method = http.MethodHead
+		probe, err := p.Upstream.build(r.Context(), head, &s3Request{op: OpHeadObject, key: req.key}, &payload{hash: emptySHA256}, app.Bucket, app.Region, creds, p.now())
+		if err != nil {
+			fail(refuse(503, "ServiceUnavailable", "Could not prepare storage request."))
+			return
+		}
+		res, err := p.exchange(probe, app, OpHeadObject, 0)
+		if err != nil {
+			fail(refuse(503, "StorageBudgetUnavailable", "Storage budget unavailable or insufficient."))
+			return
+		}
+		res.Body.Close()
+		if res.StatusCode/100 != 2 {
+			w.WriteHeader(res.StatusCode)
+			return
+		}
+		if res.ContentLength < 0 || res.Header.Get("ETag") == "" {
+			fail(refuse(503, "ServiceUnavailable", "Could not verify the object length."))
+			return
+		}
+		limit = max(limit, res.ContentLength)
+		r = r.Clone(r.Context())
+		r.Header.Set("If-Match", res.Header.Get("ETag"))
+	}
 	out, err := p.Upstream.build(r.Context(), r, req, pl, app.Bucket, app.Region, creds, p.now())
 	if err != nil {
 		fail(refuse(http.StatusInternalServerError, "InternalError", "The request could not be signed."))
 		return
 	}
-	client := p.Upstream.Client
-	if client == nil {
-		client = http.DefaultClient
+	resp, err := p.exchange(out, app, req.op, limit)
+	if err == nil {
+		usage.request(req.op.Class(), in.n)
 	}
-	resp, err := client.Do(out)
-	usage.request(req.op.Class(), in.n)
 	if err != nil {
 		if r.Context().Err() == nil {
 			p.logf("host services: %s: %s: %v", app.AppID, req.op, err)
 		}
-		writeError(w, refuse(http.StatusBadGateway, "ServiceUnavailable", "S3 could not be reached."))
+		fail(refuse(http.StatusServiceUnavailable, "StorageBudgetUnavailable", "Storage is temporarily unavailable or the available credits are insufficient."))
 		return
 	}
 	defer resp.Body.Close()
@@ -390,11 +426,7 @@ func (p *Proxy) list(ctx context.Context, app App) (*inventory, error) {
 		if err != nil {
 			return nil, err
 		}
-		client := p.Upstream.Client
-		if client == nil {
-			client = http.DefaultClient
-		}
-		resp, err := client.Do(out)
+		resp, err := p.exchange(out, app, OpListObjectsV2, 16<<20)
 		if err != nil {
 			return nil, err
 		}

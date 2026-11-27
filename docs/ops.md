@@ -252,7 +252,7 @@ A hosted restore drops unverified waitlist requests and cancels queued delivery,
 
 ## Private Beta credits
 
-The Credits page and these operations use integer microcredits (1,000,000 per credit). A new account receives a 3,600-second trial shared by its apps. With a cleared balance, a previously funded account suspends its apps until a top-up. Sleeping consumes zero compute credits. At size N×, the hourly rate is N credits.
+The Credits page and these operations use integer microcredits (1,000,000 per credit). Each account starts with a shared 3,600-second awake buffer. Each successful purchase resets it to 3,600 seconds once, including when the balance was already positive. Adjustments and purchase retries preserve it. Paid compute consumes spendable credits first. At zero, each running workspace uses one buffer second per awake second regardless of size, so two awake workspaces use two seconds together. Sleeping consumes zero compute credits. At size N×, the hourly rate is N credits.
 
 | Operation | Role | Input and result |
 | --- | --- | --- |
@@ -262,7 +262,7 @@ The Credits page and these operations use integer microcredits (1,000,000 per cr
 | `credits.adjust` | Admin | `account` and signed `microcredits`, required request idempotency key. The transaction records the actor and adjustment and checks the cap and available funds. |
 | `credits.configure` | Admin | Supply integer `pack`, `cap`, `starting` in whole credits, `euro_micros_per_credit`, `eur_per_usd_ppm` and `markup_ppm`. The initial values are 500, 10000, 0, 10000, 1000000 and 1250000 respectively. EUR/USD is a configurable simulation rate. |
 
-Retained disk includes every app volume owned by the account, including archived volumes. The app listing's `quota.used` and `quota.limit` are MiB. A volume increase and a new app share the same 10 GiB check. Trial expiry archives all apps without deleting data. A top-up restores apps archived by the trial and resumes those stopped for depleted funds. Manually archived apps stay archived.
+Retained disk includes every app volume owned by the account, including archived volumes. The app listing's `quota.used` and `quota.limit` are MiB. A volume increase and a new app share the same 10 GiB check. At buffer exhaustion Drop places a billing stop on running workspaces and retains their volumes. A top-up resumes these workspaces and restores any app archived by the pre-upgrade trial. Funded and local-only transitions reuse the existing release and volume. Manually archived apps stay archived.
 
 ### Linked release imports
 

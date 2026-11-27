@@ -32,6 +32,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/smithy-go"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
 )
 
 const (
@@ -98,7 +99,7 @@ func chain(t *testing.T, dir string, port int, upstream string, tr http.RoundTri
 	agentSock := filepath.Join(dir, "agent.sock")
 	srv := &Server{Socket: agentSock, PeerUID: uint32(os.Getuid()), Lookup: func(app, dep string) (App, bool) {
 		return App{AppID: spikeApp, DeploymentID: spikeDep, Bucket: spikeBucket, Region: "us-east-1", Limits: limits}, app == spikeApp && dep == spikeDep
-	}, Proxy: &Proxy{Upstream: Upstream{Endpoint: upstream, Client: &http.Client{Transport: tr}}, Creds: staticCreds{}}}
+	}, Proxy: &Proxy{Budget: func(context.Context, dropapi.StorageBudget) error { return nil }, Upstream: Upstream{Endpoint: upstream, Client: &http.Client{Transport: tr}}, Creds: staticCreds{}}}
 	l, err := srv.Listen()
 	if err != nil {
 		t.Fatal(err)

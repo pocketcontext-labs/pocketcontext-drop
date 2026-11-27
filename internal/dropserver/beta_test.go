@@ -262,8 +262,8 @@ func TestBetaIndependentServicesAndStorageEntitlement(t *testing.T) {
 					t.Fatal(r.Raw)
 				}
 				before, _ := desired(t, h, node)
-				if !before.Apps[0].LocalOnly {
-					t.Fatal("top-up granted storage before redeployment")
+				if before.Apps[0].LocalOnly || !before.Apps[0].ProxyOnly || before.Apps[0].DeploymentID == got.DeploymentID {
+					t.Fatal("top-up did not switch this workspace to funded storage")
 				}
 				h.MustOp(user, "beta.deploy", deploy)
 				after, _ := desired(t, h, node)

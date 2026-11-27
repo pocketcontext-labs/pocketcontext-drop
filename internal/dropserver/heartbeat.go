@@ -30,8 +30,9 @@ type agentState struct {
 	// routes limits each node on the agent routes; signIn limits each client
 	// address on the node sign-in routes (core's hosted budget counts users
 	// accounts only).
-	routes map[string]*rate.Limiter
-	signIn *clientLimiter
+	routes          map[string]*rate.Limiter
+	signIn          *clientLimiter
+	storageRequests *clientLimiter
 }
 
 // beat is one node's last report: when it arrived, when the node's fields
@@ -45,7 +46,7 @@ const agentStateKey = "dropAgentState"
 
 func newAgentState() *agentState {
 	return &agentState{now: time.Now, beats: map[string]*beat{}, routes: map[string]*rate.Limiter{},
-		signIn: newClientLimiter(rate.Every(6*time.Second), 10)}
+		storageRequests: newClientLimiter(100, 200), signIn: newClientLimiter(rate.Every(6*time.Second), 10)}
 }
 
 // agentStateOf returns the app's agent state, creating it on first use.

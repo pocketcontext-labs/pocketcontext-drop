@@ -117,6 +117,9 @@ func (c *Client) newRequest(ctx context.Context, method, path string, body any, 
 	req.Header.Set("User-Agent", c.userAgent)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+		if _, isBudget := body.(dropapi.StorageBudget); isBudget {
+			req.Header.Set("Content-Type", dropapi.StorageBudgetMedia)
+		}
 	}
 	if token != "" {
 		req.Header.Set("Authorization", token)

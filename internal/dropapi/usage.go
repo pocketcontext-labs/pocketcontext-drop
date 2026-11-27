@@ -47,6 +47,7 @@ type UsageExceeded struct {
 // storage, the limits and an estimated cost (USD, an estimate, never a
 // bill).
 type Usage struct {
+	BudgetRefusals int64           `json:"budget_refusals"`
 	App            string          `json:"app"`
 	NibAppID       string          `json:"nib_app_id"`
 	Month          string          `json:"month"` // YYYY-MM, UTC
