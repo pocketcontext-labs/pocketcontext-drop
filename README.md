@@ -2,6 +2,8 @@
 
 PocketContext Drop: a private, invite-only service that runs people's apps (one Linux executable each) on a PocketContext-managed host. It builds on the shared library [pocketcontext-core](https://github.com/pocketcontext-labs/pocketcontext-core), pinned to an exact release in `go.mod`, and is one Go executable with nothing else needed at run time: a server on PocketBase with hosted multi-account mode (email sign-in, remote MCP with OAuth) behind a TLS-terminating proxy, a browser reader, a command-line client and an agent skill for Claude Code, Codex and Antigravity.
 
+**[Drop 0.9.0](docs/releases/0.9.0.md)** hosts official Crew and Atlas workspaces, with owner-selected upgrades, a shared awake-time buffer and funded storage enforcement.
+
 **[Drop 0.8.0](docs/releases/0.8.0.md)** adds shareable deployment links, verified archive imports, PocketBase and ZeroClaw recipes, an email-first login, and deletion receipts.
 
 **[Drop 0.7.0](docs/releases/0.7.0.md)** adds deploy-time invitation checks, manifest and generic binary deployment, a shared awake-time trial, compute and S3 credit accounting, and owner-confirmed permanent deletion.

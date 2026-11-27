@@ -53,3 +53,10 @@ Existing owner-admin apps continue serving. Deployment and app changes must come
 ## From 0.7.0 to 0.8.0
 
 Back up the hosted project before starting the new server. The archive provenance and private setup migrations change the database schema. Keep the old binaries and the pre-upgrade backup for rollback. Upgrade the server first, then all Drop agents so the status page can receive the current deployment’s first-run details. Use an invited test account to open a pinned catalog link, verify HTTP readiness on the assigned hostname, and check its private setup action.
+
+## From 0.8.0 to 0.9.0
+
+1. Inventory the existing apps, placements, release digests and volume IDs. Keep the previous executable and a verified, stopped backup of the project and its matching private cache. Downgrading a migrated database requires that backup.
+2. Upgrade the control plane, then the agents. Install the host-services unit with the node credential on storage-capable nodes. Check that each node has pulled the current desired document and reported successfully. Enable official workspaces only on eligible nodes with the required guest services.
+3. Stage the exact published Crew and Atlas Linux executables in Releases. To adopt an existing supported managed Crew workspace, register and publish its verified installed version first. Record the actual fixture hashes and immutable evidence for each candidate and its baseline. Publish the two current versions and enable the official catalog. Existing workspaces keep their binaries, addresses and volumes until their owners upgrade.
+4. Verify a fresh workspace, an existing workspace, funding transitions, recovery, per-account visibility and the current release offered to owners. Confirm control-plane replication with a scratch restore before removing obsolete release staging.
