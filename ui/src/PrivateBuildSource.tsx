@@ -17,10 +17,12 @@ export default function PrivateBuildSource({
   disabled: boolean;
 }) {
   const [source, setSource] = useState("file");
+  const [file, setFile] = useState<File>();
   const [url, setURL] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   async function inspect(file?: File) {
+    setFile(file);
     onChange();
     setError("");
     setBusy(true);
@@ -54,14 +56,14 @@ export default function PrivateBuildSource({
     }
   }
   return (
-    <fieldset className="stack" disabled={disabled || busy}>
-      <legend>Private build</legend>
+    <fieldset aria-label="Build source" className="stack" disabled={disabled || busy}>
       <label>
         Source
         <select
           value={source}
           onChange={(e) => {
             setSource(e.target.value);
+            setFile(undefined);
             onChange();
             setError("");
           }}
@@ -71,17 +73,27 @@ export default function PrivateBuildSource({
         </select>
       </label>
       {source === "file" ? (
-        <label>
-          Linux executable
-          <input
-            type="file"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void inspect(file);
-              else onChange();
-            }}
-          />
-        </label>
+        <div>
+          <label htmlFor="private-file">Linux executable</label>
+          <div className="private-file-row"
+            onDragOver={e => e.preventDefault()}
+            onDrop={e => {
+              e.preventDefault();
+              const dropped = e.dataTransfer.files[0];
+              if (dropped && !disabled && !busy) void inspect(dropped);
+            }}>
+            <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+              <path d="M12 16V3m-5 5 5-5 5 5M4 16v4h16v-4" />
+            </svg>
+            <span>{file ? <><code>{file.name}</code><small>{file.size < 1024 ? file.size + " B" : file.size < 1048576 ? (file.size / 1024).toFixed(1) + " KiB" : (file.size / 1048576).toFixed(1) + " MiB"}</small></> : "Drop your executable here"}</span>
+            <span className="file-action">{file ? "Change" : "Choose file"}</span>
+            <input id="private-file" type="file" onChange={e => {
+              const chosen = e.target.files?.[0];
+              if (chosen) void inspect(chosen);
+              e.target.value = "";
+            }} />
+          </div>
+        </div>
       ) : (
         <>
           <label>
@@ -110,7 +122,7 @@ export default function PrivateBuildSource({
         </>
       )}
       <small className="quiet">
-        The executable must support --drop-manifest. Private apps receive a dev-
+        The executable must support <code>--drop-manifest</code>. Private apps receive a <code>dev-</code>
         hostname.
       </small>
       {busy && <span role="status">Checking build…</span>}

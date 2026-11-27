@@ -1,6 +1,7 @@
 import PrivateBuildSource, {type Build} from "./PrivateBuildSource";
 import CopyButton from "./CopyButton";
 import "./releases.css";
+import "./private-create.css";
 import HelpTip from "./HelpTip";
 import { useEffect, useState } from "react";
 import { op, type App } from "./dropApi";
@@ -118,7 +119,8 @@ export function CreateWorkspace({ catalog, loadError, releaseSelection = true, p
     setKey(crypto.randomUUID());
   }
   return (
-    <section className="panel wide official-page">
+    <section className={privateBuild ? "wide official-page private-create" : "panel wide official-page"}>
+      {privateBuild && <a className="private-back" href="#/apps">← Your apps</a>}
       <h2>
         {privateBuild ? "Create private app" : product ? (`Create ${/^[aeiou]/i.test(product) ? "an" : "a"} ${productName(product)} app`) : "Catalog"}
       </h2>
@@ -126,7 +128,7 @@ export function CreateWorkspace({ catalog, loadError, releaseSelection = true, p
         <p>The official catalog is awaiting activation.</p>
       ) : product || privateBuild ? (
         <form
-          className="stack app-create-form"
+          className={privateBuild ? "private-create-card app-create-form" : "stack app-create-form"}
           onSubmit={async (e) => {
             e.preventDefault();
             if (busy || !selected) return;
@@ -149,6 +151,8 @@ export function CreateWorkspace({ catalog, loadError, releaseSelection = true, p
             }
           }}
         >
+          <div className="stack">
+          {privateBuild && <h3>Build &amp; Identity</h3>}
           {privateBuild && <PrivateBuildSource disabled={busy} onChange={result => {
             setBuild(result);
             if (result) setSize(result.minimum_multiplier || 1);
@@ -187,27 +191,41 @@ export function CreateWorkspace({ catalog, loadError, releaseSelection = true, p
             }} />
             Include archived releases
           </label>}
-          <Size
+          </div>
+          {privateBuild ? <fieldset className="private-size">
+            <legend>Compute Size</legend>
+            <div className="tier-grid">
+              {Array.from({length: 8}, (_, index) => index + 1).map(n => (
+                <label className="tier-option" key={n}>
+                  <input type="radio" name="private-size" value={n} checked={size === n}
+                    onChange={() => { setSize(n); resetKey(); }} />
+                  <span><strong>{n}×</strong> {n === 4 && <small>Recommended</small>}
+                    <span className="tier-spec">{n / 4} vCPU · {256 * n} MiB RAM · {2 * n} GiB disk</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            <small className="quiet">{size} {size === 1 ? "credit" : "credits"} per awake hour</small>
+          </fieldset> : <Size
             value={Math.max(size, minimum)}
             minimum={minimum}
-            recommended={privateBuild ? build?.minimum_multiplier : undefined}
             onChange={(n) => {
               setSize(n);
               resetKey();
             }}
-          />
-          <div className="row">
+          />}
+          <div className={privateBuild ? "private-create-footer" : "row"}>
             <button className="primary" disabled={busy || !selected}>
               Create app
             </button>
-            <button
+            {privateBuild ? <a href="#/apps">Cancel</a> : <button
               type="button"
               className="secondary"
               disabled={busy}
-              onClick={() => { if (privateBuild) location.hash = "#/apps"; else setProduct(""); }}
+              onClick={() => setProduct("")}
             >
               Cancel
-            </button>
+            </button>}
           </div>
         </form>
       ) : (
