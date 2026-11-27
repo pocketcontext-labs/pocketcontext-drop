@@ -5,7 +5,9 @@ import { useEffect, useState } from "react";
 import { op, type App } from "./dropApi";
 import { message } from "./errors";
 import { appHash } from "./routes";
-import { BetaStatus } from "./BetaDeploy";
+import RuntimeState from "./RuntimeState";
+import AppAddress, { appURL } from "./AppAddress";
+import OpenArrow from "./OpenArrow";
 import { DeleteApp } from "./AppDeletion";
 
 type Published = {
@@ -462,14 +464,15 @@ export function OfficialWorkspace({
   }
   return (
     <div className="workspace-detail">
-      <BetaStatus
-        key={app.deployment_id}
-        id={app.id}
-        hostname={app.hostname}
-        name={app.name}
-        release={app.current_release}
-        officialDigest={app.beta_sha256}
-      />
+      <section className="panel app-status-card">
+        <a className="status-back" href="#/apps">← Apps</a>
+        <header className="status-header">
+          <div className="status-identity"><h1>{app.name}</h1><RuntimeState key={app.id} id={app.id} /></div>
+          {appURL(app.hostname) && <a className="button primary" href={appURL(app.hostname)} target="_blank" rel="noreferrer">Open app <OpenArrow /></a>}
+        </header>
+        <AppAddress hostname={app.hostname} />
+        <p className="quiet">HTTP traffic wakes this app automatically. Compute charges pause while it sleeps. Stored data can still incur S3 charges.</p>
+      </section>
       <section className="panel official-page">
         <h2>App settings</h2>
         <p>
