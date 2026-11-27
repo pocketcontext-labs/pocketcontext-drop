@@ -266,7 +266,7 @@ it("lets the local administrator override an app's soft limits", async () => {
   expect(set).toHaveBeenCalledWith(id, { requests_a: 100000, requests_b: 1000000, bytes_out: 5 * 2 ** 30, stored_bytes: 2 ** 30 });
 });
 
-it("requires an exact slug in the permanent deletion dialog and opens its durable receipt", async () => {
+it("requires an exact slug in the permanent deletion dialog and returns to the app list", async () => {
   // jsdom does not implement the dialog element's top-layer methods.
   const modal = HTMLDialogElement.prototype;
   Object.defineProperties(modal, {
@@ -281,9 +281,7 @@ it("requires an exact slug in the permanent deletion dialog and opens its durabl
     app, secrets: [], deletion_inventory: { release_count: 1, replica_mode: "local" },
   });
   const remove = vi.spyOn(dropApi, "deleteApp").mockResolvedValue({ accepted: true });
-  vi.spyOn(dropApi, "listDeletions").mockResolvedValue({
-    deletions: [{ app: id, slug: app.slug, completed: false, waiting_nodes: 1 }], has_more: false,
-  });
+  vi.spyOn(dropApi, "listApps").mockResolvedValue({ apps: [], quota: { used: 0, limit: 10240, unlimited: false }, has_more: false });
   render(<App />);
   const open = await screen.findByRole("button", {name: "Delete app permanently"});
   fireEvent.click(open);
@@ -299,8 +297,8 @@ it("requires an exact slug in the permanent deletion dialog and opens its durabl
   fireEvent.change(field, {target: {value: app.slug}});
   fireEvent.click(submit);
   expect(remove).toHaveBeenCalledWith(id, app.slug);
-  expect(await screen.findByRole("heading", {name: "Deletion requested"})).toBeInTheDocument();
-  expect(screen.getByText(/Waiting for volume removal/)).toBeInTheDocument();
+  expect(await screen.findByRole("heading", {name: "Your apps"})).toBeInTheDocument();
+  expect(screen.queryByText(app.slug)).toBeNull();
 });
 
 it("can reopen a completed receipt after the original app is gone", async () => {

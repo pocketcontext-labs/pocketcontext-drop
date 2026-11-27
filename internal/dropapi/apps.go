@@ -94,10 +94,11 @@ type AppDeleteInput struct {
 // AppListInput selects one page of apps, newest first: the caller's own, or
 // with All (admins only) everyone's. Archived lists archived apps instead.
 type AppListInput struct {
-	All      bool `json:"all,omitempty"`
-	Archived bool `json:"archived,omitempty"`
-	Limit    int  `json:"limit,omitempty"`
-	Offset   int  `json:"offset,omitempty"`
+	IncludeArchived bool `json:"include_archived,omitempty"`
+	All             bool `json:"all,omitempty"`
+	Archived        bool `json:"archived,omitempty"`
+	Limit           int  `json:"limit,omitempty"`
+	Offset          int  `json:"offset,omitempty"`
 }
 
 // Quota is the caller's retained disk allowance in MiB. Local admins
@@ -141,7 +142,6 @@ type DeletionInventory struct {
 
 // AppDetail is one app with the names of its secrets.
 type AppDetail struct {
-	DeletionPending   bool               `json:"deletion_pending,omitempty"`
 	DeletionInventory *DeletionInventory `json:"deletion_inventory,omitempty"`
 	App               App                `json:"app"`
 	Secrets           []Secret           `json:"secrets"`

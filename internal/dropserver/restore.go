@@ -77,6 +77,9 @@ func InvalidateNodeTokens(app core.App) error {
 		if err := waitExec(tx, "DELETE FROM drop_volume_deletions", nil); err != nil {
 			return err
 		}
+		if err := waitExec(tx, "UPDATE apps SET deleting=false WHERE id IN (SELECT app FROM drop_app_deletions WHERE completed=0)", nil); err != nil {
+			return err
+		}
 		if err := waitExec(tx, "DELETE FROM drop_app_deletions WHERE completed=0", nil); err != nil {
 			return err
 		}

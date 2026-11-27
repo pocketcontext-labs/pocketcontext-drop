@@ -89,6 +89,7 @@ func deleteApp(c *Ctx, in *dropapi.AppDeleteInput) (any, error) {
 	if _, err := c.App.DB().Delete("drop_credit_holds", dbx.HashExp{"app": a.Id}).Execute(); err != nil {
 		return nil, err
 	}
+	a.Set("deleting", true)
 	a.Set("archived", true)
 	a.Set("archived_at", time.Now().UTC())
 	a.Set("desired_state", "stopped")

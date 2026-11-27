@@ -2,7 +2,7 @@ import DeleteSlider from "./DeleteSlider";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { dropApi, type App, type DeletionReceipt } from "./dropApi";
 import { message } from "./errors";
-import { appHash, viewHashes } from "./routes";
+import { viewHashes } from "./routes";
 
 export function DeleteApp({ app, slider = !!app.official_product }: { app: App; slider?:boolean }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -29,7 +29,7 @@ export function DeleteApp({ app, slider = !!app.official_product }: { app: App; 
     try {
       await dropApi.deleteApp(app.id, app.slug);
       cancel();
-      window.location.hash = appHash(app.id, "deletion");
+      window.location.hash = viewHashes.apps;
     } catch (e) {
       setError(message(e));
     } finally {
@@ -100,29 +100,5 @@ export function DeletionStatus({ id }: { id: string }) {
         "Cleanup pending. Drop retries unfinished cleanup automatically."}</p>
     </> : !error && <p>Loading deletion status…</p>}
     {error && <p role="alert">{error}</p>}
-  </section>;
-}
-
-export function DeletionHistory() {
-  const [page, setPage] = useState(0);
-  const [items, setItems] = useState<DeletionReceipt[]>([]);
-  const [more, setMore] = useState(false);
-  const [error, setError] = useState("");
-  useEffect(() => {
-    let active = true;
-    dropApi.listDeletions("", page * 25).then(result => {
-      if (active) { setItems(result.deletions); setMore(result.has_more); setError(""); }
-    }).catch(e => { if (active) setError(message(e)); });
-    return () => { active = false; };
-  }, [page]);
-  if (!items.length && !error && !page) return null;
-  return <section aria-label="App deletions">
-    <h3>App deletions</h3>
-    {error && <p role="alert">{error}</p>}
-    <ul>{items.map(item => <li key={item.app}>
-      <a href={appHash(item.app, "deletion")}>{item.slug} · {item.completed ? "Cleanup complete" : "Deletion requested"}</a>
-    </li>)}</ul>
-    {page > 0 && <button onClick={() => setPage(page - 1)}>Newer deletions</button>}
-    {more && <button onClick={() => setPage(page + 1)}>Older deletions</button>}
   </section>;
 }

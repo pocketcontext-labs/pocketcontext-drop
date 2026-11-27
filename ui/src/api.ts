@@ -125,12 +125,27 @@ export function validSlug(slug: string): string {
   return trimmed;
 }
 /** Notify on any change to the apps. Returns an unsubscribe. */
-export async function watchApps(notify: () => void): Promise<() => void> {
+export async function watchApps(notify: (deletedApp?: string) => void): Promise<() => void> {
   const generation = sessionGeneration;
-  const unsubscribe = await pb.collection("apps").subscribe("*", () => {
+  const refresh = () => {
     if (generation === sessionGeneration) notify();
-  });
-  return () => void unsubscribe().catch(() => {});
+  };
+  const stopApps = await pb.collection("apps").subscribe("*", refresh);
+  try {
+    // Once hidden, an app no longer emits updates visible to its owner.
+    const stopDeletes = await pb.collection("events").subscribe("*", (event) => {
+      if (generation === sessionGeneration) notify(event.record.app);
+    }, {
+      filter: 'action = "app.delete"',
+    });
+    return () => {
+      void stopApps().catch(() => {});
+      void stopDeletes().catch(() => {});
+    };
+  } catch (error) {
+    await stopApps().catch(() => {});
+    throw error;
+  }
 }
 
 let pendingSignIn: { cancel: (message?: string) => void } | null = null;

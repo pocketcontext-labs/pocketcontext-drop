@@ -143,15 +143,8 @@ function Overview({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const act = async (
-    action: "app.start" | "app.stop" | "app.archive" | "app.restore",
+    action: "app.start" | "app.stop" | "app.restore",
   ) => {
-    if (
-      action === "app.archive" &&
-      !window.confirm(
-        `Archive ${app.name}? It stops running; its data, secrets and slug stay.`,
-      )
-    )
-      return;
     setBusy(true);
     setError("");
     try {
@@ -236,14 +229,6 @@ function Overview({
                 Stop
               </button>
             )}
-            <button
-              type="button"
-              className="secondary"
-              disabled={busy}
-              onClick={() => void act("app.archive")}
-            >
-              Archive
-            </button>
           </>
         )}
         <DeleteApp app={app} />
@@ -736,16 +721,15 @@ function AppDetailPage({ id, tab, official }: { id: string; tab: AppTab;official
     try {
       const detail = await dropApi.getApp(id);
       if (!mounted.current) return;
-      if (detail.deletion_pending) {
-        window.location.hash = appHash(id, "deletion");
-        return;
-      }
       setApp(detail.app);
       setSecrets(detail.secrets);
       setError("");
     } catch (e) {
       if (!mounted.current) return;
-      if (e instanceof OpError && e.status === 404) setMissing(true);
+      if (e instanceof OpError && e.status === 404) {
+        setApp(null);
+        setMissing(true);
+      }
       else setError(message(e));
     }
   }, [id]);
@@ -754,7 +738,14 @@ function AppDetailPage({ id, tab, official }: { id: string; tab: AppTab;official
     void load();
     let stop: (() => void) | undefined;
     api
-      .watchApps(() => void load())
+      .watchApps((deleted) => {
+        if (deleted === id) {
+          setApp(null);
+          setMissing(true);
+        } else {
+          void load();
+        }
+      })
       .then((unsubscribe) => {
         if (mounted.current) stop = unsubscribe;
         else unsubscribe();

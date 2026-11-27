@@ -1,4 +1,3 @@
-import { DeletionHistory } from "./AppDeletion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import AppAddress from "./AppAddress";
@@ -31,14 +30,13 @@ export function quotaText(quota: Quota): string {
 export default function Apps({ beta = false, official=false }: { beta?: boolean; official?:boolean }) {
   const [apps, setApps] = useState<App[] | null>(null);
   const [quota, setQuota] = useState<Quota | null>(null);
-  const [archived, setArchived] = useState(false);
   const [error, setError] = useState("");
   const mounted = useRef(true);
   const reads = useRef(0);
   const load = useCallback(async () => {
     const read = ++reads.current;
     try {
-      const list = await dropApi.listApps(archived);
+      const list = await dropApi.listApps();
       if (mounted.current && read === reads.current) {
         setApps(list.apps);
         setQuota(list.quota);
@@ -47,7 +45,7 @@ export default function Apps({ beta = false, official=false }: { beta?: boolean;
     } catch (e) {
       if (mounted.current && read === reads.current) setError(message(e));
     }
-  }, [archived]);
+  }, []);
   useEffect(() => {
     mounted.current = true;
     void load();
@@ -79,17 +77,6 @@ export default function Apps({ beta = false, official=false }: { beta?: boolean;
         )}
       </div>
       {quota && <p className="quiet">{quotaText(quota)}</p>}
-      <label className="check">
-        <input
-          type="checkbox"
-          checked={archived}
-          onChange={(event) => {
-            setApps(null);
-            setArchived(event.target.checked);
-          }}
-        />
-        Show archived apps
-      </label>
       {error && (
         <p role="alert" className="error">
           {error}
@@ -99,7 +86,7 @@ export default function Apps({ beta = false, official=false }: { beta?: boolean;
         !error && <p className="quiet">Loading apps…</p>
       ) : apps.length === 0 ? (
         <p className="empty">
-          {archived ? "No archived apps." : "No apps yet. Create the first one."}
+          No apps yet. Create the first one.
         </p>
       ) : (
         <ol className="apps" aria-label="Apps, newest first">
@@ -123,7 +110,6 @@ export default function Apps({ beta = false, official=false }: { beta?: boolean;
           ))}
         </ol>
       )}
-      <DeletionHistory />
     </section>
   );
 }

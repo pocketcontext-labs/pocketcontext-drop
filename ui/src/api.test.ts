@@ -77,17 +77,17 @@ describe("writes", () => {
     expect(validSlug("a".repeat(32))).toHaveLength(32);
   });
   it("subscribes to app changes and ignores events after sign-out", async () => {
-    let handler: () => void = () => {};
+    let handler = (_event: {record: {app: string}}) => {};
     const unsubscribe = vi.fn().mockResolvedValue(undefined);
-    const subscribe = vi.fn(async (_topic: string, callback: () => void) => { handler = callback; return unsubscribe; });
+    const subscribe = vi.fn(async (_topic: string, callback: typeof handler) => { handler = callback; return unsubscribe; });
     vi.spyOn(pb, "collection").mockReturnValue({ subscribe } as never);
     const notify = vi.fn();
     const stop = await watchApps(notify);
     expect(subscribe).toHaveBeenCalledWith("*", expect.any(Function));
-    handler();
+    handler({record: {app: "removed"}});
     expect(notify).toHaveBeenCalledTimes(1);
     logout();
-    handler();
+    handler({record: {app: "removed"}});
     expect(notify).toHaveBeenCalledTimes(1);
     stop();
     expect(unsubscribe).toHaveBeenCalled();

@@ -154,7 +154,7 @@ try {
     assert.equal(await slider.getAttribute("aria-valuenow"), "0");
     await drag(page, mobile, x, end, y);
     await page
-      .getByRole("heading", { name: /Cleanup complete|Deletion requested/ })
+      .getByRole("heading", { name: "Your workspaces" })
       .waitFor();
     const denied = await page.request.post(origin + "/api/drop/op", {
       headers: { Authorization: fixture.customer },

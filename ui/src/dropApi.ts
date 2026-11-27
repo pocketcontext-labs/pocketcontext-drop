@@ -382,16 +382,13 @@ async function revokeInvite(invite: string): Promise<Invite> {
   return (await op<{ invite: Invite }>("invite.revoke", { invite })).invite;
 }
 
-async function listApps(
-  archived = false,
-): Promise<{ apps: App[]; quota: Quota; has_more: boolean }> {
-  return op("app.list", { archived, limit: 500 });
+async function listApps(): Promise<{ apps: App[]; quota: Quota; has_more: boolean }> {
+  return op("app.list", { include_archived: true, limit: 500 });
 }
 export interface DeletionReceipt { app: string; slug: string; completed: boolean; waiting_nodes: number }
 interface AppDetail {
   app: App;
   secrets: Secret[];
-  deletion_pending?: boolean;
   deletion_inventory?: { release_count: number; replica_mode: "enabled" | "local" | "none" };
 }
 async function getApp(app: string, inventory = false): Promise<AppDetail> {

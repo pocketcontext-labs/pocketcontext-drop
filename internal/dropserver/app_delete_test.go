@@ -48,7 +48,7 @@ func TestConfirmedAppDeletion(t *testing.T) {
 	if err := h.App.DB().NewQuery("SELECT COUNT(*) FROM drop_credit_holds WHERE app={:app}").Bind(dbx.Params{"app": app}).Row(&held); err != nil || held != 0 {
 		t.Fatal("top-up could revive deletion", err)
 	}
-	if r := h.Op(owner, "app.restore", map[string]any{"app": app}); r.Status != 409 {
+	if r := h.Op(owner, "app.restore", map[string]any{"app": app}); r.Status != 404 {
 		t.Fatal(r.Raw)
 	}
 	if err := dropserver.FinishAppDeletionForTest(t.Context(), h.App, app); err != nil {
@@ -92,8 +92,13 @@ func TestDeletionReceiptAfterNodeConfirmationAndRetry(t *testing.T) {
 		t.Fatal(preview)
 	}
 	h.MustOp(owner, "app.delete", map[string]any{"app": app, "confirm_slug": "receipt-app"})
-	if detail := h.MustOp(owner, "app.get", ref); detail["deletion_pending"] != true {
+	if detail := h.Op(owner, "app.get", ref); detail.Status != 404 {
 		t.Fatal(detail)
+	}
+	for _, filter := range []map[string]any{nil, {"archived": true}, {"include_archived": true}} {
+		if apps := h.MustOp(owner, "app.list", filter)["apps"].([]any); len(apps) != 0 {
+			t.Fatalf("pending deletion visible: %v", apps)
+		}
 	}
 	receipt := func(completed bool, nodes int) {
 		t.Helper()

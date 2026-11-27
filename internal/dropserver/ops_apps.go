@@ -43,7 +43,7 @@ var slugPattern = regexp.MustCompile(dropapi.SlugPattern)
 func (c *Ctx) findApp(ref string, write bool) (*core.Record, error) {
 	ref = strings.TrimSpace(ref)
 	visible := func(r *core.Record) bool {
-		return r.GetString("owner") == c.Auth.Id || (!write && c.Admin)
+		return !r.GetBool("deleting") && (r.GetString("owner") == c.Auth.Id || (!write && c.Admin))
 	}
 	if recordID.MatchString(ref) {
 		if r, err := c.App.FindRecordById("apps", ref); err == nil && visible(r) {
@@ -175,7 +175,11 @@ func appList(c *Ctx, in *dropapi.AppListInput) (any, error) {
 	if in.All && !c.Admin {
 		return nil, Forbidden("Only admins list every account's apps.")
 	}
-	filter, params := "archived = {:archived}", dbx.Params{"archived": in.Archived}
+	filter, params := "deleting = false", dbx.Params{}
+	if !in.IncludeArchived {
+		filter += " && archived = {:archived}"
+		params["archived"] = in.Archived
+	}
 	if !in.All {
 		filter += " && owner = {:owner}"
 		params["owner"] = c.Auth.Id
@@ -209,12 +213,6 @@ func appGet(c *Ctx, in *dropapi.AppGetInput) (any, error) {
 		return nil, err
 	}
 	detail := dropapi.AppDetail{App: c.appOut(app, nil), Secrets: secrets}
-	if app.GetBool("archived") {
-		detail.DeletionPending, err = deletionPending(c.App, app.Id)
-		if err != nil {
-			return nil, err
-		}
-	}
 	if in.DeletionInventory {
 		inventory := dropapi.DeletionInventory{ReplicaMode: "none"}
 		if err := c.App.DB().NewQuery("SELECT COUNT(*) FROM releases WHERE app={:app}").Bind(dbx.Params{"app": app.Id}).Row(&inventory.ReleaseCount); err != nil {

@@ -278,12 +278,11 @@ try {
   await confirm.click({trial: true}); // Wait for the inventory read to enable confirmation.
   await confirm.focus();
   await page.keyboard.press('Enter');
-  await page.getByRole('heading', {name: 'Deletion requested'}).waitFor();
+  await page.getByRole('heading', {name: 'Your apps'}).waitFor();
   await page.reload();
-  await page.getByText(/Cleanup pending.*volume removal/).waitFor();
-  await page.getByRole('link', {name: '← Your apps'}).click();
-  await page.getByRole('link', {name: 'third-app · Deletion requested'}).waitFor();
-  ok('keyboard deletion is exact-slug confirmed and pending cleanup survives refresh');
+  await page.getByRole('list', {name: 'Apps, newest first'}).waitFor();
+  assert.equal(await page.getByRole('link', {name: messages[2], exact: true}).count(), 0);
+  ok('confirmed deletion removes the app from the list across reloads');
 
   // Refused requests (a wrong password, a taken slug) log their status.
   const unexpected = errors.filter(text => !/Failed to load resource: the server responded with a status of (400|409)/.test(text));
