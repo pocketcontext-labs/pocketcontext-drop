@@ -376,6 +376,7 @@ export default function BetaDeploy({
   const updating = !!prepared?.current_release;
   const [archiveFile,setArchiveFile] = useState(initialFile && archiveName(initialFile.name) ? initialFile : null);
   const [importing,setImporting] = useState(!!archiveFile || !!recipe);
+  const [configured, setConfigured] = useState(false);
   const [file, setFile] = useState(importing ? null : initialFile);
   const [hostname, setHostname] = useState(prepared?.hostname ?? "");
   const [product, setProduct] = useState<BetaRelease>();
@@ -482,6 +483,7 @@ export default function BetaDeploy({
     setSize(0);
     setPort(8080);
     setDigest("");
+    setConfigured(false);
     const isArchive = !!next && archiveName(next.name);
     setArchiveFile(isArchive ? next : null);
     setImporting(isArchive);
@@ -597,7 +599,7 @@ export default function BetaDeploy({
         <p>Select your original app file to finish the upload.</p>
       )}
       {importing ? <ArchiveImport input={archiveFile} recipe={recipe} fixedPort={prepared?.http_port} onCancel={()=>chooseFile(null)}
-        onReady={(ready, httpPort)=>{setImporting(false);setPort(prepared?.http_port ?? httpPort);setFile(ready);}} /> :
+        onReady={(ready, httpPort)=>{setImporting(false);setConfigured(true);setPort(prepared?.http_port ?? httpPort);setFile(ready);}} /> :
         !file && !stagedRelease && (updating || !prepared || product) && <>
           <FilePicker onSelect={chooseFile} />
           <button className="secondary" onClick={()=>setImporting(true)}>Import from HTTPS URL</button>
@@ -629,6 +631,11 @@ export default function BetaDeploy({
               </>}
               <p>Local disk is a cache. Your app is responsible for backups.</p>
               {product.generic && <>
+                {file && !configured && !locked && <button className="secondary" onClick={()=>{
+                  setArchiveFile(file);
+                  setFile(null);
+                  setImporting(true);
+                }}>Configure launch arguments and environment</button>}
                 <p>This app has no valid Drop manifest. There is no guarantee it will start. It receives no platform S3 or email.</p>
                 <label>HTTP port<input type="number" min="1" max="65535" disabled={locked || !!prepared}
                     value={prepared?.http_port ?? port} onChange={e => setPort(Number(e.target.value))} /></label>
