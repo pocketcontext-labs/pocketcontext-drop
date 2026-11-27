@@ -764,6 +764,20 @@ function AppDetailPage({ id, tab, official, canDeployBinary }: { id: string; tab
   if (app?.developer_private) return <WorkspaceDetail app={app} reload={() => void load()}>
     <details key={tab} className="panel workspace-tools" open={tab !== "overview"}>
       <summary>Developer tools</summary>
+      {canDeployBinary && !app.archived && <div className="row">
+        <button type="button" className="secondary" disabled={updating === app.id} onClick={async () => {
+          setUpdating(app.id);
+          setError("");
+          try {
+            changed(await dropApi.appAction(app.desired_state === "stopped" ? "app.start" : "app.stop", app.id));
+          } catch (e) {
+            setError(message(e));
+          } finally {
+            setUpdating("");
+          }
+        }}>{app.desired_state === "stopped" ? "Start" : "Stop"}</button>
+      </div>}
+      {error && <p role="alert">{error}</p>}
       <nav className="nav tabs" aria-label="Developer tools">
         {tabs.filter(t => t.tab !== "overview" && !(app.private_tiered && t.tab === "settings") && (canDeployBinary || t.tab !== "releases")).map(t =>
           <a key={t.tab} href={appHash(id, t.tab)} aria-current={tab === t.tab ? "page" : undefined}>
