@@ -40,3 +40,17 @@ it("pages through transaction history and restarts at the newest match after fil
   fireEvent.change(screen.getByLabelText("Find transactions"), {target: {value: "Atlas"}});
   await waitFor(() => expect(op).toHaveBeenCalledWith("credits.get", {account: "", before: 0, limit: 25, query: "Atlas", kind: "compute"}));
 });
+
+it("loads the balance and filters history on servers accepting only account and before", async () => {
+  vi.mocked(op).mockImplementation(async (_name, input) => {
+    expect(Object.keys(input ?? {}).sort()).toEqual(["account", "before"]);
+    return { account: "self", state: {balance: 5000000, trial_seconds: 0}, apps: [],
+      settings: {pack: 500, euro_micros_per_credit: 10000},
+      entries: [{id: 1, kind: "compute", delta: -1000, app: "", created: 1000}] };
+  });
+  render(<Credits admin={false} />);
+  expect(await screen.findByText("5 credits")).toBeVisible();
+  fireEvent.click(screen.getByText("Transaction history"));
+  fireEvent.change(screen.getByLabelText("Entry type"), {target: {value: "s3"}});
+  expect(await screen.findByText("No matching transactions.")).toBeVisible();
+});

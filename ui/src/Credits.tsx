@@ -34,6 +34,7 @@ export default function Credits({ admin, onPurchase }: { admin: boolean; onPurch
   const [version, setVersion] = useState(0);
   const pending = useRef<{ intent: string; key: string } | null>(null);
   const refresh = useCallback(() => setVersion(v => v + 1), []);
+  const supportsHistoryFilters = useRef<boolean | undefined>(undefined);
   const pageSize = 25;
   useEffect(() => {
     if (!admin) return;
@@ -50,7 +51,29 @@ export default function Credits({ admin, onPurchase }: { admin: boolean; onPurch
   useEffect(() => {
     let active = true;
     async function load() {
-      const result = await op<Ledger>("credits.get", { account, before, limit: pageSize, query: historyQuery, kind });
+      let result: Ledger;
+      if (supportsHistoryFilters.current === true) {
+        result = await op<Ledger>("credits.get", { account, before, limit: pageSize, query: historyQuery, kind });
+      } else {
+        // Both server versions accept these fields. Newer responses include has_more.
+        result = await op<Ledger>("credits.get", { account, before });
+        if (!active) return;
+        supportsHistoryFilters.current = typeof result.has_more === "boolean";
+        const search = historyQuery.trim().toLowerCase();
+        const names = new Map(result.apps.map(app => [app.id, app.name]));
+        const matches: Ledger["entries"] = [];
+        let chunk = result;
+        while (active) {
+          for (const entry of chunk.entries) {
+            const label = entry.kind === "compute" ? "App runtime" : entry.kind === "s3" ? "Storage" : entry.kind;
+            if ((!kind || entry.kind === kind) && [entry.app, names.get(entry.app), entry.kind, label]
+              .some(value => (value || "").toLowerCase().includes(search))) matches.push(entry);
+          }
+          if (matches.length > pageSize || chunk.entries.length < 100 || chunk.has_more === false) break;
+          chunk = await op<Ledger>("credits.get", { account, before: chunk.entries[chunk.entries.length - 1].id });
+        }
+        result = { ...result, entries: matches.slice(0, pageSize), has_more: matches.length > pageSize || (result.has_more === true && !search && !kind) };
+      }
       if (active) { setData(result); setHistoryLoading(false); setError(""); }
     }
     const loadTimer = window.setTimeout(() => void load().catch(e => { if (active) { setHistoryLoading(false); setError(message(e)); } }), 150);
