@@ -140,7 +140,7 @@ export function OfficialCatalog() {
         </form>
       ) : (
         <ul className="catalog-grid">
-          {catalog?.releases.map((r) => (
+          {catalog?.releases.slice().sort((a, b) => Number(b.product === "crew") - Number(a.product === "crew")).map((r) => (
             <li key={r.product}>
               <h3>PocketContext {names[r.product]}</h3>
               <p>

@@ -41,7 +41,7 @@ it("lists the apps with the quota and links each to its page", async () => {
   render(<App />);
   expect(await screen.findByRole("link", { name: "Hello app" })).toHaveAttribute("href", `#/apps/${id}`);
   expect(screen.getByText("1 of 10 GiB retained")).toBeInTheDocument();
-  expect(screen.getByRole("link", {name: "https://" + app.hostname})).toHaveAttribute("href", "https://" + app.hostname);
+  expect(screen.getByRole("link", {name: "Open"})).toHaveAttribute("href", "https://" + app.hostname);
   expect(screen.getByRole("button", {name: "Copy app URL"})).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Deploy an app" })).toHaveAttribute("href", "#/deploy");
 });

@@ -1,7 +1,8 @@
 import HelpTip from "./HelpTip";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
-import AppAddress from "./AppAddress";
+import { appURL } from "./AppAddress";
+import CopyButton from "./CopyButton";
 import { dropApi, type App, type Quota } from "./dropApi";
 import { message } from "./errors";
 import { appHash, viewHashes } from "./routes";
@@ -66,7 +67,7 @@ export default function Apps({ beta = false, official=false }: { beta?: boolean;
   }, [load]);
   const full = quota !== null && !quota.unlimited && quota.used >= quota.limit;
   return (
-    <section className={"panel wide" + (official ? " workspace-list" : "")} aria-labelledby="apps-title">
+    <section className="app-dashboard" aria-labelledby="apps-title">
       <div className="row heading">
         <h2 id="apps-title">Your apps</h2>
         {full ? (
@@ -78,6 +79,7 @@ export default function Apps({ beta = false, official=false }: { beta?: boolean;
         )}
       </div>
       {quota && <p className="quiet">{quotaText(quota)} <HelpTip topic="app storage">This is the space set aside for your apps. Stopping an app keeps its files and still counts toward this total.</HelpTip></p>}
+      {quota && !quota.unlimited && quota.limit > 0 && <progress aria-label="Storage used" value={quota.used} max={quota.limit} />}
       {error && (
         <p role="alert" className="error">
           {error}
@@ -91,24 +93,27 @@ export default function Apps({ beta = false, official=false }: { beta?: boolean;
         </p>
       ) : (
         <ol className="apps" aria-label="Apps, newest first">
-          {apps.map((app) => (
-            <li key={app.id}>
-              <p>
-                <a href={appHash(app.id)}>{app.name}</a>{" "}
-                <code className="slug">{app.slug}</code>
-              </p>
-              <p className="quiet">
-                {app.archived ? "Archived" : stateLabels[app.desired_state]}
-                {app.official_product&&<> · {app.official_product==="crew"?"Crew":"Atlas"} · {app.memory_mib/256}×</>}
-                {!app.official_product&&app.kind === "crew" && <> · Crew · {app.crew_owner_email}</>}
-                {" · "}
-                <time dateTime={app.created.replace(" ", "T")}>
-                  {formatDate(app.created)}
-                </time>
-              </p>
-              <AppAddress hostname={app.hostname} />
-            </li>
-          ))}
+          {apps.map((app) => {
+            const url = appURL(app.hostname);
+            return <li className="dashboard-row" key={app.id}>
+              <div>
+                <div className="dashboard-identity">
+                  <a className="dashboard-title" href={appHash(app.id)}>{app.name}</a>
+                  <code className="slug">{app.slug}</code>
+                </div>
+                <div className="dashboard-meta">
+                  <span className="dashboard-state">{app.archived ? "Archived" : stateLabels[app.desired_state]}</span>
+                  {app.official_product && <><span className="dashboard-tier">{app.memory_mib / 256}×</span><span>{app.official_product === "crew" ? "Crew" : "Atlas"}</span></>}
+                  {!app.official_product && app.kind === "crew" && <span>Crew · {app.crew_owner_email}</span>}
+                  <time dateTime={app.created.replace(" ", "T")}>{formatDate(app.created)}</time>
+                </div>
+              </div>
+              {url && <div className="dashboard-actions">
+                <CopyButton text={url} icon label="Copy app URL" />
+                <a className="button secondary" href={url} target="_blank" rel="noreferrer">Open <span aria-hidden="true">↗</span></a>
+              </div>}
+            </li>;
+          })}
         </ol>
       )}
     </section>

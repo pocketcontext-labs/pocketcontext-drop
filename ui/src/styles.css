@@ -160,7 +160,7 @@ label {
   white-space: nowrap;
 }
 .content {
-  width: min(100%, 1080px);
+  width: min(100%, var(--page-width));
   margin: 0 auto;
   padding: 24px;
   display: grid;
@@ -618,7 +618,7 @@ section > h3 {
 .beta-landing .primary { background: #c8f169; color: #0d1712; }
 .beta-picker.dragging { border-style: solid; outline: 3px solid #74944c; }
 .beta-landing .error { color: #ffb5a2; }
-.beta-flow { width: min(100%, 720px); margin: 0 auto; padding: clamp(20px, 5vw, 44px); }
+.beta-flow { width: 100%; padding: clamp(20px, 5vw, 44px); }
 .beta-flow h1 { font-size: clamp(32px, 5vw, 52px); line-height: 1.1; letter-spacing: -.04em; }
 .beta-flow select { width: fit-content; min-width: 95px; background: var(--field); color: var(--text); border: 1px solid var(--border); padding: 9px 12px; border-radius: 6px; font: inherit; }
 .beta-filename { overflow-wrap: anywhere; font: 14px/1.6 "Plex Mono", monospace; }
@@ -709,26 +709,7 @@ section > h3 {
   .topbar .account button {
     flex: none;
   }
-  .workspace-list {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-  .workspace-list .heading {
-    display: contents;
-  }
-  .workspace-list .heading > :last-child {
-    order: 1;
-    text-align: center;
-  }
-  .workspace-list p.empty,
-  .workspace-list > p.quiet {
-    margin: 0;
-    padding: 0;
-  }
-  .workspace-list .apps {
-    order: 2;
-  }
+
 }
 
 .nav-icon { display: none; }
@@ -860,7 +841,6 @@ button.help-tip {
   border: 1px dashed var(--border);
   border-radius: 12px;
   background: var(--panel);
-  max-width: 44rem;
 }
 .connect-setup ol { padding-inline-start: 1.5em; margin: 0; }
 .connect-setup ol li { padding-inline-start: 4px; margin-bottom: 28px; }
@@ -889,8 +869,7 @@ button.help-tip {
 .workspace-detail {
   display: grid;
   gap: 16px;
-  width: min(100%, 48rem);
-  margin-inline: auto;
+  width: 100%;
   min-width: 0;
 }
 .workspace-detail > .panel {
@@ -913,7 +892,7 @@ button.help-tip {
 
 button.connect-address { width: 100%; min-height: 48px; text-align: start; padding: 10px 14px; }
 .connect-address svg { flex: none; }
-.credits-page { width: min(100%, 48rem); margin-inline: auto; }
+
 .credit-balance strong { display: block; font-size: clamp(22px, 4vw, 32px); font-variant-numeric: tabular-nums; }
 .credits-page h3, .credit-history { margin-top: 24px; }
 .credit-table { overflow-x: auto; }
@@ -943,3 +922,21 @@ button.connect-address { width: 100%; min-height: 48px; text-align: start; paddi
 @media (min-width: 761px) {
   .official-page .directory-filters:has(input[type=file]) { grid-template-columns: minmax(90px, 1fr) minmax(85px, .8fr) minmax(215px, 1.65fr) auto; }
 }
+
+:root { --page-width: 960px; --page-gutter: 24px; }
+html { scrollbar-gutter: stable; }
+.topbar { padding-inline: max(var(--page-gutter), calc((100% - var(--page-width)) / 2 + var(--page-gutter))); }
+.content { padding-inline: var(--page-gutter); }
+.app-dashboard progress { display: block; width: min(100%, 240px); height: 4px; accent-color: var(--accent); margin-bottom: 20px; }
+.app-dashboard .dashboard-row { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 16px; background: var(--panel); }
+.dashboard-row:hover, .dashboard-row:focus-within { border-color: var(--muted); }
+.dashboard-identity, .dashboard-meta, .dashboard-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.dashboard-title { font-size: 18px; font-weight: 700; text-decoration: none; overflow-wrap: anywhere; }
+.dashboard-title::after { content: ""; position: absolute; inset: 0; }
+.dashboard-title:hover { text-decoration: underline; }
+.dashboard-meta { margin-top: 8px; color: var(--muted); font-size: 13px; }
+.dashboard-state, .dashboard-tier { padding: 2px 8px; border-radius: 16px; background: var(--accent-soft); color: var(--text); }
+.dashboard-tier { background: var(--bg); }
+.dashboard-actions { position: relative; }
+.dashboard-actions button { display: grid; place-items: center; }
+@media (max-width: 640px) { :root { --page-gutter: 16px; } }
