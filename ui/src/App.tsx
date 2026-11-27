@@ -32,6 +32,13 @@ import {
 } from "./routes";
 import SignIn from "./SignIn";
 
+function NavIcon({ path }: { path: string }) {
+  return <svg className="nav-icon" aria-hidden="true" viewBox="0 0 24 24"
+    fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d={path} />
+  </svg>;
+}
+
 function subscribe(change: () => void) {
   return pb.authStore.onChange(change);
 }
@@ -196,14 +203,14 @@ function Workspace({
                 : undefined
             }
           >
-            {me.official_catalog?"Workspaces":"Apps"}
+            <NavIcon path="M3 10l9-7 9 7v10h-6v-7H9v7H3z" />{me.official_catalog?"Workspaces":"Apps"}
           </a>}
           {me.hosted && !hostedAdmin && (
-            <a href={viewHashes.catalog} aria-current={view === "catalog" ? "page" : undefined}>Catalog</a>
+            <a href={viewHashes.catalog} aria-current={view === "catalog" ? "page" : undefined}><NavIcon path="M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z" />Catalog</a>
           )}
           {hostedAdmin&&!me.official_catalog && (
             <a href={viewHashes["admin-waitlist"]} aria-current={defaultPage || view === "admin-waitlist" ? "page" : undefined}>
-              Waitlist
+              <NavIcon path="M5 4h14 M5 20h14 M7 4v3l5 5-5 5v3 M17 4v3l-5 5 5 5v3" />Waitlist
             </a>
           )}
           {me?.admin && (
@@ -211,24 +218,24 @@ function Workspace({
               href={viewHashes["admin-users"]}
               aria-current={view === "admin-users" || (me.official_catalog && (defaultPage||view==="admin-waitlist")) ? "page" : undefined}
             >
-              Users
+              <NavIcon path="M16 21v-2a6 6 0 0 0-12 0v2 M14 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0 M18 5a4 4 0 0 1 0 7 M18 15a5 5 0 0 1 3 5" />Users
             </a>
           )}
-          {hostedAdmin&&<a href={viewHashes["admin-releases"]} aria-current={view==="admin-releases"?"page":undefined}>Releases</a>}
+          {hostedAdmin&&<a href={viewHashes["admin-releases"]} aria-current={view==="admin-releases"?"page":undefined}><NavIcon path="M3 7l9-4 9 4-9 4z M3 7v10l9 4 9-4V7 M12 11v10" />Releases</a>}
           {me?.admin && (
             <a
               href={viewHashes["admin-nodes"]}
               aria-current={view === "admin-nodes" ? "page" : undefined}
             >
-              Nodes
+              <NavIcon path="M3 3h18v7H3z M3 14h18v7H3z M6 7h2 M6 18h2" />Nodes
             </a>
           )}
-          <a href={viewHashes.credits} aria-current={view === "credits" ? "page" : undefined}>Credits</a>
+          <a href={viewHashes.credits} aria-current={view === "credits" ? "page" : undefined}><NavIcon path="M3 5h18v14H3z M3 10h18 M6 15h4" />Credits</a>
           {!hostedAdmin && <a
             href={viewHashes.connect}
             aria-current={view === "connect" ? "page" : undefined}
           >
-            Connect
+            <NavIcon path="M8 8H5v4a7 7 0 0 0 14 0V8h-3 M9 4v5 M15 4v5 M12 19v3" />Connect
           </a>}
         </nav>
         <div className="account">
