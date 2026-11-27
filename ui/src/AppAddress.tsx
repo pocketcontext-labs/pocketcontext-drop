@@ -12,7 +12,7 @@ export default function AppAddress({ hostname }: { hostname?: string }) {
   return (
     <span className="app-address">
       <a href={url} target="_blank" rel="noreferrer">{url}</a>
-      <CopyButton key={url} text={url} label="Copy app URL" />
+      <CopyButton icon key={url} text={url} label="Copy app URL" />
     </span>
   );
 }

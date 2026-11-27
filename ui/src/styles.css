@@ -910,3 +910,16 @@ button.help-tip {
 .official-page label.size-label { display: inline; }
 .workspace-delete { border-top: 1px solid var(--border); padding-top: 16px; margin-top: 20px; }
 .workspace-delete > button { background: var(--panel); color: var(--danger); border: 1px solid currentColor; }
+
+button.connect-address { width: 100%; min-height: 48px; text-align: start; padding: 10px 14px; }
+.connect-address svg { flex: none; }
+.credits-page { width: min(100%, 48rem); margin-inline: auto; }
+.credit-balance strong { display: block; font-size: clamp(22px, 4vw, 32px); font-variant-numeric: tabular-nums; }
+.credits-page h3, .credit-history { margin-top: 24px; }
+.credit-table { overflow-x: auto; }
+.credit-table table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.credit-table th, .credit-table td { text-align: end; padding: 9px 8px; border-bottom: 1px solid var(--border); }
+.credit-table :is(th, td):first-child, .credit-history td:nth-child(2), .credit-history th:nth-child(2) { text-align: start; }
+.credit-table th { font-size: 13px; color: var(--muted); }
+.credit-history { border-top: 1px solid var(--border); padding-top: 14px; }
+.credit-history summary { cursor: pointer; font-weight: 600; }

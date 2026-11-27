@@ -116,10 +116,7 @@ export default function Connect() {
               <strong>Add this address to your assistant</strong>{" "}
               <HelpTip topic="the MCP address">Open your assistant’s settings and look for connectors or MCP servers. Choose the option to add a server, then paste this address.</HelpTip>
               <p>Use it wherever your assistant asks for an MCP server.</p>
-              <div className="connect-address">
-                <code>{connection.url}</code>
-                <CopyButton text={connection.url} />
-              </div>
+              <CopyButton text={connection.url} label="Copy MCP address" showAddress />
             </li>
             <li>
               <strong>Approve the connection</strong>

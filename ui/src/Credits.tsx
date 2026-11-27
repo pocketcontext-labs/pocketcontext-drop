@@ -70,7 +70,7 @@ export default function Credits({ admin, onPurchase }: { admin: boolean; onPurch
   }
 
   const rate = data?.apps.reduce((total, a) => total + a.rate, 0) ?? 0;
-  return <section className="panel wide">
+  return <section className="panel wide credits-page">
     <h2>Credits</h2>
     {error && <p role="alert">{error}</p>}
     {admin && <fieldset>
@@ -92,7 +92,7 @@ export default function Credits({ admin, onPurchase }: { admin: boolean; onPurch
       </div>
     </fieldset>}
     {data && <>
-      <p><strong>{credits(data.state.balance)} credits</strong> · {rate} credits per awake hour <HelpTip topic="awake hours">An awake hour is an hour a workspace is running, even if you close your browser. Sleeping or stopped workspaces use no running-time credits. Storage can have separate charges.</HelpTip></p>
+      <p className="credit-balance"><strong>{credits(data.state.balance)} credits</strong>  {rate} credits per awake hour <HelpTip topic="awake hours">An awake hour is an hour a workspace is running, even if you close your browser. Sleeping or stopped workspaces use no running-time credits. Storage can have separate charges.</HelpTip></p>
       {(data.state.reserved ?? 0) > 0 && <p>{credits(data.state.reserved ?? 0)} credits reserved for storage requests.</p>}
       {(data.state.pending_compute_seconds ?? 0) > 0 && <p>{data.state.pending_compute_seconds} awake seconds await storage settlement.</p>}
       {rate > 0 && data.state.balance > 0 && <p>About {(data.state.balance / 1_000_000 / rate).toFixed(1)} hours left at this compute rate.</p>}
@@ -100,16 +100,17 @@ export default function Credits({ admin, onPurchase }: { admin: boolean; onPurch
       {admin ?
         <label>Adjustment in credits <input type="number" step="0.000001" value={delta} onChange={e => setDelta(e.target.value)} /></label> :
         <p>Simulated purchase. No payment is collected.</p>}
-      <button disabled={busy || (admin && !Number(delta))} onClick={() => void submit()}>{admin ? "Apply adjustment" :
+      <button className="primary" disabled={busy || (admin && !Number(delta))} onClick={() => void submit()}>{admin ? "Apply adjustment" :
         `Buy ${data.settings.pack} credits (€${(data.settings.pack * data.settings.euro_micros_per_credit / 1_000_000).toFixed(2)})`}</button>
-      {data.apps.length > 0 && <><h3>App usage</h3><table><thead><tr><th>App</th><th>Credits/hour</th><th>Compute credits</th><th>S3 credits</th></tr></thead><tbody>
+      {data.apps.length > 0 && <><h3>Workspace usage</h3><div className="credit-table"><table><thead><tr><th>Workspace</th><th>Credits/hour</th><th>Running costs (credits)</th><th>Storage costs (credits)</th></tr></thead><tbody>
         {data.apps.map(a => <tr key={a.id}><td>{a.name}</td><td>{a.rate}</td><td>{credits(a.compute)}</td><td>{credits(a.s3)}</td></tr>)}
-      </tbody></table></>}
-      <h3>Ledger</h3>
-      {data.entries.length ? <table><thead><tr><th>Time</th><th>Entry</th><th>Credits</th></tr></thead><tbody>{data.entries.map(e => <tr key={e.id}>
-        <td>{new Date(e.created * 1000).toLocaleString()}</td><td>{e.kind}</td><td>{credits(e.delta)}</td></tr>)}</tbody></table> : <p>No entries.</p>}
+      </tbody></table></div></>}
+      <details className="credit-history"><summary>Transaction history</summary>
+      {data.entries.length ? <div className="credit-table"><table><thead><tr><th>Time</th><th>Entry</th><th>Credits</th></tr></thead><tbody>{data.entries.map(e => <tr key={e.id}>
+        <td>{new Date(e.created * 1000).toLocaleString()}</td><td>{e.kind === "s3" ? "Storage" : e.kind === "compute" ? "Workspace runtime" : e.kind}</td><td>{credits(e.delta)}</td></tr>)}</tbody></table></div> : <p>No entries.</p>}
       {data.entries.length === 100 && <button onClick={() => setBefore(data.entries[data.entries.length-1].id)}>Older entries</button>}
       {before > 0 && <button onClick={() => setBefore(0)}>Latest entries</button>}
+      </details>
     </>}
   </section>;
 }

@@ -86,7 +86,7 @@ function InviteForm({ onCreated }: { onCreated: () => void }) {
           <p>Sign-in link for {link.email}:</p>
           <div className="row">
             <code className="endpoint">{link.url}</code>
-            <CopyButton text={link.url} />
+            <CopyButton icon label="Copy invitation link" text={link.url} />
           </div>
         </div>
       )}
