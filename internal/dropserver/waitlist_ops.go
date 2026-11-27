@@ -13,8 +13,11 @@ import (
 
 func init() {
 	register("waitlist.list", waitList)
-	for _, action := range []string{"invite", "resend", "revoke"} {
-		register("waitlist."+action, func(c *Ctx, in *dropapi.WaitlistID) (any, error) { return waitAction(c, in.ID, action) })
+	register("waitlist.invite", func(c *Ctx, in *dropapi.WaitlistInvite) (any, error) {
+		return waitAction(c, in.ID, "invite", in.Role)
+	})
+	for _, action := range []string{"resend", "revoke"} {
+		register("waitlist."+action, func(c *Ctx, in *dropapi.WaitlistID) (any, error) { return waitAction(c, in.ID, action, "") })
 	}
 }
 
@@ -53,7 +56,7 @@ func waitList(c *Ctx, in *dropapi.WaitlistListInput) (any, error) {
 	}
 	return map[string]any{"entries": rows, "has_more": more}, nil
 }
-func waitAction(c *Ctx, id, action string) (any, error) {
+func waitAction(c *Ctx, id, action string, role dropapi.Role) (any, error) {
 	var w waitEntry
 	err := c.App.DB().NewQuery("SELECT * FROM drop_waitlist WHERE id={:id} AND verified_at!=''").Bind(dbx.Params{"id": id}).One(&w)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -71,11 +74,14 @@ func waitAction(c *Ctx, id, action string) (any, error) {
 				return nil, err
 			}
 			if state := inviteOut(r).State; state == dropapi.InviteStateOpen || state == dropapi.InviteStateUsed {
+				if role != "" && string(role) != r.GetString("role") {
+					return nil, Conflict("invite_role_conflict", "This invitation already has a different role.")
+				}
 				c.Event(Event{Detail: map[string]any{"entry": id, "invite": w.Invite, "unchanged": true}})
 				return map[string]bool{"ok": true}, nil
 			}
 		}
-		result, err := inviteCreate(c, &dropapi.InviteCreateInput{Email: w.Email})
+		result, err := inviteCreate(c, &dropapi.InviteCreateInput{Email: w.Email, Role: role})
 		if err != nil {
 			return nil, err
 		}

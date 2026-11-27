@@ -107,6 +107,10 @@ it("keeps the combined directory paginated and sends selected filters to the ser
       expect.objectContaining({ offset: 25, limit: 25 }),
     ),
   );
+  fireEvent.change(screen.getByLabelText("Role"), { target: { value: "developer" } });
+  await waitFor(() => expect(ops).toHaveBeenCalledWith(
+    "user.directory", expect.objectContaining({ role: "developer", offset: 0 }),
+  ));
   fireEvent.change(screen.getByLabelText("Status"), {
     target: { value: "waiting" },
   });
@@ -182,4 +186,40 @@ it("offers both active Crew versions and pins the older selection", async () => 
   fireEvent.click(screen.getByRole("button", { name: "Create app" }));
   await waitFor(() => expect(ops).toHaveBeenCalledWith("workspace.create",
     expect.objectContaining({ sha256: "older" }), expect.any(String)));
+});
+
+it("stages the exact submitted digest before catalog publication", async () => {
+  const candidate = { app: "private1", release: "release1", product: "crew", version: "1.2", sha256: "a".repeat(64), submitted_by: "account1", size_bytes: 1024 };
+  let accepted = false;
+  const ops = vi.spyOn(api, "op").mockImplementation(async name => {
+    if (name === "catalog.submissions") return { submissions: accepted ? [] : [candidate] };
+    if (name === "catalog.accept") {
+      accepted = true;
+      return candidate;
+    }
+    if (name === "catalog.list") return { enabled: true, releases: accepted ? [{ ...candidate, published: 0 }] : [] };
+    throw new Error("Unexpected operation " + name);
+  });
+  render(<OfficialReleases />);
+  expect(await screen.findByText("sha256: " + candidate.sha256)).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Accept for rehearsal" }));
+  await waitFor(() => expect(ops).toHaveBeenCalledWith("catalog.accept", {
+    app: candidate.app, release: candidate.release, sha256: candidate.sha256,
+  }));
+  expect(await screen.findByRole("button", { name: "Publish release" })).toBeDisabled();
+  expect(screen.queryByText("Submitted for review")).toBeNull();
+});
+
+it("invites an account directly as a developer", async () => {
+  vi.spyOn(api, "op").mockResolvedValue({ users: [], total: 0 });
+  const invite = vi.spyOn(api.dropApi, "createInvite").mockResolvedValue({
+    invite: { id: "inv000000000001", email: "dev@example.test", role: "developer", app_quota: 3, state: "open", invited_by: "owner", created: "", expires_at: "", used_by: "", used_at: "", revoked_at: "" },
+    sign_in_url: "https://drop.example.test/#/invite",
+  });
+  render(<UserDirectory me={{ hosted: true, id: "owner", email: "admin@example.test", role: "admin", admin: true, owner: true, app_quota: 3 }} />);
+  fireEvent.click(screen.getByRole("button", { name: "Invite someone" }));
+  fireEvent.change(screen.getByLabelText("Email"), { target: { value: "dev@example.test" } });
+  fireEvent.change(screen.getByLabelText("Invitation role"), { target: { value: "developer" } });
+  fireEvent.click(screen.getByRole("button", { name: "Create invitation" }));
+  await waitFor(() => expect(invite).toHaveBeenCalledWith({ email: "dev@example.test", role: "developer" }));
 });

@@ -43,13 +43,13 @@ it("lists the apps and links each to its page", async () => {
   expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
   expect(screen.getByRole("link", {name: "Open"})).toHaveAttribute("href", "https://" + app.hostname);
   expect(screen.getByRole("button", {name: "Copy app URL"})).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Deploy an app" })).toHaveAttribute("href", "#/deploy");
+  expect(screen.getByRole("link", { name: "Create app" })).toHaveAttribute("href", "#/catalog");
 });
 
 it("keeps creation available at the former account limit", async () => {
   vi.spyOn(dropApi, "listApps").mockResolvedValue({ apps: [app, app, app].map((a, i) => ({ ...a, id: `app00000000000${i}` })), quota: { used: 3, limit: 3, unlimited: false }, has_more: false });
   render(<App />);
-  expect(await screen.findByRole("link", { name: "Deploy an app" })).toBeInTheDocument();
+  expect(await screen.findByRole("link", { name: "Create app" })).toBeInTheDocument();
 });
 
 it("lets a local developer create an app from #/apps/new and opens its page", async () => {
@@ -184,6 +184,7 @@ it("checks a release file locally like the server", async () => {
 });
 
 it("uploads a release through a one-time link with progress and deploys another", async () => {
+  vi.spyOn(dropApi, "me").mockResolvedValue({ ...member, hosted: false, admin: true, role: "admin" });
   history.replaceState(null, "", `/#/apps/${id}/releases`);
   vi.spyOn(dropApi, "getApp").mockResolvedValue({ app: { ...app, current_release: release.id }, secrets: [] });
   vi.spyOn(dropApi, "listReleases").mockResolvedValue({ releases: [release, older], current_release: release.id, has_more: false });
@@ -314,7 +315,7 @@ it("can reopen a completed receipt after the original app is gone", async () => 
 
 it("creates an owner-private app from the hosted developer route", async () => {
   const apiModule = await import("./dropApi");
-  vi.spyOn(dropApi, "me").mockResolvedValue({ ...member, developer: true, official_catalog: true });
+  vi.spyOn(dropApi, "me").mockResolvedValue({ ...member, role: "developer", official_catalog: true });
   const call = vi.spyOn(apiModule, "op").mockResolvedValue({ app });
   history.replaceState(null, "", "/#/private/new");
   render(<App />);
@@ -327,7 +328,7 @@ it("creates an owner-private app from the hosted developer route", async () => {
 
 it("uploads a private executable and deploys a selected release separately", async () => {
   const apiModule = await import("./dropApi");
-  vi.spyOn(dropApi, "me").mockResolvedValue({ ...member, developer: true, official_catalog: true });
+  vi.spyOn(dropApi, "me").mockResolvedValue({ ...member, role: "developer", official_catalog: true });
   vi.spyOn(dropApi, "getApp").mockResolvedValue({ app: { ...app, developer_private: true }, secrets: [] });
   vi.spyOn(dropApi, "listReleases").mockResolvedValue({ releases: [older], current_release: "", has_more: false });
   const path = "/api/drop/upload/" + "T".repeat(32);
@@ -351,4 +352,17 @@ it("uploads a private executable and deploys a selected release separately", asy
   fireEvent.click(screen.getByRole("button", { name: "Deploy" }));
   expect(await screen.findByText(/Deployed bbbbbbbbbbbb/)).toBeInTheDocument();
   expect(call).toHaveBeenCalledWith("developer.deploy", { app: id, release: older.id });
+});
+
+it("submits the deployed private release for catalog review", async () => {
+  const apiModule = await import("./dropApi");
+  vi.spyOn(dropApi, "me").mockResolvedValue({ ...member, role: "developer", official_catalog: true });
+  vi.spyOn(dropApi, "getApp").mockResolvedValue({ app: { ...app, developer_private: true, current_release: release.id }, secrets: [] });
+  vi.spyOn(dropApi, "listReleases").mockResolvedValue({ releases: [{ ...release, current: true }, older], current_release: release.id, has_more: false });
+  const submit = vi.spyOn(apiModule, "op").mockResolvedValue({ product: "crew", version: "1.2", sha256: release.sha256 });
+  history.replaceState(null, "", `/#/apps/${id}/releases`);
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Submit for catalog review" }));
+  expect(await screen.findByText("Submitted crew 1.2 (aaaaaaaaaaaa) for catalog review.")).toBeVisible();
+  expect(submit).toHaveBeenCalledWith("developer.submit", { app: id, release: release.id });
 });

@@ -28,7 +28,7 @@ func TestTenantReader(t *testing.T) {
 	}
 	var tenants []tenant
 	for _, name := range []string{"first-tenant", "second-tenant"} {
-		user, token := h.User(name+"@example.test", "user")
+		user, token := h.User(name+"@example.test", "developer")
 		created := h.MustOp(token, "app.create", map[string]any{"slug": name, "name": name})
 		app := created["app"].(map[string]any)
 		tenants = append(tenants, tenant{token, user.Id, app["id"].(string), name})

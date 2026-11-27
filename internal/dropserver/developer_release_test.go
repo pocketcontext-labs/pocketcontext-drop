@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/agent"
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/awsx"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/droptest"
 )
@@ -59,7 +60,9 @@ func testPrivateDeveloperRelease(t *testing.T, withManifest bool) {
 		}
 		done <- err
 	}()
-	h := droptest.NewHosted(t, droptest.Options{ProbeSocket: socket, BetaNodes: []string{"old-node", "new-node"}})
+	store := &promotionStore{MemBlobStore: awsx.NewMemBlobStore()}
+	h := droptest.NewHosted(t, droptest.Options{ProbeSocket: socket, BetaNodes: []string{"old-node", "new-node"}, Releases: store})
+	h.Releases = store.MemBlobStore
 	owner := h.Owner()
 	admin := h.Token(owner)
 	joe, user := h.User("private-developer@example.test", "user")
@@ -70,7 +73,7 @@ func testPrivateDeveloperRelease(t *testing.T, withManifest bool) {
 	}
 	wantError(t, h.Op(user, "developer.create", input), 403, dropapi.CodeForbidden)
 	wantError(t, h.Op(admin, "developer.create", input), 403, dropapi.CodeForbidden)
-	h.MustOp(admin, "user.set", map[string]any{"user": joe.Id, "developer": true})
+	h.MustOp(admin, "user.set", map[string]any{"user": joe.Id, "role": "developer"})
 	if _, err := h.App.DB().NewQuery("INSERT INTO drop_app_deletions (app,owner,slug,nib,completed) VALUES ('past','past','retired-build','d-past',1)").Execute(); err != nil {
 		t.Fatal(err)
 	}
@@ -136,8 +139,17 @@ func testPrivateDeveloperRelease(t *testing.T, withManifest bool) {
 	if err != nil || !bytes.Equal(got, raw) {
 		t.Fatal("staged bytes differ", err)
 	}
+	if withManifest {
+		testCatalogPromotion(t, h, store, user, admin, other, id, rel.ID, raw)
+	} else {
+		wantError(t, h.Op(user, "developer.submit", deploy), 400, dropapi.CodeInvalidInput)
+	}
 	path = h.MustOp(user, "developer.upload_link", ref)["path"].(string)
-	h.MustOp(admin, "user.set", map[string]any{"user": joe.Id, "developer": false})
+	h.MustOp(admin, "user.set", map[string]any{"user": joe.Id, "role": "user"})
 	wantUploadError(t, upload(t, h, path, raw), 404, dropapi.CodeUploadLinkInvalid)
 	wantError(t, h.Op(user, "developer.deploy", deploy), 403, dropapi.CodeForbidden)
+	if withManifest {
+		testCatalogSourceDeletion(t, h, user, node, id, rel)
+	}
+
 }

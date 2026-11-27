@@ -30,7 +30,7 @@ func userDirectory(c *Ctx, in *dropapi.DirectoryInput) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if in.Offset < 0 || len(in.Search) > 254 || !slices.Contains([]string{"", "active", "suspended", "waiting", "invited", "revoked", "expired"}, in.Status) || !slices.Contains([]string{"", "admin", "user"}, in.Role) || !slices.Contains([]string{"", "yes", "no"}, in.Workspaces) || !slices.Contains([]string{"", "yes", "no"}, in.Credits) {
+	if in.Offset < 0 || len(in.Search) > 254 || !slices.Contains([]string{"", "active", "suspended", "waiting", "invited", "revoked", "expired"}, in.Status) || !slices.Contains([]string{"", "admin", "developer", "user"}, in.Role) || !slices.Contains([]string{"", "yes", "no"}, in.Workspaces) || !slices.Contains([]string{"", "yes", "no"}, in.Credits) {
 		return nil, Invalid("filters", "Choose a supported directory filter.")
 	}
 	// Include direct invites, established accounts without waitlist records,
@@ -45,7 +45,7 @@ func userDirectory(c *Ctx, in *dropapi.DirectoryInput) (any, error) {
 	directory AS (SELECT e.email,COALESCE(u.id,'') account,COALESCE(w.id,'') entry,COALESCE(i.id,'') invite,
 	CASE WHEN u.suspended=1 THEN 'suspended' WHEN u.id IS NOT NULL THEN 'active' WHEN i.revoked_at!='' THEN 'revoked'
 	WHEN i.expires_at<=strftime('%Y-%m-%d %H:%M:%fZ','now') THEN 'expired' WHEN i.id IS NOT NULL THEN 'invited' ELSE 'waiting' END status,
-	COALESCE(u.role,i.role,'user') role,COALESCE(u.developer,0) developer,COALESCE(s.spaces,0) spaces,COALESCE(wallet.balance,0) credits,
+	COALESCE(u.role,i.role,'user') role,COALESCE(u.role,i.role,'user')='developer' developer,COALESCE(s.spaces,0) spaces,COALESCE(wallet.balance,0) credits,
 	COALESCE(w.verified_at,u.created,i.created) joined FROM emails e
 	LEFT JOIN users u ON u.email=e.email COLLATE NOCASE AND u.verified=1
 	LEFT JOIN drop_waitlist w ON w.email=e.email AND w.verified_at!=''

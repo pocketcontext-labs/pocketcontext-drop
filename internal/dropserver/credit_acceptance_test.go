@@ -53,7 +53,7 @@ func TestCreditPurchases(t *testing.T) {
 
 func TestSharedTrialAndPaidSuspension(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
-	account, token := h.User("trial@example.test", "user")
+	account, token := h.User("trial@example.test", "developer")
 	admin := h.Token(h.Owner())
 	node, _, agent := h.Node("trial-node", hostA)
 	ids := []string{deployedApp(t, h, token, "trial-one", 1), deployedApp(t, h, token, "trial-two", 2)}
@@ -140,7 +140,7 @@ func TestSharedTrialAndPaidSuspension(t *testing.T) {
 
 func TestCreditS3Collection(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{Usage: true})
-	user, token := h.User("s3-billing@example.test", "user")
+	user, token := h.User("s3-billing@example.test", "developer")
 	id := createApp(t, h, user.Id, "s3-billing")
 	nib := appRecord(t, h, id).GetString("nib_app_id")
 	if r := h.Op(token, "credits.buy", nil, "pack"); r.Status != 200 {
@@ -170,7 +170,7 @@ func TestCreditS3Collection(t *testing.T) {
 
 func TestCreditHostCounterDelta(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
-	_, token := h.User("counter@example.test", "user")
+	_, token := h.User("counter@example.test", "developer")
 	node, _, agent := h.Node("counter-node", hostA)
 	app := deployedApp(t, h, token, "counter-app", 1)
 	h.MustOp(h.Token(h.Owner()), "placement.set", map[string]any{"app": app, "node": node})
@@ -232,7 +232,7 @@ func TestCreditHostCounterDelta(t *testing.T) {
 
 func TestExistingManagedCrewEntersTrial(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
-	h.Invite("legacy-crew@example.test", "user")
+	h.Invite("legacy-crew@example.test", "developer")
 	token := h.SignIn("legacy-crew@example.test").Token
 	app := appOf(t, h.MustOp(token, "app.create", map[string]any{"name": "Existing Crew", "slug": "existing-crew", "kind": "crew"}))
 	id := app["id"].(string)
@@ -299,7 +299,7 @@ func TestExistingManagedCrewEntersTrial(t *testing.T) {
 
 func TestDeploymentRatesAndCounterBounds(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
-	_, token := h.User("rates@example.test", "user")
+	_, token := h.User("rates@example.test", "developer")
 	node, _, agent := h.Node("rates-node", hostA)
 	if r := h.Op(token, "credits.buy", nil, "fund"); r.Status != 200 {
 		t.Fatal(r.Raw)
@@ -341,7 +341,7 @@ func TestDeploymentRatesAndCounterBounds(t *testing.T) {
 
 func TestSecondPurchasePreservesPaidIntervalAndResetsOnlyFutureBuffer(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
-	account, token := h.User("again@example.test", "user")
+	account, token := h.User("again@example.test", "developer")
 	admin := h.Token(h.Owner())
 	node, _, agent := h.Node("purchases", hostA)
 	app := deployedApp(t, h, token, "two-purchases", 1)

@@ -47,3 +47,9 @@ type OfficialRehearsal struct {
 	Records        int    `json:"records"`
 	Attachments    int    `json:"attachments"`
 }
+
+type AcceptSubmission struct {
+	App     string `json:"app"`
+	Release string `json:"release"`
+	SHA256  string `json:"sha256"`
+}

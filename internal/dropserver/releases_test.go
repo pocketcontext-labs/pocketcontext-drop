@@ -89,7 +89,7 @@ func wantUploadError(t *testing.T, a uploadAnswer, status int, code string) {
 // the deployment, and neither the token nor the URL is kept anywhere.
 func TestReleaseUploadAndDeploy(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
-	user, token := h.User("user@example.test", "user")
+	user, token := h.User("user@example.test", "developer")
 	app := newApp(t, h, token, "hello")
 	empty := h.MustOp(token, "release.list", map[string]any{"app": "hello"})
 	if len(empty["releases"].([]any)) != 0 || empty["current_release"] != "" {
@@ -196,7 +196,7 @@ func TestReleaseUploadAndDeploy(t *testing.T) {
 // leaves the link usable.
 func TestUploadRefusals(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{ReleaseMaxBytes: 1 << 20})
-	_, token := h.User("user@example.test", "user")
+	_, token := h.User("user@example.test", "developer")
 	newApp(t, h, token, "hello")
 	path := uploadLink(t, h, token, "hello", nil)
 	if link := h.MustOp(token, "release.upload_link", map[string]any{"app": "hello"}); num(link["max_bytes"]) != 1<<20 {
@@ -256,7 +256,7 @@ func TestUploadRefusals(t *testing.T) {
 	wantUploadError(t, upload(t, h, archived, droptest.ELF(100, 11)), 409, dropapi.CodeAppArchived)
 	wantError(t, h.Op(token, "release.upload_link", map[string]any{"app": "hello"}), 409, dropapi.CodeAppArchived)
 	h.MustOp(token, "app.restore", map[string]any{"app": "hello"})
-	suspendedUser, suspendedToken := h.User("later@example.test", "user")
+	suspendedUser, suspendedToken := h.User("later@example.test", "developer")
 	newApp(t, h, suspendedToken, "later")
 	suspendedLink := uploadLink(t, h, suspendedToken, "later", nil)
 	h.MustOp(h.Token(h.Owner()), "user.set", map[string]any{"user": suspendedUser.Id, "suspended": true})
@@ -286,7 +286,7 @@ func setLinkField(t *testing.T, h *droptest.Hosted, path, field string, value an
 // global 32 MB body limit up to the 90 MiB release cap.
 func TestUploadAbovePocketBaseBodyLimit(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
-	_, token := h.User("user@example.test", "user")
+	_, token := h.User("user@example.test", "developer")
 	newApp(t, h, token, "hello")
 	body := droptest.ELF(40<<20, 1)
 	if a := upload(t, h, uploadLink(t, h, token, "hello", nil), body); a.Status != 200 || a.Result.Release.SizeBytes != 40<<20 {
@@ -298,8 +298,8 @@ func TestUploadAbovePocketBaseBodyLimit(t *testing.T) {
 // operation; admins list any app's releases but change only their own.
 func TestReleaseIsolation(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
-	_, alice := h.User("alice@example.test", "user")
-	_, bob := h.User("bob@example.test", "user")
+	_, alice := h.User("alice@example.test", "developer")
+	_, bob := h.User("bob@example.test", "developer")
 	admin := h.Token(h.Owner())
 	newApp(t, h, alice, "alice-app")
 	a := upload(t, h, uploadLink(t, h, alice, "alice-app", nil), droptest.ELF(1000, 1))
@@ -334,7 +334,7 @@ func TestReleaseIsolation(t *testing.T) {
 // exactly one release.
 func TestUploadIsSingleUseUnderConcurrency(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
-	_, token := h.User("user@example.test", "user")
+	_, token := h.User("user@example.test", "developer")
 	newApp(t, h, token, "hello")
 	path := uploadLink(t, h, token, "hello", nil)
 	var wg sync.WaitGroup
@@ -399,7 +399,7 @@ func (failingBlobs) Head(context.Context, string) (awsx.BlobInfo, error) {
 // a server without a store refuses links with 503.
 func TestReleaseStoreFailures(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{Releases: failingBlobs{}})
-	_, token := h.User("user@example.test", "user")
+	_, token := h.User("user@example.test", "developer")
 	newApp(t, h, token, "hello")
 	path := uploadLink(t, h, token, "hello", nil)
 	wantUploadError(t, upload(t, h, path, droptest.ELF(100, 1)), 502, dropapi.CodeReleaseStoreFailed)
@@ -409,7 +409,7 @@ func TestReleaseStoreFailures(t *testing.T) {
 	wantUploadError(t, upload(t, h, path, droptest.ELF(100, 1)), 502, dropapi.CodeReleaseStoreFailed)
 
 	none := droptest.NewHosted(t, droptest.Options{NoReleases: true})
-	_, token = none.User("user@example.test", "user")
+	_, token = none.User("user@example.test", "developer")
 	newApp(t, none, token, "hello")
 	wantError(t, none.Op(token, "release.upload_link", map[string]any{"app": "hello"}), 503, dropapi.CodeReleasesUnavailable)
 	if list := none.MustOp(token, "release.list", map[string]any{"app": "hello"}); len(list["releases"].([]any)) != 0 {

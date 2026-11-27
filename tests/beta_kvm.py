@@ -133,7 +133,7 @@ denied_egress_addresses_v6 = []
             email = name + '@example.test'
             entries = owner_op('waitlist.list', search=email)['entries']
             assert len(entries) == 1 and entries[0]['email'] == email
-            owner_op('waitlist.invite', id=entries[0]['id'])
+            owner_op('waitlist.invite', id=entries[0]['id'], role='developer')
             assert read_mail(root / (email + '.welcome')) == 'received'
         # Use the caller’s Playwright cache, separate from Drop’s isolated HOME.
         time.sleep(max(0, next_signin - time.monotonic()))

@@ -86,11 +86,11 @@ One read-only `SELECT` (alias `query`). Prints `{"columns", "rows", "truncated"}
 ## Invites and accounts (admins)
 
 ```sh
-drop invite create friend@example.com [--role user|admin] [--quota N] [--expires-days N]
+drop invite create friend@example.com [--role user|developer|admin] [--quota N] [--expires-days N]
 drop invite list [--state all|open] [--limit N]
 drop invite revoke INVITE_ID
 drop user list [--limit N]
-drop user set USER_ID|EMAIL [--role user|admin] [--quota N] [--suspend | --unsuspend]
+drop user set USER_ID|EMAIL [--role user|developer|admin] [--quota N] [--suspend | --unsuspend]
 ```
 
 - `invite create` lower-cases the address (plain ASCII, at most 254 characters); role `user` by default, legacy app_quota metadata (default 3, range 0–100), valid 7 days (1-30). Prints `{"invite", "sign_in_url"}`; no email is sent, so the sign-in URL is shared by hand. An address with an account (`account_exists`) or an open invite (`invite_exists`) exits 4.

@@ -79,6 +79,16 @@ func ReleaseKey(sha256hex string) (string, error) {
 	return ReleasePrefix + sha256hex, nil
 }
 
+// OpenRelease reads only content-addressed executable objects. The control
+// plane uses it to verify private releases submitted for catalog review.
+func OpenRelease(ctx context.Context, store BlobReader, key string) (io.ReadCloser, BlobInfo, error) {
+	digest, ok := strings.CutPrefix(key, ReleasePrefix)
+	if !ok || !ValidSHA256(digest) {
+		return nil, BlobInfo{}, fmt.Errorf("%w: expected a content-addressed release key", ErrInvalid)
+	}
+	return store.Get(ctx, key)
+}
+
 // ValidSHA256 reports whether s is 64 lower-case hex characters.
 func ValidSHA256(s string) bool { return sha256Pattern.MatchString(s) }
 

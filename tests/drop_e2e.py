@@ -198,7 +198,7 @@ def scenario(binary, root):
     node = None
     try:
         check(hosted_request(server.port, 'GET', '/up', host='127.0.0.1')[0] == 200, 'the hosted server answers /up')
-        server.owner('invite', 'create', 'invitee@example.test', '--role', 'user')
+        server.owner('invite', 'create', 'invitee@example.test', '--role', 'developer')
         user = InvitedUser(server.port, server_root)
         app = user.op('app.create', name='Agent app', slug='agent-app', http_port=80)['app']
         user.op('secret.set', app='agent-app', name='API_KEY', value=SENTINEL)

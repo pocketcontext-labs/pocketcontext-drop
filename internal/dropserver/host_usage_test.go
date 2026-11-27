@@ -23,8 +23,8 @@ func usageOf(seq int64, dep string, write, in int64) map[string]any {
 func TestHostUsageReports(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	owner := h.Token(h.Owner())
-	_, tokenA := h.User("a@example.test", "user")
-	_, tokenB := h.User("b@example.test", "user")
+	_, tokenA := h.User("a@example.test", "developer")
+	_, tokenB := h.User("b@example.test", "developer")
 	n1, _, t1 := h.Node("node-one", hostA)
 	n2, _, t2 := h.Node("node-two", hostB)
 	app := deployedApp(t, h, tokenA, "app-one", 1)
@@ -124,7 +124,7 @@ func TestHostLimitsInDesired(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	owner := h.Token(h.Owner())
 	const alice = "alice@example.test"
-	h.Invite(alice, "user")
+	h.Invite(alice, "developer")
 	a := h.SignIn(alice).Token
 	crew := appOf(t, h.MustOp(a, "app.create", map[string]any{"name": "Crew", "slug": "crew-app", "kind": "crew"}))
 	plain := deployedApp(t, h, a, "plain-app", 2)

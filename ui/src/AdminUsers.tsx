@@ -1,3 +1,4 @@
+import { RoleOptions } from "./AccountRoles";
 import {
   useCallback,
   useEffect,
@@ -34,6 +35,7 @@ function InviteForm({ onCreated }: { onCreated: () => void }) {
       });
       setLink({ email: created.invite.email, url: created.sign_in_url });
       setEmail("");
+      setRole("user");
       onCreated();
     } catch (e) {
       setError(message(e));
@@ -63,8 +65,7 @@ function InviteForm({ onCreated }: { onCreated: () => void }) {
               value={role}
               onChange={(event) => setRole(event.target.value as Role)}
             >
-              <option value="user">User</option>
-              <option value="admin">Admin</option>
+              <RoleOptions />
             </select>
           </label>
           <button className="primary" disabled={busy || !email.trim()}>
@@ -168,7 +169,7 @@ function Users({
   const [error, setError] = useState("");
   const change = async (
     user: User,
-    update: { role?: Role; app_quota?: number; suspended?: boolean; developer?: boolean },
+    update: { role?: Role; app_quota?: number; suspended?: boolean },
   ) => {
     setBusy(user.id);
     setError("");
@@ -212,14 +213,8 @@ function Users({
                     void change(user, { role: event.target.value as Role })
                   }
                 >
-                  <option value="user">User</option>
-                  <option value="admin">Admin</option>
+                  <RoleOptions />
                 </select>
-              </label>
-              <label className="check">
-                <input type="checkbox" checked={!!user.developer} disabled={busy === user.id}
-                  onChange={e => void change(user, { developer: e.target.checked })} />
-                Developer access
               </label>
               <button
                 type="button"

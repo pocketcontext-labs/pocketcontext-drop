@@ -67,12 +67,12 @@ Whole-table reads (the local server or --url; never the hosted origin):
   whoami | schema                    the session's account ID; the readable schema
 
 Accounts and nodes (admins; Drop is invite-only, and no invite email is sent):
-  invite create EMAIL [--role user|admin] [--quota N] [--expires-days N]
+  invite create EMAIL [--role user|developer|admin] [--quota N] [--expires-days N]
                                      invite an address; prints the sign-in URL to share
   invite list [--state all|open]     invites, newest first, with their state
   invite revoke INVITE_ID            close an open invite
   user list                          accounts with role, quota and suspension
-  user set USER_ID|EMAIL [--role user|admin] [--quota N] [--suspend | --unsuspend] [--developer | --no-developer]
+  user set USER_ID|EMAIL [--role user|developer|admin] [--quota N] [--suspend | --unsuspend]
                                      change an account
   node list                          nodes (hosts) with state, online and capacity
   node create NAME --host-id HOST_ID add a node; prints its agent password once

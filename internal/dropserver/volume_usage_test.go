@@ -14,7 +14,7 @@ import (
 func TestVolumeDowngradeReasons(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	admin := h.Token(h.Owner())
-	_, user := h.User("volume@example.test", "user")
+	_, user := h.User("volume@example.test", "developer")
 	a := appOf(t, h.MustOp(user, "app.create", map[string]any{"name": "volume", "slug": "volume", "disk_mib": 4096, "memory_mib": 512}))
 	n := h.MustOp(admin, "node.create", map[string]any{"name": "volume-node", "host_id": hostA})
 	_, token := h.NodeLogin("volume-node", n["password"].(string))

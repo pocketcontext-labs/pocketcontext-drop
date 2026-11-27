@@ -25,8 +25,8 @@ type Services struct {
 	// SSMPrefix is the parameter prefix (awsx.DefaultSSMPrefix when empty).
 	SSMPrefix string
 	// Releases stores uploaded release executables in S3, or a fake, by
-	// content at awsx.ReleaseKey(sha256). The server only writes (and may
-	// check that a release exists); nil means this server has no release
+	// content at awsx.ReleaseKey(sha256). Catalog acceptance also needs a
+	// BlobReader to verify submitted release bytes. Nil means there is no release
 	// store (plain local serve), and upload links answer 503
 	// releases_unavailable.
 	Releases awsx.BlobWriter

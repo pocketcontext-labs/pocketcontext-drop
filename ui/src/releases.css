@@ -53,3 +53,5 @@
 }
 .official-page .release-opt-in { display: flex; align-items: center; gap: 8px; }
 .release-opt-in input[type="checkbox"] { width: auto; min-height: 0; }
+
+.candidate-digest { overflow-wrap: anywhere; color: var(--muted); }

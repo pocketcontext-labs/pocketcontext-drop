@@ -159,9 +159,16 @@ func finishAppDeletion(ctx context.Context, app core.App, id string) error {
 			}
 		}
 		var hashes []string
-		if err := tx.DB().NewQuery(`SELECT DISTINCT substr(s3_key,10) FROM releases r WHERE app={:app}
-   AND NOT EXISTS(SELECT 1 FROM drop_official_releases catalog WHERE r.s3_key='releases/'||catalog.digest)
-   AND NOT EXISTS(SELECT 1 FROM releases other WHERE other.s3_key=r.s3_key AND other.app!=r.app)`).Bind(p).Column(&hashes); err != nil {
+		if err := tx.DB().NewQuery(`WITH candidates(digest) AS (
+ SELECT substr(s3_key,10) FROM releases WHERE app={:app}
+ UNION SELECT s.digest FROM drop_catalog_submissions s JOIN releases r ON r.id=s.release
+ WHERE r.app={:app} AND s.disclosure_approved_by!=''
+ )
+ SELECT c.digest FROM candidates c
+ WHERE NOT EXISTS (SELECT 1 FROM drop_official_releases o WHERE o.digest=c.digest)
+ AND NOT EXISTS (SELECT 1 FROM releases r WHERE r.s3_key='releases/'||c.digest AND r.app!={:app})
+ AND NOT EXISTS (SELECT 1 FROM drop_catalog_submissions s JOIN releases r ON r.id=s.release
+ WHERE r.app!={:app} AND s.digest=c.digest AND s.disclosure_approved_by!='')`).Bind(p).Column(&hashes); err != nil {
 			return err
 		}
 		for _, digest := range hashes {

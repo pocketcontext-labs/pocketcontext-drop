@@ -337,7 +337,7 @@ select {
 }
 .account-controls {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 6.5rem 5.5rem 8rem;
+  grid-template-columns: minmax(0, 1fr) 8rem 8rem;
   align-items: end;
   gap: 12px;
 }
@@ -1025,8 +1025,6 @@ html { scrollbar-gutter: stable; }
   align-items: end;
   gap: 12px 20px;
 }
-.directory-access .check { align-self: center; }
 .directory-access select { min-width: 9rem; }
 .directory-detail h3 { margin-block: 0; overflow-wrap: anywhere; }
 .directory-detail { margin-bottom: 16px; }
-.invite-access-note { flex-basis: 100%; color: var(--muted); }

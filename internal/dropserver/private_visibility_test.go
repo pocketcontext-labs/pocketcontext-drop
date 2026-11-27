@@ -17,7 +17,7 @@ func TestPrivateAppMetadataOnlyVisibleToOwner(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	operator := h.Token(h.Owner())
 	account, developer := h.User("owner-preview@example.test", "user")
-	h.MustOp(operator, "user.set", map[string]any{"user": account.Id, "developer": true})
+	h.MustOp(operator, "user.set", map[string]any{"user": account.Id, "role": "developer"})
 	public := newApp(t, h, developer, "ordinary-app")
 	const slug = "private-preview"
 	id := appOf(t, h.MustOp(developer, "developer.create", map[string]any{"name": slug, "slug": slug}))["id"].(string)

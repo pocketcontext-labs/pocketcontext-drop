@@ -141,7 +141,7 @@ try {
       switch (op) {
         case "me":
           return send({
-            result: { ...record, role: "user", admin: false, hosted: true },
+            result: { ...record, role: "developer", admin: false, hosted: true },
           });
         case "credits.get":
           return send({result:{account:record.id, state:{balance:funded ? 500000000 : 0,paid:funded,trial_seconds:0},

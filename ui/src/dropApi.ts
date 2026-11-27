@@ -13,6 +13,9 @@ export const OPS = [
   "catalog.upload",
   "catalog.rehearse",
   "catalog.archive",
+  "catalog.submissions",
+  "catalog.accept",
+  "developer.submit",
   "catalog.publish",
   "catalog.activate",
   "workspace.create",
@@ -77,9 +80,8 @@ export const OPS = [
 ] as const;
 export type Op = (typeof OPS)[number];
 
-export type Role = "admin" | "user";
+export type Role = "admin" | "developer" | "user";
 export interface Me {
-  developer?: boolean;
   official_catalog?: boolean;
   release_selection?: boolean;
   trial_remaining_seconds?: number;
@@ -92,7 +94,6 @@ export interface Me {
   app_quota: number;
 }
 export interface User {
-  developer?: boolean;
   id: string;
   email: string;
   role: Role;
@@ -377,7 +378,7 @@ async function listUsers(): Promise<User[]> {
 }
 async function setUser(
   user: string,
-  change: { role?: Role; app_quota?: number; suspended?: boolean; developer?: boolean },
+  change: { role?: Role; app_quota?: number; suspended?: boolean },
 ): Promise<User> {
   return (await op<{ user: User }>("user.set", { user, ...change })).user;
 }
@@ -621,8 +622,8 @@ export const dropApi = {
     op<{ content_base64: string; sha256: string }>("beta.import_url", { url, sha256 }),
   listWaitlist: (search: string, offset: number, limit: number) =>
     op<{entries: WaitlistEntry[]; has_more: boolean}>("waitlist.list", {search, offset, limit}),
-  changeWaitlist: (action: "invite" | "resend" | "revoke", id: string) =>
-    op<{ok: boolean}>(`waitlist.${action}`, {id}),
+  changeWaitlist: (action: "invite" | "resend" | "revoke", id: string, role?: Role) =>
+    op<{ok: boolean}>(`waitlist.${action}`, { id, role }),
   inspectBeta: (sha256: string) => op<BetaRelease>("beta.inspect", { sha256 }),
   probeUpload: (sha256:string) => op<{path:string}>("beta.probe_upload",{sha256}),
   prepareBeta: (sha256: string, multiplier: number, key: string, http_port?: number, name?: string) =>

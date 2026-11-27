@@ -177,7 +177,7 @@ func desiredApp(app core.App, record *core.Record, services Services) (dropapi.D
 		if err != nil {
 			return a, false, err
 		}
-		if !owner.GetBool("developer") || owner.GetBool("suspended") {
+		if !isDeveloper(owner) || owner.GetBool("suspended") {
 			a.DesiredState = appspec.StateStopped
 		}
 		key, err := privateAppKey(app, record.Id)

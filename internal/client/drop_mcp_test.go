@@ -33,7 +33,7 @@ import (
 // expected once they are: TestMCPWriteOpsFollowTicket then asks for MCP: true
 // on their specs.
 var (
-	ticketUserWrites  = []string{"workspace.create", "workspace.resize", "workspace.upgrade", "app.create", "app.set", "app.start", "app.stop", "release.upload_link", "release.deploy", "secret.set", "secret.delete"}
+	ticketUserWrites  = []string{"workspace.create", "workspace.resize", "workspace.upgrade", "app.set", "app.start", "app.stop", "secret.set", "secret.delete"}
 	ticketAdminWrites = []string{"invite.create", "invite.revoke", "user.set", "node.create", "node.rotate_secret", "node.set_state", "placement.set", "placement.clear"}
 	ticketUserReads   = []string{"me", "apps", "app", "releases", "secrets", "status", "usage", "events", "catalog", "shared"} // usage: owner decision 6 of S3 metering (Phase 1)
 	ticketAdminReads  = []string{"users", "invites", "nodes"}
@@ -213,7 +213,7 @@ func TestMCPToolsByRole(t *testing.T) {
 // exactly the registered operations with MCP set that the role may call,
 // each row generated from its spec, and nothing else.
 func TestMCPWriteTableMatchesRegistry(t *testing.T) {
-	for _, role := range []dropapi.Role{dropapi.RoleUser, dropapi.RoleAdmin} {
+	for _, role := range []dropapi.Role{dropapi.RoleUser, dropapi.RoleDeveloper, dropapi.RoleAdmin} {
 		var want []string
 		for _, s := range dropapi.Specs() {
 			if s.MCP && s.Allows(role) {
@@ -318,7 +318,7 @@ func TestDropReadTable(t *testing.T) {
 // TestMCPReadsAndWrites: the user flow through both tools.
 func TestMCPReadsAndWrites(t *testing.T) {
 	h := hostedMCP(t)
-	_, session := h.User("user@example.test", "user")
+	_, session := h.User("user@example.test", "developer")
 	bearer := h.OAuthToken(session)
 	me := mustTool(t, h, bearer, "drop_read", map[string]any{"what": "me"})
 	if me["email"] != "user@example.test" || me["admin"] != false {
@@ -420,8 +420,8 @@ func TestMCPAdminOpAsUserForbidden(t *testing.T) {
 // admins read everything and change only their own.
 func TestMCPIsolation(t *testing.T) {
 	h := hostedMCP(t)
-	_, sessionA := h.User("a@example.test", "user")
-	_, sessionB := h.User("b@example.test", "user")
+	_, sessionA := h.User("a@example.test", "developer")
+	_, sessionB := h.User("b@example.test", "developer")
 	a, b, o := h.OAuthToken(sessionA), h.OAuthToken(sessionB), h.OAuthToken(h.Token(h.Owner()))
 	appA := dig(mustTool(t, h, a, "drop_write", map[string]any{"op": "app.create", "input": map[string]any{"name": "A", "slug": "app-of-a"}}), "result", "app", "id").(string)
 	appB := dig(mustTool(t, h, b, "drop_write", map[string]any{"op": "app.create", "input": map[string]any{"name": "B", "slug": "app-of-b"}}), "result", "app", "id").(string)
@@ -630,8 +630,8 @@ func TestMCPSecretSentinel(t *testing.T) {
 	_, _ = rand.Read(random)
 	sentinel := "SENTINEL-" + hex.EncodeToString(random)
 
-	_, session := h.User("user@example.test", "user")
-	_, otherSession := h.User("other@example.test", "user")
+	_, session := h.User("user@example.test", "developer")
+	_, otherSession := h.User("other@example.test", "developer")
 	bearer, other := h.OAuthToken(session), h.OAuthToken(otherSession)
 	var answers []string
 	call := func(bearer, tool string, args any) toolAnswer {
@@ -765,8 +765,13 @@ func TestMCPDeveloperAccess(t *testing.T) {
 		token := h.OAuthToken(session)
 		input := map[string]any{"name": "Private build", "slug": role + "-build"}
 		write := map[string]any{"op": "developer.create", "input": input, "idempotency_key": "create-build"}
-		for _, enabled := range []bool{false, true, false} {
-			h.MustOp(admin, "user.set", map[string]any{"user": account.Id, "developer": enabled})
+		roles := []string{"user", "developer", "user"}
+		if role == "admin" {
+			roles = []string{"admin"}
+		}
+		for _, assigned := range roles {
+			enabled := assigned == "developer"
+			h.MustOp(admin, "user.set", map[string]any{"user": account.Id, "role": assigned})
 			tools := listTools(t, h, token)
 			if len(tools) != 2 || !slices.Contains(tools[0].InputSchema.Properties["what"].Enum, "shared") {
 				t.Fatalf("%s unexpected tools: %+v", role, tools)

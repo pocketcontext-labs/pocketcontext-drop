@@ -203,50 +203,41 @@ func TestIdempotencyKeys(t *testing.T) {
 	}
 }
 
-func TestPromotionEndsTenantWrites(t *testing.T) {
+func TestHostedRoleBoundaries(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
-	account, user := h.User("promoted@example.test", "user")
 	admin := h.Token(h.Owner())
-	app := appOf(t, h.MustOp(user, "app.create", map[string]any{"name": "Existing", "slug": "existing-app"}))
-	id := app["id"].(string)
-	link := uploadLink(t, h, user, id, nil)
-	h.MustOp(admin, "user.set", map[string]any{"user": account.Id, "role": "admin"})
+	member, user := h.User("member@example.test", "user")
 	for _, token := range []string{admin, user} {
-		for _, op := range []string{"app.create", "app.set", "app.start", "app.stop", "app.archive", "app.restore", "release.upload_link", "release.deploy", "secret.set", "secret.delete", "beta.prepare", "beta.deploy"} {
+		for _, op := range []string{"app.create", "release.upload_link", "release.deploy", "beta.prepare", "beta.deploy", "beta.probe_upload", "beta.import_url", "developer.create", "developer.upload_link", "developer.deploy"} {
 			wantError(t, h.Op(token, op, nil), 403, "forbidden")
 		}
-		wantError(t, h.Op(token, "placement.set", map[string]any{"app": id, "node": "unused"}), 403, "forbidden")
 	}
-	wantUploadError(t, upload(t, h, link, droptest.ELF(4096, 1)), 404, "upload_link_invalid")
-	current := appOf(t, h.MustOp(user, "app.get", map[string]any{"app": id}))
-	if current["owner"] != account.Id || current["deployment_id"] != app["deployment_id"] {
-		t.Fatal("promotion changed app ownership or deployment")
-	}
-}
-
-func TestDeveloperCapabilityAssignedSeparatelyFromRole(t *testing.T) {
-	h := droptest.NewHosted(t, droptest.Options{})
-	admin := h.Token(h.Owner())
-	member, user := h.User("developer@example.test", "user")
-	if self := h.MustOp(user, "me", nil); self["developer"] != false {
-		t.Fatalf("new account has developer access: %v", self)
-	}
-	for _, enabled := range []bool{true, false} {
-		target := map[string]any{"user": member.Id, "developer": enabled}
+	wantError(t, h.Op(admin, "workspace.create", nil), 403, "forbidden")
+	wantError(t, h.Op(admin, "user.set", map[string]any{"user": h.Owner().Id, "role": "developer"}), 403, "forbidden")
+	for _, role := range []string{"developer", "user"} {
+		target := map[string]any{"user": member.Id, "role": role}
 		wantError(t, h.Op(user, "user.set", target), 403, "forbidden")
-		set := h.MustOp(admin, "user.set", target)["user"].(map[string]any)
+		h.MustOp(admin, "user.set", target)
 		self := h.MustOp(user, "me", nil)
-		if set["developer"] != enabled || self["developer"] != enabled || self["role"] != "user" || self["admin"] != false {
-			t.Fatalf("developer toggle changed unrelated access or was stale: %v %v", set, self)
+		if self["role"] != role || self["admin"] != false || self["developer"] != (role == "developer") {
+			t.Fatalf("unexpected account permissions: %v", self)
 		}
-		directory := h.MustOp(admin, "user.directory", map[string]any{"search": member.Id})["users"].([]any)
-		if len(directory) != 1 || directory[0].(map[string]any)["developer"] != enabled {
-			t.Fatalf("directory: %v", directory)
+		users := h.MustOp(admin, "user.directory", map[string]any{"search": member.Id, "role": role})["users"].([]any)
+		if len(users) != 1 || users[0].(map[string]any)["role"] != role {
+			t.Fatalf("unexpected directory: %v", users)
 		}
 		wantError(t, h.Op(user, "node.list", nil), 403, "forbidden")
 	}
-	h.MustOp(admin, "user.set", map[string]any{"user": h.Owner().Id, "developer": true})
-	if owner := h.MustOp(admin, "me", nil); owner["developer"] != true || owner["admin"] != true || owner["owner"] != true {
-		t.Fatalf("owner developer grant: %v", owner)
-	}
+}
+func TestAccountWithWorkspacesCannotBecomeAdmin(t *testing.T) {
+	h := droptest.NewHosted(t, droptest.Options{})
+	account, dev := h.User("builder@example.test", "developer")
+	id := newApp(t, h, dev, "existing-app")
+	link := uploadLink(t, h, dev, id, nil)
+	admin := h.Token(h.Owner())
+	wantError(t, h.Op(admin, "user.set", map[string]any{"user": account.Id, "role": "admin"}), 409, "account_owns_apps")
+	h.MustOp(admin, "user.set", map[string]any{"user": account.Id, "role": "user"})
+	wantUploadError(t, upload(t, h, link, droptest.ELF(4096, 1)), 404, "upload_link_invalid")
+	h.MustOp(admin, "user.set", map[string]any{"user": account.Id, "role": "developer"})
+	wantUploadError(t, upload(t, h, link, droptest.ELF(4096, 1)), 404, "upload_link_invalid")
 }

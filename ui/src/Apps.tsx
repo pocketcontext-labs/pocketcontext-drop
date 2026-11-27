@@ -25,7 +25,7 @@ export const stateLabels: Record<App["desired_state"], string> = {
   stopped: "Stopped",
 };
 
-export default function Apps({ beta = false, official=false, developer=false, admin=false }: { beta?: boolean; official?:boolean; developer?: boolean; admin?: boolean }) {
+export default function Apps({ beta = false, official=false, developer=false }: { beta?: boolean; official?:boolean; developer?: boolean }) {
   const [apps, setApps] = useState<App[] | null>(null);
   const [error, setError] = useState("");
   const mounted = useRef(true);
@@ -65,9 +65,9 @@ export default function Apps({ beta = false, official=false, developer=false, ad
         <h2 id="apps-title">Your apps</h2>
           <div className="row">
             {developer && <a className="button secondary" href={viewHashes["private-new"]}>Create private app</a>}
-            {!admin && <a className="button primary" href={official?viewHashes.catalog:beta ? viewHashes.deploy : viewHashes["app-new"]}>
-            {official?"Create app":beta ? "Deploy an app" : "New app"}
-          </a>}
+            <a className="button primary" href={official || (beta && !developer) ? viewHashes.catalog : beta ? viewHashes.deploy : viewHashes["app-new"]}>
+            {official || (beta && !developer) ? "Create app" : beta ? "Deploy an app" : "New app"}
+          </a>
           </div>
       </div>
       {error && (

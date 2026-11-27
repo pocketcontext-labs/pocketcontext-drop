@@ -32,7 +32,7 @@ func me(c *Ctx) (dropapi.Me, error) {
 	if c.Admin {
 		role = dropapi.RoleAdmin
 	}
-	out := dropapi.Me{Hosted: accountsOf(c.App).hosted, ID: c.Auth.Id, Email: c.Auth.Email(), Role: role, Admin: c.Admin, Developer: c.Auth.GetBool("developer"), Owner: c.Owner, AppQuota: c.Auth.GetInt("app_quota")}
+	out := dropapi.Me{Hosted: accountsOf(c.App).hosted, ID: c.Auth.Id, Email: c.Auth.Email(), Role: role, Admin: c.Admin, Developer: isDeveloper(c.Auth), Owner: c.Owner, AppQuota: c.Auth.GetInt("app_quota")}
 	if out.Hosted {
 		var err error
 		out.OfficialCatalog, err = officialEnabled(c.App)
@@ -57,7 +57,7 @@ func me(c *Ctx) (dropapi.Me, error) {
 func userOut(app core.App, r *core.Record) dropapi.User {
 	return dropapi.User{
 		ID: r.Id, Email: r.Email(), Role: dropapi.Role(r.GetString("role")), AppQuota: r.GetInt("app_quota"),
-		Developer: r.GetBool("developer"), Suspended: r.GetBool("suspended"), Owner: isOwner(app, r), SignedIn: r.Verified(),
+		Developer: isDeveloper(r), Suspended: r.GetBool("suspended"), Owner: isOwner(app, r), SignedIn: r.Verified(),
 		InvitedBy: r.GetString("invited_by"), Created: r.GetDateTime("created").String(),
 	}
 }
@@ -140,24 +140,27 @@ func findUser(app core.App, ref string) (*core.Record, error) {
 	return nil, NotFound("Account")
 }
 
-func validRole(role dropapi.Role) bool { return role == dropapi.RoleAdmin || role == dropapi.RoleUser }
+func validRole(role dropapi.Role) bool {
+	return role == dropapi.RoleAdmin || role == dropapi.RoleUser || role == dropapi.RoleDeveloper
+}
 
 func userSet(c *Ctx, in *dropapi.UserSetInput) (any, error) {
 	if in.User == "" {
 		return nil, Invalid("user", "Name the account by id or email.")
 	}
-	if in.Role == nil && in.AppQuota == nil && in.Suspended == nil && in.Developer == nil {
-		return nil, Invalid("user", "Change at least one of role, developer, app_quota or suspended.")
+	if in.Role == nil && in.AppQuota == nil && in.Suspended == nil {
+		return nil, Invalid("user", "Change at least one of role, app_quota or suspended.")
 	}
 	target, err := findUser(c.App, in.User)
 	if err != nil {
 		return nil, err
 	}
+	wasDeveloper := isDeveloper(target)
 	self, owner := target.Id == c.Auth.Id, isOwner(c.App, target)
 	changes := map[string]any{}
 	if in.Role != nil {
 		if !validRole(*in.Role) {
-			return nil, Invalid("role", "role is admin or user.")
+			return nil, Invalid("role", "Choose user, developer or admin.")
 		}
 		from := dropapi.Role(target.GetString("role"))
 		if *in.Role != from {
@@ -167,13 +170,19 @@ func userSet(c *Ctx, in *dropapi.UserSetInput) (any, error) {
 			if owner {
 				return nil, Forbidden("The owner is always an admin.")
 			}
+			if *in.Role == dropapi.RoleAdmin {
+				var owned bool
+				err := c.App.DB().NewQuery("SELECT EXISTS(SELECT 1 FROM apps WHERE owner={:owner})").Bind(dbx.Params{"owner": target.Id}).Row(&owned)
+				if err != nil {
+					return nil, err
+				}
+				if owned {
+					return nil, Conflict("account_owns_apps", "Use a separate admin account. This account owns apps.")
+				}
+			}
 			target.Set("role", string(*in.Role))
 			changes["role"] = map[string]any{"from": from, "to": *in.Role}
 		}
-	}
-	if in.Developer != nil && *in.Developer != target.GetBool("developer") {
-		target.Set("developer", *in.Developer)
-		changes["developer"] = map[string]any{"from": !*in.Developer, "to": *in.Developer}
 	}
 	if in.AppQuota != nil {
 		if *in.AppQuota < 0 || *in.AppQuota > dropapi.MaxAppQuota {
@@ -209,7 +218,20 @@ func userSet(c *Ctx, in *dropapi.UserSetInput) (any, error) {
 		if err := c.App.Save(target); err != nil {
 			return nil, err
 		}
-		if (changes["developer"] != nil && !target.GetBool("developer")) || (changes["suspended"] != nil && target.GetBool("suspended")) {
+		// A later promotion must never revive an upload capability issued
+		// before the account changed roles.
+		if changes["role"] != nil {
+			for _, statement := range []string{
+				"DELETE FROM upload_links WHERE created_by={:id} AND used_at=''",
+				"DELETE FROM drop_manifest_uploads WHERE owner={:id}",
+				"DELETE FROM drop_official_uploads WHERE owner={:id}",
+			} {
+				if err := waitExec(c.App, statement, dbx.Params{"id": target.Id}); err != nil {
+					return nil, err
+				}
+			}
+		}
+		if (changes["role"] != nil && (wasDeveloper || hostedAdmin(c.App, target))) || (changes["suspended"] != nil && target.GetBool("suspended")) {
 			if err := invalidatePrivateAccountAccess(c.App, target); err != nil {
 				return nil, err
 			}
@@ -270,7 +292,7 @@ func inviteCreate(c *Ctx, in *dropapi.InviteCreateInput) (any, error) {
 		role = dropapi.RoleUser
 	}
 	if !validRole(role) {
-		return nil, Invalid("role", "role is admin or user.")
+		return nil, Invalid("role", "Choose user, developer or admin.")
 	}
 	quota := dropapi.DefaultAppQuota
 	if in.AppQuota != nil {

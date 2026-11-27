@@ -149,7 +149,7 @@ func TestHostedRestoreInvalidatesNodeTokens(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	_, p1, t1 := h.Node("node-one", hostA)
 	_, _, t2 := h.Node("node-two", hostB)
-	_, owner := h.User("app-owner@example.test", "user")
+	_, owner := h.User("app-owner@example.test", "developer")
 	app := newApp(t, h, owner, "restore-app")
 	link := uploadLink(t, h, owner, app, nil)
 	hook := dropserver.Hooks().OnHostedRestore
@@ -187,7 +187,7 @@ func TestHostedRestoreInvalidatesNodeTokens(t *testing.T) {
 func TestPlacementChecksNodeTotal(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	owner := h.Token(h.Owner())
-	_, a := h.User("a@example.test", "user")
+	_, a := h.User("a@example.test", "developer")
 	h.MustOp(owner, "user.set", map[string]any{"user": mustUser(t, h, "a@example.test"), "app_quota": 10})
 	n1, _, t1 := h.Node("node-one", hostA)
 	small := reportOf(hostA)
@@ -266,7 +266,7 @@ func TestSecretLeakScan(t *testing.T) {
 	secret := "LEAK-SENTINEL-" + hex.EncodeToString(random)
 
 	owner := h.Token(h.Owner())
-	_, a := h.User("a@example.test", "user")
+	_, a := h.User("a@example.test", "developer")
 	var answers []leakscan.Source
 	keep := func(name string, r droptest.OpResult) droptest.OpResult {
 		answers = append(answers, leakscan.Text(name, r.Raw))
@@ -351,10 +351,10 @@ func (r *firstRead) Read(p []byte) (int, error) {
 func TestAuthorizationAtCommit(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	owner := h.Token(h.Owner())
-	user, auth := h.User("tenant@example.test", "user")
+	user, auth := h.User("tenant@example.test", "developer")
 	app := newApp(t, h, auth, "commit-test")
 	path := uploadLink(t, h, auth, app, map[string]any{"activate": true})
-	h.MustOp(owner, "user.set", map[string]any{"user": user.Id, "role": "admin"})
+	deputy, deputyToken := h.User("deputy@example.test", "admin")
 	for _, tc := range []struct {
 		method, path, content string
 		body                  io.Reader
@@ -365,12 +365,15 @@ func TestAuthorizationAtCommit(t *testing.T) {
 		{http.MethodPut, path, "application/octet-stream", bytes.NewReader(droptest.ELF(4096, 1)), map[string]any{"suspended": true}, 404},
 	} {
 		tc.change["user"] = user.Id
+		if tc.method == http.MethodPost {
+			tc.change["user"] = deputy.Id
+		}
 		body := &firstRead{Reader: tc.body, before: func() { h.MustOp(owner, "user.set", tc.change) }}
 		req := httptest.NewRequest(tc.method, "https://"+droptest.Domain+tc.path, body)
 		req.TLS, req.Host = nil, droptest.Domain
 		req.Header.Set("Content-Type", tc.content)
 		if tc.method == http.MethodPost {
-			req.Header.Set("Authorization", auth)
+			req.Header.Set("Authorization", deputyToken)
 		}
 		w := httptest.NewRecorder()
 		h.Server.Public().ServeHTTP(w, req)
@@ -387,7 +390,7 @@ func TestDesiredFailsOnMissingCurrentRelease(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	owner := h.Token(h.Owner())
 	_, _, node := h.Node("node-one", hostA)
-	_, user := h.User("tenant@example.test", "user")
+	_, user := h.User("tenant@example.test", "developer")
 	app := deployedApp(t, h, user, "placed-app", 1)
 	h.MustOp(owner, "placement.set", map[string]any{"app": app, "node": "node-one"})
 	if _, err := h.App.DB().NewQuery("UPDATE apps SET current_release='missingrelease0' WHERE id={:app}").Bind(dbx.Params{"app": app}).Execute(); err != nil {
@@ -404,7 +407,7 @@ func TestDesiredFailsOnMissingCurrentRelease(t *testing.T) {
 // restore invalidates them and drops stale external deletion requests.
 func TestCleanupMigrationAndRestore(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
-	_, owner := h.User("app-owner@example.test", "user")
+	_, owner := h.User("app-owner@example.test", "developer")
 	app := newApp(t, h, owner, "upgrade-app")
 	bytes := droptest.ELF(4096, 2)
 	if u := upload(t, h, uploadLink(t, h, owner, app, nil), bytes); u.Status != 200 {

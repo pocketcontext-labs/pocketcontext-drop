@@ -215,7 +215,7 @@ parsed:
 		"login":           {nil, {"password-stdin", "code-stdin"}},
 		"logout":          {nil, nil},
 		"invite":          {{"role", "quota", "expires-days", "state", "limit"}, nil},
-		"user":            {{"role", "quota", "limit"}, {"suspend", "unsuspend", "developer", "no-developer"}},
+		"user":            {{"role", "quota", "limit"}, {"suspend", "unsuspend"}},
 		"op":              {{"idempotency-key"}, nil},
 		"node":            {{"host-id", "ec2-instance-id", "private-ip", "limit"}, nil},
 		"place":           {nil, {"clear"}},

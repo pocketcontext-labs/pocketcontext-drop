@@ -187,6 +187,7 @@ export async function checkWaitlist(browser, origin, viewport) {
       }
       assert.equal(input.id, entry.id);
       if (op === "waitlist.invite") {
+        assert.equal(input.role, "developer");
         entries[0].state = "open";
         entries[0].mail_state = "failed";
       } else if (op === "waitlist.resend") {
@@ -217,6 +218,7 @@ export async function checkWaitlist(browser, origin, viewport) {
       .getByRole("listitem")
       .filter({ hasText: "joined@example.test" });
     await first.getByText("Waiting", { exact: true }).waitFor();
+    await first.getByLabel("Role on approval").selectOption("developer");
     await first
       .getByRole("button", { name: "Invite and send welcome email" })
       .click();

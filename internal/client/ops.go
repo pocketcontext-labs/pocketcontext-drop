@@ -120,7 +120,7 @@ func runOps(c *Client, command string, a *args) (any, error) {
 	}
 	switch command + " " + sub {
 	case "invite create":
-		if err := a.need(2, "invite create EMAIL [--role user|admin] [--quota N] [--expires-days N]"); err != nil {
+		if err := a.need(2, "invite create EMAIL [--role user|developer|admin] [--quota N] [--expires-days N]"); err != nil {
 			return nil, err
 		}
 		in := dropapi.InviteCreateInput{Email: a.pos[1], Role: dropapi.Role(a.flags["role"])}
@@ -161,7 +161,7 @@ func runOps(c *Client, command string, a *args) (any, error) {
 		}
 		return c.Op("user.list", dropapi.UserListInput{Limit: limit}, "")
 	case "user set":
-		if err := a.need(2, "user set USER_ID|EMAIL [--role user|admin] [--quota N] [--suspend | --unsuspend] [--developer | --no-developer]"); err != nil {
+		if err := a.need(2, "user set USER_ID|EMAIL [--role user|developer|admin] [--quota N] [--suspend | --unsuspend]"); err != nil {
 			return nil, err
 		}
 		in := dropapi.UserSetInput{User: a.pos[1]}
@@ -183,15 +183,8 @@ func runOps(c *Client, command string, a *args) (any, error) {
 			suspended := a.bools["suspend"]
 			in.Suspended = &suspended
 		}
-		if a.bools["developer"] && a.bools["no-developer"] {
-			return nil, fail(2, "choose --developer or --no-developer")
-		}
-		if a.bools["developer"] || a.bools["no-developer"] {
-			developer := a.bools["developer"]
-			in.Developer = &developer
-		}
-		if in.Role == nil && in.AppQuota == nil && in.Suspended == nil && in.Developer == nil {
-			return nil, fail(2, "usage: drop user set USER_ID|EMAIL [--role user|admin] [--quota N] [--suspend | --unsuspend] [--developer | --no-developer]")
+		if in.Role == nil && in.AppQuota == nil && in.Suspended == nil {
+			return nil, fail(2, "usage: drop user set USER_ID|EMAIL [--role user|developer|admin] [--quota N] [--suspend | --unsuspend]")
 		}
 		return c.Op("user.set", in, "")
 	}

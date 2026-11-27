@@ -39,7 +39,7 @@ A key is 1-128 letters, digits, `.`, `_`, `:` or `-`, and belongs to the calling
 
 ## Roles
 
-Every account has a role, `admin` or `user` (decision 4); hosted users manage their own applications. Hosted admins, including the owner, administer accounts, nodes, placement, catalog and metering and can read app metadata. They cannot create, change, upload or deploy applications. Promotion leaves existing app records and deployments in place. The owner (`DROP_OWNER_EMAIL`, or the local account of a local project) is always an admin: it gets the role at creation and again at every start. An invited account takes its invite's role.
+Each hosted account has one role. Users deploy approved catalog releases and manage their own workspaces. Developers can also upload and deploy compatible private binaries. Admins manage invitations, accounts, nodes, placement, the official catalog and metering. A person who administers Drop and deploys workspaces signs in with a separate email address for each responsibility. The owner (`DROP_OWNER_EMAIL`, or the local account of a local project) is always an admin: it gets the role at creation and again at every start. An invited account takes its invite's role.
 
 ## Operations
 
@@ -48,13 +48,13 @@ Every account has a role, `admin` or `user` (decision 4); hosted users manage th
 | `me` | user | `{}` | `{id, email, role, admin, owner, app_quota}` |
 | `event.list` | user | `{app?, all?, limit?, offset?}` | `{events, has_more}`, newest first |
 | `user.list` | admin | `{limit?, offset?}` | `{users, has_more}`, newest first |
-| `user.set` | admin | `{user, role?, developer?, app_quota?, suspended?}` | `{user}` |
+| `user.set` | admin | `{user, role?, app_quota?, suspended?}` | `{user}` |
 | `invite.create` | admin | `{email, role?, app_quota?, expires_days?}` | `{invite, sign_in_url}` |
 | `invite.list` | admin | `{state?, limit?, offset?}` | `{invites, has_more}`, newest first |
 | `invite.revoke` | admin | `{invite}` | `{invite}` |
 | `app.list` | user | `{all?, archived?, include_archived?, limit?, offset?}` | `{apps, has_more, quota}`, newest first |
 | `app.get` | user | `{app}` | `{app, secrets}` |
-| `app.create` | user | `{name, slug, kind?, desired_state?, idle_timeout_ms?, vcpu?, memory_mib?, disk_mib?, http_port?, hook_port?, executable_name?, args?, env?, health_kind?, health_path?}` | `{app}` |
+| `app.create` | developer | `{name, slug, kind?, desired_state?, idle_timeout_ms?, vcpu?, memory_mib?, disk_mib?, http_port?, hook_port?, executable_name?, args?, env?, health_kind?, health_path?}` | `{app}` |
 | `app.set` | user | `{app, name?, finish_enrollment?, sign_in_email_enabled?, replica_sync_interval?, desired_state?, idle_timeout_ms?, vcpu?, memory_mib?, disk_mib?, http_port?, hook_port?, executable_name?, args?, env?: {set?, unset?}, health_kind?, health_path?}` | `{app, deployment_bumped}` |
 | `app.start`, `app.stop` | user | `{app}` | `{app}` |
 | `app.archive`, `app.restore` | user | `{app}` | `{app}` |
@@ -62,8 +62,8 @@ Every account has a role, `admin` or `user` (decision 4); hosted users manage th
 | `secret.set` | user | `{app, name, value}` | `{secret, deployment_bumped, deployment_id}` |
 | `secret.delete` | user | `{app, name}` | `{deleted, deployment_bumped, deployment_id}` |
 | `release.list` | user | `{app, limit?, offset?}` | `{releases, has_more, current_release}`, newest first |
-| `release.upload_link` | user | `{app, note?, activate?}` | `{url, path, method, max_bytes, expires_at, activate, example}`, shown once |
-| `release.deploy` | user | `{app, release}` | `{app, release, deployment_bumped, deployment_id}` |
+| `release.upload_link` | developer | `{app, note?, activate?}` | `{url, path, method, max_bytes, expires_at, activate, example}`, shown once |
+| `release.deploy` | developer | `{app, release}` | `{app, release, deployment_bumped, deployment_id}` |
 | `status` | user | `{app}` | `{app, phase, message, desired_state, deployment_id, reported_deployment_id, hostname, placed, node?, restart_count, last_exit_code, last_hook?, converged_at, observed_at, last_seen}` |
 | `node.list` | admin | `{limit?, offset?}` | `{nodes, has_more}`, by name |
 | `node.create` | admin | `{name, host_id, ec2_instance_id?, private_ip?}` | `{node, password, identity, collection}`, shown once |
@@ -77,7 +77,7 @@ Every account has a role, `admin` or `user` (decision 4); hosted users manage th
 
 - **Lists**: `limit` 1-500 (default 100), `offset` 0-10000; `has_more` says more follow.
 - **An account** (`user`): `id`, `email`, `role`, `developer`, `app_quota`, `suspended`, `owner`, `signed_in` (false until its first sign-in; core prunes such accounts after 15 minutes), `invited_by`, `created`.
-- **`user.set`** names the account by id or email and needs at least one change. An admin grants Developer access with `developer: true` and revokes it with `developer: false`, including for their own account. The capability is independent of the administration role. Both `me` and the admin directory expose the current setting. The legacy `app_quota` input is 0-100 and is retained for API compatibility. The allocated volume sizes determine the enforced limit. Nobody changes their own role or suspension, and the owner's role and suspension cannot change (403 `forbidden`). Suspending ends every session of the account at once (its token key changes) and restoration requires fresh email sign-in. A suspended account cannot sign in (the users auth rule is `suspended = false`).
+- **`user.set`** names the account by id or email and needs at least one change. An admin assigns the user, developer or admin role to an eligible account. The response also includes a compatibility `developer` boolean derived from `role`. The legacy `app_quota` input is 0-100 and is retained for API compatibility. The allocated volume sizes determine the enforced limit. Nobody changes their own role or suspension, and the owner's role and suspension cannot change (403 `forbidden`). Suspending ends every session of the account at once (its token key changes) and restoration requires fresh email sign-in. A suspended account cannot sign in (the users auth rule is `suspended = false`).
 - **An invite**: `id`, `email`, `role`, `app_quota`, `state` (`open`, `used`, `revoked` or `expired`), `invited_by`, `expires_at`, `used_at`, `used_by`, `revoked_at`, `created`.
 - **`invite.create`** takes one plain ASCII address (at most 254 characters, lower-cased), role `user` by default, `app_quota` 3 by default (0-100) and `expires_days` 7 by default (1-30). An address with an account answers 409 `account_exists`, one with an open unexpired invite 409 `invite_exists`; an expired open invite is closed and replaced. The result's `sign_in_url` is `https://HOST/#/invite?email=…`: the reader's sign-in page with the address filled in. It carries no credential. **No invite email is sent** (decision 16): the admin shares the link; the invitee's first sign-in sends the ordinary sign-in code email, which creates the account with the invite's role and quota and marks the invite used.
 - **`invite.list`** takes `state` `all` (default) or `open` (unused, unrevoked and unexpired).
@@ -199,7 +199,7 @@ Each successful mutating operation writes one `events` row in its transaction: `
 
 ## Beta release admission and deployment
 
-Invited users may submit static Linux amd64 executables up to 90 MiB. Drop inspects the bytes in an isolated NibRunner microVM and caches the outcome by SHA-256. An administrator can revoke a specific digest.
+Developers may submit static Linux amd64 executables up to 90 MiB. Drop inspects the bytes in an isolated NibRunner microVM and caches the outcome by SHA-256. An administrator can revoke a specific digest.
 
 | Operation | Input | Result |
 |---|---|---|
@@ -222,7 +222,7 @@ For imported archives Drop checks the assigned public HTTPS origin after the pro
 
 The status of a generic app can include a private, expiring `first_run` action for the current deployment. Its owner can open the PocketBase installer at the assigned HTTPS hostname or copy the ZeroClaw pairing code into the dashboard. Only the matching app owner can read the action and startup output.
 
-The first catalog admission or a configured Beta node list makes direct `app.create` an admin-only workflow. Existing operator-managed apps keep their release operations. Catalog and probe records stay out of account queries and the public route table.
+Once the official catalog is active, developers use `developer.create`, `developer.upload_link` and `developer.deploy` for private binaries. Users create workspaces from published catalog releases. Catalog and probe records stay out of account queries and the public route table.
 
 Install `deploy/drop-ax41/drop-manifest-probe.socket` and `drop-manifest-probe@.service` in the systemd unit directory on the NibRunner host serving Drop. Set the socket's owner to the Drop service account. Run `systemctl daemon-reload` and `systemctl enable --now drop-manifest-probe.socket`. Drop passes only validated bytes and their digest over the private socket. The worker calls `nibrunnerd probe-manifest` with the host's `/etc/nibrunner/config.toml`. NibRunner uses an isolated, time-limited microVM for `--drop-manifest`. The guest receives no account credentials, network or app volume. Infrastructure failures are retriable.
 
@@ -244,7 +244,7 @@ For a pending Beta invitation, both the six-digit code and emailed-link redempti
 
 For a deploy-time or login access lookup, POST `{email,check_access:true}` to `/api/drop/waitlist/request`. This deliberately discloses whether the address has access and does not enqueue email or create an entry. The ordinary login adds `login_flow:true` so the response also indicates whether activation requires Beta consent. Drop checks only on submit, applies the existing source-address limit and returns no account IDs, invitation records or waitlist membership. Returning activated accounts receive the sign-in code immediately. New Beta invitations require acceptance before requesting the code. An unrecognized address stays on the same screen with the waitlist terms and a Join the waitlist button. The standalone `#/waitlist` page remains available. For enrollment, the hosted reader posts an email and the accepted waitlist document version (`2026-11-26-waitlist`) to `/api/drop/waitlist/request`. A valid request returns 202 even when the address is already enrolled or delivery is limited. The waitlist branch requests only a waitlist verification code. Existing accounts and addresses with an open invitation use sign-in. Other addresses receive the waitlist verification email with a six-digit code valid for ten minutes. A returning waitlist member can reconfirm without changing the original verification date. POST the email and code to `/api/drop/waitlist/verify` to join. Verification creates a queue entry. The account and hosting terms are handled separately at invited sign-in. The email also includes a withdrawal link. POST its token to `/api/drop/waitlist/leave` to remove the entry and close an outstanding invitation. An activated account retains its hosting access.
 
-Admins use `waitlist.list` with an optional case-insensitive email substring (`search`), `limit` and `offset`. Only verified addresses appear, ordered by verification time, oldest first. `waitlist.invite`, `waitlist.resend` and `waitlist.revoke` take an entry `id`. Inviting records a regular user invitation and queues its welcome email in the same transaction. A repeated invite reuses the existing invitation. Resend queues another welcome for an open invitation after a one-minute cooldown. Use `user.set` to suspend or restore an active account. Restoring queues an email to the verified address.
+Admins use `waitlist.list` with an optional case-insensitive email substring (`search`), `limit` and `offset`. Only verified addresses appear, ordered by verification time, oldest first. `waitlist.invite`, `waitlist.resend` and `waitlist.revoke` take an entry `id`. Inviting accepts an optional account role (default `user`), records the invitation and queues its welcome email in the same transaction. A repeated invite reuses the existing invitation. Resend queues another welcome for an open invitation after a one-minute cooldown. Use `user.set` to suspend or restore an active account. Restoring queues an email to the verified address.
 
 Each source address gets a burst of 20 public waitlist operations, replenished by one every five seconds. The hosted proxy supplies the source after checking its configured trusted peer. A mailbox can request a code once per minute and five times in 24 hours. The service caps code issuance at 100 per hour. Five wrong guesses exhaust a code. The hourly cleanup removes unverified requests older than 24 hours. Codes and withdrawal links are derived from a private per-project key. Delivery jobs persist across restarts. SMTP failures retry with increasing delays for up to eight attempts; an administrator can resend an open invitation after a failed delivery. A crash after SMTP accepts a message but before Drop records delivery can produce a duplicate email.
 
@@ -284,7 +284,14 @@ The administrator stages and checks both binaries before switching an existing
 installation. Use **Releases** in the hosted admin reader. All transitions also
 use the authenticated operation endpoint.
 
-1. Call `catalog.upload` with `product` (`crew` or `atlas`) and `version`.
+A developer can submit a deployed private Crew or Atlas build for review with
+`developer.submit {app,release}`. The admin reviews explicitly submitted builds
+with `catalog.submissions {}` and stages one with
+`catalog.accept {app,release,sha256}`. Drop verifies the executable against that
+digest. Continue at step 2 using the accepted bytes and digest. Other private
+releases remain visible only to their owners.
+
+1. To stage an executable directly, call `catalog.upload` with `product` (`crew` or `atlas`) and `version`.
    PUT the Linux executable to its one-time path. Drop computes its digest,
    checks the ELF, runs the existing isolated manifest probe and checks the
    product, version, hooks, verified sign-in and optional replica capabilities.

@@ -705,12 +705,12 @@ function Secrets({
 }
 
 /** `#/apps/<id>`: one app with its Overview, Releases, Settings, Env & secrets and Usage tabs. */
-export default function AppPage({ id, tab, official=false, privateOnly = false }: { id: string; tab: AppTab;official?:boolean; privateOnly?: boolean }) {
+export default function AppPage({ id, tab, official=false, canDeployBinary = false }: { id: string; tab: AppTab;official?:boolean; canDeployBinary?: boolean }) {
   if (tab === "deletion") return <DeletionStatus key={id} id={id} />;
-  return <AppDetailPage id={id} tab={tab} official={official} privateOnly={privateOnly}/>;
+  return <AppDetailPage id={id} tab={tab} official={official} canDeployBinary={canDeployBinary}/>;
 }
 
-function AppDetailPage({ id, tab, official, privateOnly }: { id: string; tab: AppTab;official:boolean; privateOnly:boolean }) {
+function AppDetailPage({ id, tab, official, canDeployBinary }: { id: string; tab: AppTab;official:boolean; canDeployBinary:boolean }) {
   const [app, setApp] = useState<App | null>(null);
   const [secrets, setSecrets] = useState<Secret[]>([]);
   const [updating, setUpdating] = useState("");
@@ -761,14 +761,13 @@ function AppDetailPage({ id, tab, official, privateOnly }: { id: string; tab: Ap
     setApp(next);
     setVersion((v) => v + 1);
   };
-  if (privateOnly && app && !app.developer_private) return <p className="panel">Private app not found.</p>;
   if(app?.official_product)return <OfficialWorkspace app={app} reload={()=>void load()}/>;
   if(official&&app&&!app.developer_private)return <><BetaStatus id={app.id} name={app.name} release={app.current_release} hostname={app.hostname}/><DeleteApp app={app} slider/></>;
   if (app?.beta_managed) return <>
-    {!app.archived && (!app.current_release || updating === app.id)
+    {canDeployBinary && !app.archived && (!app.current_release || updating === app.id)
       ? <BetaDeploy key={app.id} account={app.owner} initialFile={null} prepared={app} onComplete={() => { setUpdating(""); void load(); }} />
       : <BetaStatus id={app.id} name={app.name} release={app.current_release} hostname={app.hostname} />}
-    {app.generic_beta && !app.archived && app.current_release && <button className="secondary"
+    {canDeployBinary && app.generic_beta && !app.archived && app.current_release && <button className="secondary"
       onClick={() => setUpdating(updating === app.id ? "" : app.id)}>{updating === app.id ? "Cancel update" : "Deploy a new release"}</button>}
     <DeleteApp app={app} />
   </>;
@@ -801,7 +800,7 @@ function AppDetailPage({ id, tab, official, privateOnly }: { id: string; tab: Ap
             <p className="quiet">This app is archived. Restore it to change it.</p>
           )}
           <nav className="nav tabs" aria-label="App">
-            {tabs.map((t) => (
+            {tabs.filter(t => t.tab !== "releases" || canDeployBinary).map((t) => (
               <a
                 key={t.tab}
                 href={appHash(app.id, t.tab)}
@@ -813,13 +812,15 @@ function AppDetailPage({ id, tab, official, privateOnly }: { id: string; tab: Ap
           </nav>
           {tab === "overview" && <>
             <Overview app={app} onChange={changed} />
-            {app.developer_private && <PrivateTesters app={app.id} />}
+            {app.developer_private && canDeployBinary && <PrivateTesters app={app.id} />}
           </>}
           {tab === "settings" && (
             // Remount after a change elsewhere so the form shows saved values.
             <Settings key={`${app.id}-${version}`} app={app} onChange={setApp} />
           )}
-          {tab === "releases" && <Releases app={app} onChange={() => void load()} />}
+          {tab === "releases" && (canDeployBinary
+            ? <Releases app={app} onChange={() => void load()} />
+            : <p>A Developer account is required to manage binary releases.</p>)}
           {tab === "usage" && <UsagePanel app={app} />}
           {tab === "env" && (
             <>

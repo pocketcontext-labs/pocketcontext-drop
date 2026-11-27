@@ -3,6 +3,7 @@ package dropserver
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -167,9 +168,9 @@ func usableLink(app core.App, hash string, now time.Time) (*core.Record, error) 
 
 func canUploadRelease(tx core.App, app, account *core.Record) bool {
 	if app.GetBool("developer_private") {
-		return account.GetBool("developer")
+		return isDeveloper(account)
 	}
-	return !hostedAdmin(tx, account)
+	return !accountsOf(tx).hosted || isDeveloper(account)
 }
 
 func (u *uploader) serve(re *core.RequestEvent) error {
@@ -301,6 +302,9 @@ func (u *uploader) serve(re *core.RequestEvent) error {
 	var result dropapi.UploadResult
 	err = re.App.RunInTransaction(func(tx core.App) error {
 		link, err := tx.FindRecordById("upload_links", link.Id)
+		if errors.Is(err, sql.ErrNoRows) {
+			return uploadLinkInvalid()
+		}
 		if err != nil {
 			return err
 		}

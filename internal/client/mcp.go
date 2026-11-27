@@ -43,23 +43,20 @@ type mcpCaller struct {
 
 func newMCPHandler(api http.Handler) http.Handler {
 	servers := make(map[mcpProfile]*mcp.Server)
-	for _, developer := range []bool{false, true} {
-		for _, profile := range []mcpProfile{
-			{role: dropapi.RoleUser, developer: developer},
-			{role: dropapi.RoleUser, developer: developer, official: true},
-			{role: dropapi.RoleAdmin, developer: developer},
-		} {
+	for _, role := range []dropapi.Role{dropapi.RoleUser, dropapi.RoleDeveloper, dropapi.RoleAdmin} {
+		for _, official := range []bool{false, true} {
+			profile := mcpProfile{role: role, official: official}
 			servers[profile] = makeDropMCPServer(api, profile)
 		}
 	}
 	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 		caller, _ := r.Context().Value(mcpRequestContextKey{}).(*mcpCaller)
 		me := mcpAccount(api, caller)
-		profile := mcpProfile{role: dropapi.RoleUser, developer: me.Developer}
+		profile := mcpProfile{role: dropapi.RoleUser, official: me.OfficialCatalog}
 		if me.Admin {
-			profile.role = dropapi.RoleAdmin
-		} else {
-			profile.official = me.OfficialCatalog
+			profile = mcpProfile{role: dropapi.RoleAdmin}
+		} else if me.Role == dropapi.RoleDeveloper {
+			profile.role = dropapi.RoleDeveloper
 		}
 		return servers[profile]
 	}, &mcp.StreamableHTTPOptions{

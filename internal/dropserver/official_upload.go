@@ -11,6 +11,7 @@ import (
 	"ganigeorgiev.com/pocketbase/dbx"
 	"ganigeorgiev.com/pocketbase/pocketbase/core"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/awsx"
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
 )
 
 type candidateLink struct {
@@ -63,13 +64,12 @@ func (u *uploader) candidateOrProbe(re *core.RequestEvent, hash string) error {
 	if err != nil {
 		return writeError(re, Conflict("probe_pending", "The release checker is unavailable. Retry this upload."))
 	}
-	m, err := parseBetaManifest(raw)
-	if outcome != "success" || err != nil || m.App != link.Product || m.Version != link.Version || m.HookPort == 0 || !slices.Contains(m.Optional, "s3_replica") || !slices.Contains(m.Requires, "persistent_volume") || !slices.Contains(m.Requires, "sign_in_email") || !slices.Contains(m.Requires, "verified_owner_email") {
-		return writeError(re, Invalid("manifest", "The executable must declare this product, version, lifecycle hooks, owner sign-in, persistent volume and optional backup storage."))
+	m, minimum, err := officialManifest(raw)
+	if err != nil {
+		return writeError(re, err)
 	}
-	minimum := max(m.Minimum.CPUQuarters, (m.Minimum.MemoryMiB+255)/256, (m.Minimum.DiskMiB+2047)/2048)
-	if minimum > 8 || m.Minimum.DiskMiB > 8*2048 {
-		return writeError(re, Invalid("minimum", "The manifest exceeds the workspace resource allowance."))
+	if outcome != "success" || m.App != link.Product || m.Version != link.Version {
+		return writeError(re, Invalid("manifest", "The product and version must match the uploaded executable."))
 	}
 	key, err := awsx.ReleaseKey(digest)
 	if err != nil {
@@ -82,31 +82,13 @@ func (u *uploader) candidateOrProbe(re *core.RequestEvent, hash string) error {
 		if err != nil || fresh != link {
 			return uploadLinkInvalid()
 		}
-		if err := betaApproved(tx, digest); err != nil {
+		if err := stageOfficial(tx, m, raw, minimum, digest, size); err != nil {
 			return err
-		}
-		var collision bool
-		p := dbx.Params{"product": link.Product, "version": link.Version, "digest": digest, "size": size, "minimum": minimum}
-		if err := tx.DB().NewQuery("SELECT EXISTS(SELECT 1 FROM drop_official_releases WHERE (product={:product} AND version={:version} AND digest!={:digest}) OR (digest={:digest} AND (published>0 OR product!={:product} OR version!={:version})))").Bind(p).Row(&collision); err != nil {
-			return err
-		}
-		if collision {
-			return Conflict("version_exists", "This version already identifies another executable.")
 		}
 		ctx, cancel := context.WithTimeout(re.Request.Context(), uploadStoreTimeout)
 		defer cancel()
 		if _, err = services.Releases.PutIfAbsent(ctx, key, file, size, digest); err != nil {
 			return Conflict("store_unavailable", "The release store is unavailable. Retry this upload.")
-		}
-		if err := waitExec(tx, "INSERT INTO drop_official_releases(digest,product,version,size,min_size) VALUES({:digest},{:product},{:version},{:size},{:minimum}) ON CONFLICT(digest) DO NOTHING", p); err != nil {
-			return err
-		}
-		if err := waitExec(tx, "INSERT INTO drop_beta_catalog(digest,approved) VALUES({:digest},1) ON CONFLICT DO NOTHING", p); err != nil {
-			return err
-		}
-		if err := waitExec(tx, `INSERT INTO drop_beta_probes(digest,contract,state,manifest) VALUES({:d},{:v},'valid',{:m})
-		ON CONFLICT(digest,contract) DO UPDATE SET state='valid',manifest=excluded.manifest,attempt='',expires_at=0`, dbx.Params{"d": digest, "v": betaProbeContract, "m": string(raw)}); err != nil {
-			return err
 		}
 		if err := waitExec(tx, "DELETE FROM drop_official_uploads WHERE token_hash={:hash}", dbx.Params{"hash": hash}); err != nil {
 			return err
@@ -117,4 +99,53 @@ func (u *uploader) candidateOrProbe(re *core.RequestEvent, hash string) error {
 		return writeError(re, err)
 	}
 	return re.JSON(http.StatusOK, map[string]any{"sha256": digest, "product": m.App, "version": m.Version, "size_bytes": size})
+}
+
+// officialManifest applies the same public catalog requirements to direct uploads
+// and to private executables whose isolated probe result is stored on the release.
+func officialManifest(raw []byte) (dropapi.BetaManifest, int, error) {
+	m, err := parseBetaManifest(raw)
+	if err != nil || !slices.Contains([]string{"crew", "atlas"}, m.App) || m.HookPort == 0 ||
+		!slices.Contains(m.Optional, "s3_replica") || !slices.Contains(m.Requires, "persistent_volume") ||
+		!slices.Contains(m.Requires, "sign_in_email") || !slices.Contains(m.Requires, "verified_owner_email") {
+		return m, 0, Invalid("manifest", "An official Crew or Atlas release must declare lifecycle hooks, owner sign-in, a persistent volume and optional backup storage.")
+	}
+	if m.Minimum.CPUQuarters > 8 || m.Minimum.MemoryMiB > 2048 || m.Minimum.DiskMiB > 16384 {
+		return m, 0, Invalid("minimum", "The manifest exceeds the workspace resource allowance.")
+	}
+	return m, max(m.Minimum.CPUQuarters, (m.Minimum.MemoryMiB+255)/256, (m.Minimum.DiskMiB+2047)/2048), nil
+}
+
+func checkOfficialCandidate(tx core.App, m dropapi.BetaManifest, digest string) error {
+	if err := betaApproved(tx, digest); err != nil {
+		return err
+	}
+	var collision bool
+	p := dbx.Params{"product": m.App, "version": m.Version, "digest": digest}
+	if err := tx.DB().NewQuery("SELECT EXISTS(SELECT 1 FROM drop_official_releases WHERE (product={:product} AND version={:version} AND digest!={:digest}) OR (digest={:digest} AND (published>0 OR product!={:product} OR version!={:version})))").Bind(p).Row(&collision); err != nil {
+		return err
+	}
+	if collision {
+		return Conflict("version_exists", "This version already identifies another executable.")
+	}
+	return nil
+}
+
+func stageOfficial(tx core.App, m dropapi.BetaManifest, raw []byte, minimum int, digest string, size int64) error {
+	if err := checkOfficialCandidate(tx, m, digest); err != nil {
+		return err
+	}
+	p := dbx.Params{"product": m.App, "version": m.Version, "digest": digest, "size": size, "minimum": minimum}
+
+	if err := waitExec(tx, "INSERT INTO drop_official_releases(digest,product,version,size,min_size) VALUES({:digest},{:product},{:version},{:size},{:minimum}) ON CONFLICT(digest) DO NOTHING", p); err != nil {
+		return err
+	}
+	if err := waitExec(tx, "INSERT INTO drop_beta_catalog(digest,approved) VALUES({:digest},1) ON CONFLICT DO NOTHING", p); err != nil {
+		return err
+	}
+	if err := waitExec(tx, `INSERT INTO drop_beta_probes(digest,contract,state,manifest) VALUES({:d},{:v},'valid',{:m})
+		ON CONFLICT(digest,contract) DO UPDATE SET state='valid',manifest=excluded.manifest,attempt='',expires_at=0`, dbx.Params{"d": digest, "v": betaProbeContract, "m": string(raw)}); err != nil {
+		return err
+	}
+	return nil
 }

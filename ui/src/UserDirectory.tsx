@@ -1,10 +1,10 @@
+import { accountRoles, RoleOptions, WaitlistInvitation } from "./AccountRoles";
 import { useEffect, useState } from "react";
 import { dropApi, op, type Me, type Role } from "./dropApi";
 import { message } from "./errors";
 import { formatDate } from "./Apps";
 
 type DirectoryUser = {
-  developer: boolean;
   owner: boolean;
   account: string;
   entry: string;
@@ -152,6 +152,7 @@ export default function UserDirectory({
               setLink(r.sign_in_url);
               setInvite(false);
               setEmail("");
+              setInviteRole("user");
             });
           }}
         >
@@ -170,14 +171,12 @@ export default function UserDirectory({
               value={inviteRole}
               onChange={(e) => setInviteRole(e.target.value as Role)}
             >
-              <option value="user">User</option>
-              <option value="admin">Admin</option>
+              <RoleOptions />
             </select>
           </label>
           <button className="primary" disabled={busy}>
             Create invitation
           </button>
-          <small className="invite-access-note">After the first sign-in, open the account to grant Developer access for private apps.</small>
         </form>
       )}
       {link && (
@@ -198,7 +197,7 @@ export default function UserDirectory({
         {(
           [
             ["status", "Status", statuses],
-            ["role", "Role", ["user", "admin"]],
+            ["role", "Role", accountRoles],
             ["workspaces", "Has apps", ["yes", "no"]],
             ["credits", "Has credits", ["yes", "no"]],
           ] as const
@@ -249,17 +248,8 @@ export default function UserDirectory({
           </p>
           {detail.entry &&
             ["waiting", "expired", "revoked"].includes(detail.status) && (
-              <button
-                className="primary"
-                disabled={busy}
-                onClick={() =>
-                  void change(() =>
-                    dropApi.changeWaitlist("invite", detail.entry),
-                  )
-                }
-              >
-                Approve and send invitation
-              </button>
+              <WaitlistInvitation key={detail.entry} disabled={busy} label="Approve and send invitation"
+                onInvite={role => void change(() => dropApi.changeWaitlist("invite", detail.entry, role))} />
             )}
           {detail.entry && detail.status === "invited" && (
             <button
@@ -292,19 +282,8 @@ export default function UserDirectory({
               Revoke invitation
             </button>
           )}
-          <div className="directory-access">
-          {detail.account && (
-            <label className="check">
-              <input type="checkbox" checked={detail.developer} disabled={busy}
-                onChange={e => {
-                  const developer = e.target.checked;
-                  void change(() => dropApi.setUser(detail.account, { developer }));
-                }} />
-              Developer access
-            </label>
-          )}
           {canManage && (
-            <>
+            <div className="directory-access">
               <label>
                 Account role
                 <select
@@ -318,8 +297,7 @@ export default function UserDirectory({
                     )
                   }
                 >
-                  <option value="user">User</option>
-                  <option value="admin">Admin</option>
+                  <RoleOptions />
                 </select>
               </label>
               <button
@@ -340,9 +318,8 @@ export default function UserDirectory({
                   ? "Restore access"
                   : "Suspend access"}
               </button>
-            </>
+            </div>
           )}
-          </div>
         </section>
       )}
       {!results && !error && <p role="status">Loading users…</p>}
@@ -409,10 +386,10 @@ export default function UserDirectory({
                           {r.status}
                         </span>
                       </td>
-                      <td>{r.role}{r.developer && " · Developer"}</td>
+                      <td>{r.role}</td>
                       <td>{r.workspaces}</td>
                       <td>
-                        <CreditCell user={r} editable={me.developer !== undefined} refresh={() => setRevision(n => n + 1)} />
+                        <CreditCell user={r} editable={me.admin} refresh={() => setRevision(n => n + 1)} />
                       </td>
                       <td>{formatDate(r.joined)}</td>
                     </tr>

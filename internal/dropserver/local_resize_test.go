@@ -12,7 +12,7 @@ import (
 func TestOfficialDiskResizeKeepsSourceUntilMatchingTerminalReceipt(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	admin := h.Token(h.Owner())
-	_, user := h.User("resize@example.test", "user")
+	_, user := h.User("resize@example.test", "developer")
 	id := deployedApp(t, h, user, "resizing", 1)
 	other := deployedApp(t, h, user, "waiting", 2)
 	dropserver.SetServices(h.App, dropserver.Services{Releases: h.Releases, Secrets: h.Secrets, BetaNodes: []string{"resize-node"}, AppDomain: droptest.AppDomain})

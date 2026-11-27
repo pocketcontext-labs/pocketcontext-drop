@@ -72,8 +72,12 @@ func TestWaitlistMembershipAndInvitation(t *testing.T) {
 		}
 	}
 	args := map[string]any{"id": id}
-	h.MustOp(owner, "waitlist.invite", args)
-	h.MustOp(owner, "waitlist.invite", args)
+	inviteArgs := map[string]any{"id": id, "role": "developer"}
+	h.MustOp(owner, "waitlist.invite", inviteArgs)
+	h.MustOp(owner, "waitlist.invite", inviteArgs)
+	if got := h.Op(owner, "waitlist.invite", map[string]any{"id": id, "role": "admin"}).Status; got != 409 {
+		t.Fatalf("changing an open invitation role returned %d", got)
+	}
 	var count int
 	if err := h.App.DB().NewQuery("SELECT count(*) FROM drop_waitlist_mail WHERE kind='welcome'").Row(&count); err != nil || count != 1 {
 		t.Fatal(count, err)

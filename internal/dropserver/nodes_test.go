@@ -187,7 +187,7 @@ func TestNodeCreateSignInAndSecrets(t *testing.T) {
 func TestDesiredSeqBumps(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	owner := h.Token(h.Owner())
-	_, tokenA := h.User("a@example.test", "user")
+	_, tokenA := h.User("a@example.test", "developer")
 	n1, _, _ := h.Node("node-one", hostA)
 	n2, _, _ := h.Node("node-two", hostB)
 	app := deployedApp(t, h, tokenA, "app-one", 1)
@@ -242,7 +242,7 @@ func TestDesiredSeqBumps(t *testing.T) {
 func TestDesiredDocument(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	owner := h.Token(h.Owner())
-	_, tokenA := h.User("a@example.test", "user")
+	_, tokenA := h.User("a@example.test", "developer")
 	_, _, t1 := h.Node("node-one", hostA)
 	app := deployedApp(t, h, tokenA, "app-one", 1)
 	h.MustOp(tokenA, "app.set", map[string]any{"app": app, "env": map[string]any{"set": map[string]string{"MODE_NAME": "demo"}}})
@@ -311,7 +311,7 @@ func newAppPlaced(t *testing.T, h *droptest.Hosted, token string) string {
 func TestDiskLockedAfterFirstPlacement(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	owner := h.Token(h.Owner())
-	_, tokenA := h.User("a@example.test", "user")
+	_, tokenA := h.User("a@example.test", "developer")
 	h.Node("node-one", hostA)
 	app := newApp(t, h, tokenA, "app-one")
 	h.MustOp(tokenA, "app.set", map[string]any{"app": app, "disk_mib": 2048})
@@ -365,7 +365,7 @@ func (c *writeCounter) take() map[string]int {
 func TestHeartbeatWritesAtMostEveryFiveMinutes(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	owner := h.Token(h.Owner())
-	_, tokenA := h.User("a@example.test", "user")
+	_, tokenA := h.User("a@example.test", "developer")
 	n1, _, t1 := h.Node("node-one", hostA)
 	app := deployedApp(t, h, tokenA, "app-one", 1)
 	h.MustOp(owner, "placement.set", map[string]any{"app": app, "node": n1})
@@ -444,8 +444,8 @@ func TestHeartbeatWritesAtMostEveryFiveMinutes(t *testing.T) {
 func TestStatusPhases(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	owner := h.Token(h.Owner())
-	_, tokenA := h.User("a@example.test", "user")
-	_, tokenB := h.User("b@example.test", "user")
+	_, tokenA := h.User("a@example.test", "developer")
+	_, tokenB := h.User("b@example.test", "developer")
 	_, _, t1 := h.Node("node-one", hostA)
 	app := newApp(t, h, tokenA, "app-one")
 	phase := func(token string) map[string]any {

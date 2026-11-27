@@ -23,7 +23,7 @@ func TestSelfServiceManifestProbe(t *testing.T) {
 	}
 	defer ln.Close()
 	h := droptest.NewHosted(t, droptest.Options{ProbeSocket: socket, ReleaseMaxBytes: 8192})
-	_, user := h.User("probe@example.test", "user")
+	_, user := h.User("probe@example.test", "developer")
 	body := droptest.ELF(4096, 4)
 	digest := sha(body)
 	ref := map[string]any{"sha256": digest}

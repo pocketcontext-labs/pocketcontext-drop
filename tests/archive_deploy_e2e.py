@@ -368,7 +368,7 @@ def scenario(binary, root, nib, firecracker, gateway):
     node = None
     try:
         server.start(init=True)
-        server.owner("invite", "create", "invitee@example.test", "--role", "user")
+        server.owner("invite", "create", "invitee@example.test", "--role", "developer")
         user = InvitedUser(server.port, server_root)
         token_payload = json.loads(
             base64.urlsafe_b64decode(user.token.split(".")[1] + "===")

@@ -38,6 +38,9 @@ import (
 //	             deletion receipts scoped by account and immutable app ID     TestDeletionReceiptAfterNodeConfirmationAndRetry
 //	Beta         admission and probe completion require admin, uploads and   TestBetaProbeLeasesAndDeployment
 //	             deployment scoped to approved bytes and app owner; legacy APIs blocked
+//	Catalog      Only a developer can submit their own currently deployed     TestPrivateDeveloperRelease
+//	             private release; only an admin can review and accept the
+//	             exact digest; users see it only after rehearsal/publication
 //	Upload       a link is scoped to one app by its token; A cannot mint one  TestIsolationMatrix, TestUploadLink* (releases_test.go)
 //	             for B's app; per-address limiter                             TestUploadRateLimit (releases_test.go)
 //	Agent routes anonymous 401, users' tokens (owner included) 403            TestNodeIsolation
@@ -88,8 +91,8 @@ func listCount(t *testing.T, h *droptest.Hosted, path, token string) int {
 func TestUserAndInviteIsolation(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	owner := h.Token(h.Owner())
-	a, aToken := h.User("a@example.test", "user")
-	b, bToken := h.User("b@example.test", "user")
+	a, aToken := h.User("a@example.test", "developer")
+	b, bToken := h.User("b@example.test", "developer")
 	invite := h.MustOp(owner, "invite.create", map[string]any{"email": "c@example.test"})["invite"].(map[string]any)["id"].(string)
 	h.MustOp(owner, "user.set", map[string]any{"user": b.Id, "app_quota": 4})
 	// An app of A and an event about it, written as an operation would.
@@ -156,7 +159,7 @@ func TestUserAndInviteIsolation(t *testing.T) {
 			}
 		}
 	}
-	if fresh, _ := h.App.FindRecordById("users", a.Id); fresh.GetString("role") != "user" {
+	if fresh, _ := h.App.FindRecordById("users", a.Id); fresh.GetString("role") != "developer" {
 		t.Fatal("A changed its own role")
 	}
 }
@@ -177,8 +180,8 @@ func createApp(t *testing.T, h *droptest.Hosted, owner, slug string) string {
 // change only their own.
 func TestAppAndSecretIsolation(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
-	_, a := h.User("a@example.test", "user")
-	_, b := h.User("b@example.test", "user")
+	_, a := h.User("a@example.test", "developer")
+	_, b := h.User("b@example.test", "developer")
 	owner := h.Token(h.Owner())
 	appA := appOf(t, h.MustOp(a, "app.create", map[string]any{"name": "A", "slug": "app-of-a"}))["id"].(string)
 	h.MustOp(b, "app.create", map[string]any{"name": "B", "slug": "app-of-b"})
@@ -250,7 +253,7 @@ func TestAppAndSecretIsolation(t *testing.T) {
 func TestNodeIsolation(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	owner := h.Token(h.Owner())
-	userA, tokenA := h.User("a@example.test", "user")
+	userA, tokenA := h.User("a@example.test", "developer")
 	n1, _, t1 := h.Node("node-one", hostA)
 	n2, _, t2 := h.Node("node-two", hostB)
 	app1 := deployedApp(t, h, tokenA, "app-one", 1)
@@ -356,8 +359,8 @@ func TestNodeIsolation(t *testing.T) {
 func TestIsolationMatrix(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	owner := h.Token(h.Owner())
-	userA, a := h.User("a@example.test", "user")
-	userB, b := h.User("b@example.test", "user")
+	userA, a := h.User("a@example.test", "developer")
+	userB, b := h.User("b@example.test", "developer")
 	n1, _, t1 := h.Node("node-one", hostA)
 	n2, _, t2 := h.Node("node-two", hostB)
 	appA := deployedApp(t, h, a, "app-of-a", 1)
@@ -666,8 +669,8 @@ func TestRealtimeIsolation(t *testing.T) {
 	t.Cleanup(server.Close) // after the streams close (cleanups run last first)
 	base := server.URL
 	owner := h.Token(h.Owner())
-	userB, b := h.User("b@example.test", "user")
-	_, a := h.User("a@example.test", "user")
+	userB, b := h.User("b@example.test", "developer")
+	_, a := h.User("a@example.test", "developer")
 	n1, _, t1 := h.Node("node-one", hostA)
 	n2, _, t2 := h.Node("node-two", hostB)
 	everything := []string{"apps", "releases", "app_secret_names", "node_reports", "events", "nodes", "placements", "invites", "users", "app_usage_hourly", "app_usage_daily"}
@@ -757,8 +760,8 @@ func TestCrewSignInProvisioning(t *testing.T) {
 	wantError(t, h.Op(admin, "app.create", map[string]any{"name": "Pending", "slug": "pending", "kind": "crew"}), 403, "forbidden")
 	const alice = "alice+crew@example.test"
 	const bob = "bob@example.test"
-	h.Invite(alice, "user")
-	h.Invite(bob, "user")
+	h.Invite(alice, "developer")
+	h.Invite(bob, "developer")
 	a := h.SignIn(alice)
 	b := h.SignIn(bob)
 	ordinary := appOf(t, h.MustOp(a.Token, "app.create", map[string]any{"name": "Ordinary", "slug": "plain-app"}))
@@ -860,7 +863,7 @@ func TestLinkedReleaseEntryAndImportAccess(t *testing.T) {
 		t.Fatalf("GET deploy returned %d location %q", r.Code, r.Header().Get("Location"))
 	}
 	wantError(t, h.Op("", "beta.import_url", map[string]any{"url": "https://example.test/"}), 401, "unauthenticated")
-	_, token := h.User("linked-release@example.test", "user")
+	_, token := h.User("linked-release@example.test", "developer")
 	result := h.Op(token, "beta.import_url", map[string]any{"url": "https://127.0.0.1/test.tgz"})
 	if result.Status != http.StatusBadRequest {
 		t.Errorf("nonpublic release returned %d", result.Status)
@@ -870,8 +873,8 @@ func TestLinkedReleaseEntryAndImportAccess(t *testing.T) {
 func TestOwnerPrivateFirstRunAction(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	admin := h.Token(h.Owner())
-	_, a := h.User("appowner@example.test", "user")
-	_, b := h.User("otherowner@example.test", "user")
+	_, a := h.User("appowner@example.test", "developer")
+	_, b := h.User("otherowner@example.test", "developer")
 	node, _, agent := h.Node("node-one", hostA)
 	app := deployedApp(t, h, a, "first-run", 1)
 	h.MustOp(admin, "placement.set", map[string]any{"app": app, "node": node})

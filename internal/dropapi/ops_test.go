@@ -69,8 +69,8 @@ func TestNamesByRole(t *testing.T) {
 func TestAppAndSecretSpecs(t *testing.T) {
 	for _, s := range Specs() {
 		if strings.HasPrefix(s.Name, "app.") || strings.HasPrefix(s.Name, "secret.") {
-			if s.Role != RoleUser {
-				t.Errorf("%s is not a user operation", s.Name)
+			if s.Allows(RoleUser) != (s.Name != "app.create") || !s.Allows(RoleDeveloper) {
+				t.Errorf("%s has incorrect tenant permissions", s.Name)
 			}
 			if s.SecretInput != (s.Name == "secret.set") {
 				t.Errorf("%s: SecretInput %v", s.Name, s.SecretInput)
@@ -88,7 +88,7 @@ func TestAppAndSecretSpecs(t *testing.T) {
 func TestReleaseSpecs(t *testing.T) {
 	for _, name := range []string{"release.list", "release.upload_link", "release.deploy"} {
 		s, ok := Lookup(name)
-		if !ok || s.Role != RoleUser || s.SecretInput || s.Read != (name == "release.list") || s.OnceResult != (name == "release.upload_link") {
+		if !ok || s.Allows(RoleUser) != (name == "release.list") || !s.Allows(RoleDeveloper) || s.SecretInput || s.Read != (name == "release.list") || s.OnceResult != (name == "release.upload_link") {
 			t.Errorf("%s: %+v %v", name, s, ok)
 		}
 	}

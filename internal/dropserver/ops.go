@@ -108,7 +108,7 @@ func registerOpRoutes(e *core.ServeEvent) {
 		re.Response.Header().Set("Referrer-Policy", "no-referrer")
 		return re.Redirect(http.StatusFound, target)
 	})
-	var keys sync.Mutex // serializes calls that carry an idempotency key
+	var keys sync.Map // In-flight idempotency keys, shared only by requests for that same key.
 	e.Router.POST(dropapi.Route, func(re *core.RequestEvent) error {
 		return serveOp(re, &keys)
 	})
@@ -148,29 +148,24 @@ func accountContext(app core.App, account *core.Record, request *http.Request) (
 }
 
 func (c *Ctx) checkRole(spec dropapi.Spec) error {
-	if !c.Admin && accountsOf(c.App).hosted {
-		switch spec.Name {
-		case "app.create", "beta.prepare", "beta.deploy", "beta.inspect", "beta.probe_upload", "beta.import_url", "release.upload_link", "release.deploy":
-			enabled, err := officialEnabled(c.App)
-			if err != nil {
-				return err
-			}
-			if enabled {
-				return Forbidden("Choose a published Crew or Atlas workspace from the catalog.")
-			}
+	hosted := accountsOf(c.App).hosted
+	if hosted && spec.LegacyDeployment() {
+		enabled, err := officialEnabled(c.App)
+		if err != nil {
+			return err
+		}
+		if enabled {
+			return Forbidden("Choose a published Crew or Atlas workspace from the catalog.")
 		}
 	}
-	role := dropapi.RoleUser
+	role := dropapi.Role(c.Auth.GetString("role"))
 	if c.Admin {
-		if !accountsOf(c.App).hosted && !spec.Developer {
+		if !hosted && (spec.Role != dropapi.RoleDeveloper || spec.LegacyDeployment()) {
 			return nil
 		}
 		role = dropapi.RoleAdmin
 	}
-	if spec.Developer && !c.Auth.GetBool("developer") {
-		return Forbidden("This operation requires developer access.")
-	}
-	if !spec.AllowsAccount(role, c.Auth.GetBool("developer")) {
+	if !spec.Allows(role) {
 		return Forbidden("This operation needs a " + string(spec.Role) + " account.")
 	}
 	return nil
@@ -197,7 +192,7 @@ func authorizeOp(app core.App, re *core.RequestEvent, spec dropapi.Spec) (*Ctx, 
 	return c, nil
 }
 
-func serveOp(re *core.RequestEvent, keys *sync.Mutex) error {
+func serveOp(re *core.RequestEvent, keys *sync.Map) error {
 	c, err := caller(re)
 	if err != nil {
 		return writeError(re, err)
@@ -251,8 +246,33 @@ func serveOp(re *core.RequestEvent, keys *sync.Mutex) error {
 			return writeError(re, err)
 		}
 		key = newOpKey(c.Auth.Id, req.IdempotencyKey, spec.Name, canonical)
-		keys.Lock()
-		defer keys.Unlock()
+		unlock, err := key.lock(re.Request.Context(), keys)
+		if err != nil {
+			return writeError(re, err)
+		}
+		defer unlock()
+	}
+	if spec.Name == "catalog.accept" {
+		// Serialize artifact copies with uploads and deletion, independently
+		// of SQLite. Only short authorization and catalog updates need a writer.
+		releaseBlobMu.Lock()
+		defer releaseBlobMu.Unlock()
+		c, err = authorizeOp(re.App, re, spec)
+		if err != nil {
+			return writeError(re, err)
+		}
+		if key != nil {
+			stored, found, err := key.lookup(re.App)
+			if err != nil {
+				return writeError(re, err)
+			}
+			if found {
+				return writeResult(re, stored, true)
+			}
+		}
+		if err := prepareCatalogAcceptance(re, spec, input.(*dropapi.AcceptSubmission)); err != nil {
+			return writeError(re, err)
+		}
 	}
 	var encoded json.RawMessage
 	replayed := false

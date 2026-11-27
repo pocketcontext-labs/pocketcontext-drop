@@ -6,7 +6,7 @@ Hosted Drop offers a remote Model Context Protocol (MCP) endpoint at `https://HO
 
 Drop has exactly two tools, `drop_read` and `drop_write` (decision 11). Both act with the account that approved the connection and reach Drop only through its operation route, `POST /api/drop/op` ([Operations](ops.md)), in-process: the server checks the account, its role and ownership on every call, exactly as for the reader and the CLI. No tool runs shell commands, reads host files or administers the server. Future features add operations or `what` values, not tools; a new tool needs the owner's approval.
 
-Each MCP request reads `GET /api/drop/me` with the caller’s token and selects the tool descriptions and schemas for that account’s role, Developer access, and the official catalog setting. A developer can be a user or an admin. An existing OAuth connection picks up a grant or revocation on its next request. The API checks the current account again when executing the operation.
+Each MCP request reads `GET /api/drop/me` with the caller’s token and selects the tool descriptions and schemas for the account role and the official catalog setting. Private deployment requires the developer role. An existing OAuth connection picks up a grant or revocation on its next request. The API checks the current account again when executing the operation.
 
 ### drop_read
 
@@ -35,14 +35,15 @@ A `what` whose operation is not registered yet stays listed, marked "(not availa
 
 The op enum and the op table in the tool description (name, role, input signature such as `{app, name?, env?: {set?, unset?}}` and summary) are generated from the registry in `internal/dropapi`: the operations whose `Spec` has `MCP: true`, filtered to the role and capabilities of the account. `TestMCPWriteTableMatchesRegistry` checks the enum and table against the registry, and `TestMCPWriteOpsFollowTicket` checks the set against decision 11's list:
 
-- users: `app.create`, `app.set`, `app.start`, `app.stop`, `release.upload_link`, `release.deploy`, `secret.set`, `secret.delete`;
+- users: manage their own published catalog workspaces with `workspace.create`, `workspace.resize` and `workspace.upgrade`;
+- developers: user operations plus private apps, including `developer.create`, `developer.upload_link`, `developer.deploy` and `developer.submit`;
 - admins: `invite.create`, `invite.revoke`, `user.set`, `node.create`, `node.rotate_secret`, `node.set_state`, `placement.set`, `placement.clear`.
 
 Every operation on these lists is registered (`node.create` and `node.rotate_secret` return a node's agent password once: it passes through the conversation, so the instructions ask admins to hand it only to whoever installs the agent). Reads sent to `drop_write` are refused (use `drop_read`), and so are operations not offered through MCP (`app.archive`, `app.restore`).
 
 ### Test a private app
 
-1. Call `drop_read` with `{"what":"me"}`. A developer account returns `developer: true`.
+1. Call `drop_read` with `{"what":"me"}`. Check that the account role is `developer`.
 2. Use `drop_write` with `developer.create` and an input such as `{"name":"Atlas preview","slug":"atlas-preview"}`. Keep the returned app ID.
 3. Call `developer.upload_link` with that app ID. Upload the local Linux executable with an HTTP PUT to the one-time URL, outside of MCP. Keep the returned release ID. The file belongs to the private app.
 4. Call `developer.deploy` with `{"app":"APP_ID","release":"RELEASE_ID"}`. Use `drop_read` with `{"what":"status","app":"APP_ID"}` to follow the deployment. For a later build, repeat the upload and deploy steps on the same app.

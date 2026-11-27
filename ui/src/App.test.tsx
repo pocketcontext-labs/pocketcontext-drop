@@ -188,10 +188,10 @@ it("hides the admin waitlist from a hosted member including direct navigation", 
   expect(list).not.toHaveBeenCalled();
 });
 
-it("lists pinned deployments for a hosted user without preparing an app", async () => {
+it("lists pinned deployments for a hosted developer without preparing an app", async () => {
   history.replaceState(null, "", "/#/catalog");
   pb.authStore.save(token, user);
-  vi.spyOn(dropApi, "me").mockResolvedValue({ ...member, hosted: true });
+  vi.spyOn(dropApi, "me").mockResolvedValue({ ...member, hosted: true, role: "developer" });
   vi.spyOn(api, "refreshSession").mockResolvedValue();
   const prepare = vi.spyOn(dropApi, "prepareBeta");
   render(<App />);
@@ -259,4 +259,20 @@ it("requests an activation code only after Beta consent and resets it when the e
   fireEvent.click(screen.getByRole("button",{name:"Change email"}));
   expect(await screen.findByLabelText("Email")).toHaveValue("");
   expect(screen.queryByRole("checkbox")).toBeNull();
+});
+
+it("routes a user following a generic binary link to the official catalog", async () => {
+  const apiModule = await import("./dropApi");
+  history.replaceState(null, "", "/#/deploy?name=demo&binary=https%3A%2F%2Fexample.test%2Fbinary");
+  pb.authStore.save(token, user);
+  vi.spyOn(dropApi, "me").mockResolvedValue({ ...member, hosted: true });
+  vi.spyOn(api, "refreshSession").mockResolvedValue();
+  vi.spyOn(apiModule, "op").mockResolvedValue({ enabled: false, releases: [{ product: "crew", version: "1.2", sha256: "abc", published: 1 }] });
+  const importBinary = vi.spyOn(dropApi, "importURL");
+  render(<App />);
+  expect(await screen.findByText("The official catalog is awaiting activation.")).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Catalog" })).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Choose Crew" })).toBeNull();
+  expect(screen.queryByText("Choose an app file")).toBeNull();
+  expect(importBinary).not.toHaveBeenCalled();
 });

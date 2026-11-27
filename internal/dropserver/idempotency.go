@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"sync"
 	"time"
 
 	"ganigeorgiev.com/pocketbase/dbx"
@@ -29,6 +30,23 @@ func newOpKey(user, key, op string, canonicalInput []byte) *opKey {
 	k := sha256.Sum256([]byte("drop-op-key-v1\x00" + user + "\x00" + key))
 	in := sha256.Sum256(append([]byte("drop-op-input-v1\x00"+op+"\x00"), canonicalInput...))
 	return &opKey{keyHash: hex.EncodeToString(k[:]), op: op, inputHash: hex.EncodeToString(in[:])}
+}
+
+// Requests reusing a key must serialize ahead of external effects. Other
+// accounts and other keys can continue writing while an artifact is in transit.
+func (k *opKey) lock(ctx context.Context, keys *sync.Map) (func(), error) {
+	done := make(chan struct{})
+	for {
+		prev, busy := keys.LoadOrStore(k.keyHash, done)
+		if !busy {
+			return func() { keys.Delete(k.keyHash); close(done) }, nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-prev.(chan struct{}):
+		}
+	}
 }
 
 // lookup returns the stored result of a live key. A key used with another

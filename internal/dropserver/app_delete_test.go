@@ -14,8 +14,8 @@ import (
 
 func TestConfirmedAppDeletion(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
-	_, owner := h.User("owner-a@example.test", "user")
-	_, other := h.User("owner-b@example.test", "user")
+	_, owner := h.User("owner-a@example.test", "developer")
+	_, other := h.User("owner-b@example.test", "developer")
 	app := newApp(t, h, owner, "delete-me")
 	shared := newApp(t, h, other, "keep-me")
 	unique, common := droptest.ELF(4096, 1), droptest.ELF(4096, 2)
@@ -81,8 +81,8 @@ func TestConfirmedAppDeletion(t *testing.T) {
 func TestDeletionReceiptAfterNodeConfirmationAndRetry(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	admin := h.Token(h.Owner())
-	_, owner := h.User("receipt-owner@example.test", "user")
-	_, other := h.User("other@example.test", "user")
+	_, owner := h.User("receipt-owner@example.test", "developer")
+	_, other := h.User("other@example.test", "developer")
 	_, _, node := h.Node("node-one", hostA)
 	app := deployedApp(t, h, owner, "receipt-app", 1)
 	h.MustOp(admin, "placement.set", map[string]any{"app": app, "node": "node-one"})

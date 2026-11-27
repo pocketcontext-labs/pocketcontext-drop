@@ -19,8 +19,8 @@ const validCrewManifest = `{"schema":"drop.manifest/v1","app":"crew","version":"
 func TestBetaProbeLeasesAndDeployment(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{BetaNodes: []string{"beta-node", "another-node"}, BetaOwnerNodes: []string{"owner-node"}})
 	admin := h.Token(h.Owner())
-	_, alice := h.User("alice@example.test", "user")
-	_, bob := h.User("bob@example.test", "user")
+	_, alice := h.User("alice@example.test", "developer")
+	_, bob := h.User("bob@example.test", "developer")
 	body := droptest.ELF(4096, 7)
 	digest := sha(body)
 	ref := map[string]any{"sha256": digest}
@@ -195,7 +195,7 @@ func TestBetaConcurrentInspectionAndNegativeCache(t *testing.T) {
 	if result := h.MustOp(admin, "beta.inspect", ref); result["generic"] != true {
 		t.Fatal(result)
 	}
-	_, user := h.User("generic@example.test", "user")
+	_, user := h.User("generic@example.test", "developer")
 	args := map[string]any{"sha256": ref["sha256"], "multiplier": 1, "http_port": 4000}
 	app := appOf(t, h.MustOp(user, "beta.prepare", args))
 	if app["kind"] != "ordinary" || num(app["http_port"]) != 4000 || app["sign_in_email_enabled"] != false || app["crew_owner_email"] != nil {
@@ -247,7 +247,7 @@ func TestBetaIndependentServicesAndStorageEntitlement(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			h := droptest.NewHosted(t, droptest.Options{BetaNodes: []string{"manifest-node"}})
 			admin := h.Token(h.Owner())
-			_, user := h.User("manifest@example.test", "user")
+			_, user := h.User("manifest@example.test", "developer")
 			_, _, node := h.Node("manifest-node", hostA)
 			heartbeat := reportOf(hostA)
 			heartbeat["nibrunner"].(map[string]any)["versions"].(map[string]any)["cpuQuarterQuota"] = true
@@ -307,8 +307,8 @@ func TestBetaIndependentServicesAndStorageEntitlement(t *testing.T) {
 func TestGenericArchiveUpdateKeepsPlacementAndReleaseProvenance(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{BetaNodes: []string{"beta-node"}})
 	admin := h.Token(h.Owner())
-	_, owner := h.User("archive@example.test", "user")
-	_, other := h.User("other@example.test", "user")
+	_, owner := h.User("archive@example.test", "developer")
+	_, other := h.User("other@example.test", "developer")
 	n := h.MustOp(admin, "node.create", map[string]any{"name": "beta-node", "host_id": hostA})
 	_, agent := h.NodeLogin("beta-node", n["password"].(string))
 	if code, r := report(t, h, agent, reportOf(hostA)); code != 200 {

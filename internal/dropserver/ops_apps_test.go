@@ -27,7 +27,7 @@ func num(v any) int {
 // nibrunner ids and the hostname, starts at deployment 1 and writes one event.
 func TestAppCreateDefaults(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
-	user, token := h.User("user@example.test", "user")
+	user, token := h.User("user@example.test", "developer")
 	app := appOf(t, h.MustOp(token, "app.create", map[string]any{"name": "  Hello app  ", "slug": "hello"}))
 	id := app["id"].(string)
 	want := map[string]any{
@@ -65,7 +65,7 @@ func TestAppCreateDefaults(t *testing.T) {
 // TestAppValidation: the server refuses what the node's renderer would.
 func TestAppValidation(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
-	_, token := h.User("app-owner@example.test", "user")
+	_, token := h.User("app-owner@example.test", "developer")
 	base := func(extra map[string]any) map[string]any {
 		in := map[string]any{"name": "App", "slug": "valid-app"}
 		for k, v := range extra {
@@ -141,7 +141,7 @@ func TestAppValidation(t *testing.T) {
 
 func TestRetainedDisk(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
-	_, token := h.User("disk@example.test", "user")
+	_, token := h.User("disk@example.test", "developer")
 	add := func(slug string, disk int) map[string]any {
 		return map[string]any{"name": slug, "slug": slug, "disk_mib": disk}
 	}
@@ -160,7 +160,7 @@ func TestRetainedDisk(t *testing.T) {
 // deployment; the name, start, stop and the disk do not.
 func TestDeploymentBumps(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
-	_, token := h.User("user@example.test", "user")
+	_, token := h.User("user@example.test", "developer")
 	h.MustOp(token, "app.create", map[string]any{"name": "Bump", "slug": "bump", "env": map[string]string{"A": "1"}, "args": []string{"x"}})
 	seq := 1
 	for _, c := range []struct {
@@ -220,7 +220,7 @@ func TestDeploymentBumps(t *testing.T) {
 // had before it stopped.
 func TestStartStopKeepsTheMode(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
-	_, token := h.User("user@example.test", "user")
+	_, token := h.User("user@example.test", "developer")
 	h.MustOp(token, "app.create", map[string]any{"name": "Mode", "slug": "mode", "desired_state": "running"})
 	state := func(op string) any {
 		return appOf(t, h.MustOp(token, op, map[string]any{"app": "mode"}))["desired_state"]
@@ -246,7 +246,7 @@ func TestStartStopKeepsTheMode(t *testing.T) {
 // deployment, and names follow the renderer's rules.
 func TestSecretOperations(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
-	user, token := h.User("user@example.test", "user")
+	user, token := h.User("user@example.test", "developer")
 	app := appOf(t, h.MustOp(token, "app.create", map[string]any{"name": "Secret", "slug": "secret-app", "env": map[string]string{"PLAIN": "x"}}))
 	nib := app["nib_app_id"].(string)
 	parameter := "/drop/apps/" + nib[2:] + "/API_KEY"
@@ -311,12 +311,12 @@ func TestSecretOperations(t *testing.T) {
 // failing store answers 502 and changes nothing.
 func TestSecretStoreUnavailable(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{NoSecrets: true})
-	_, token := h.User("app-owner@example.test", "user")
+	_, token := h.User("app-owner@example.test", "developer")
 	h.MustOp(token, "app.create", map[string]any{"name": "App", "slug": "no-store"})
 	wantError(t, h.Op(token, "secret.set", map[string]any{"app": "no-store", "name": "A", "value": "v"}), 503, "secrets_unavailable")
 
 	failing := droptest.NewHosted(t, droptest.Options{Secrets: failingStore{}})
-	_, token = failing.User("app-owner@example.test", "user")
+	_, token = failing.User("app-owner@example.test", "developer")
 	failing.MustOp(token, "app.create", map[string]any{"name": "App", "slug": "failing"})
 	wantError(t, failing.Op(token, "secret.set", map[string]any{"app": "failing", "name": "A", "value": "v"}), 502, "secret_store_failed")
 	if n, _ := failing.App.CountRecords("app_secret_names"); n != 0 {

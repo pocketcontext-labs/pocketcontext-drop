@@ -69,10 +69,7 @@ func (c *Ctx) writableApp(ref string) (*core.Record, error) {
 	if pendingDiskRequest(app) && c.Spec.Name != "workspace.resize" {
 		return nil, resizeBusy()
 	}
-	if c.Admin && accountsOf(c.App).hosted && c.Spec.PrivateOwnerWrite() && !app.GetBool("developer_private") {
-		return nil, Forbidden("Developer changes are restricted to your private apps.")
-	}
-	if app.GetBool("developer_private") && !c.Auth.GetBool("developer") {
+	if app.GetBool("developer_private") && !isDeveloper(c.Auth) {
 		return nil, Forbidden("Developer access is required to change this private app.")
 	}
 	if err := allowCreditDeployment(c.App, app.GetString("owner")); err != nil {
@@ -761,7 +758,7 @@ func appRestore(c *Ctx, in *dropapi.AppRestoreInput) (any, error) {
 		return nil, err
 	}
 	if app.GetBool("developer_private") {
-		if !c.Auth.GetBool("developer") {
+		if !isDeveloper(c.Auth) {
 			return nil, Forbidden("Developer access is required to restore a private app.")
 		}
 		if err := checkInstalledPrivateManifest(c.App, app); err != nil {

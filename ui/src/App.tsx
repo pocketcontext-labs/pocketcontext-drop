@@ -181,14 +181,12 @@ function Workspace({
   const defaultPage = ["", "#/", "#/login", "#/account"].includes(hash) || hash.startsWith("#/invite?");
   const administration = view === "admin-waitlist" || view === "admin-users" || view === "admin-nodes";
   let page;
-  const developer = me.hosted === true && me.developer === true;
+  const developer = me.hosted === true && me.role === "developer";
   const app = view === "app" ? appRouteFromHash(hash) : null;
   if(hostedAdmin&&view==="admin-releases")page=<OfficialReleases onActivated={()=>setMe({...me,official_catalog:true})}/>;
   else if(hostedAdmin&&me.official_catalog&&(defaultPage||view==="admin-waitlist"||view==="admin-users"))page=<UserDirectory me={me} waiting={view==="admin-waitlist"}/>;
   else if(view==="admin-releases")page=<NotFound/>;
-  else if (view === "private-new") page = developer ? <AppNew hosted privateApp /> : <NotFound />;
-  else if (hostedAdmin && developer && view === "apps" && !defaultPage) page = <Apps developer admin />;
-  else if (hostedAdmin && developer && app) page = <AppPage key={app.id} id={app.id} tab={app.tab} privateOnly />;
+  else if (view === "private-new") page = developer ? <AppNew hosted privateApp /> : <NotFound admin={hostedAdmin} />;
   else if (view === "credits") page = <Credits admin={me.admin} />;
   else if (hostedAdmin && (defaultPage || view === "admin-waitlist"))
     page = <AdminWaitlist account={me.id} />;
@@ -197,19 +195,20 @@ function Workspace({
     if (!me.admin || view === "admin-waitlist") page = <NotFound />;
     else page = view === "admin-users" ? <AdminUsers me={me} /> : <AdminNodes />;
   } else if (view === "connect") page = <Connect />;
-  else if(me.official_catalog&&["catalog","deploy","app-new"].includes(view))page=<OfficialCatalog releaseSelection={me.release_selection === true}/>;
+  else if (me.hosted && (me.official_catalog || !developer) && ["catalog", "deploy", "app-new"].includes(view))
+    page = <OfficialCatalog releaseSelection={me.release_selection === true} />;
   else if (view === "catalog") page = me.hosted ? <AppCatalog /> : <NotFound />;
   else if (view === "deploy" || (view === "app-new" && me.hosted))
     page = <BetaDeploy key={recipe ? hash : "generic"} recipe={recipe} initialFile={recipe ? null : file} account={me.id} />;
   else if (view === "app-new") page = <AppNew hosted={false} />;
-  else if (app) page = <AppPage key={app.id} id={app.id} tab={app.tab} official={me.official_catalog} />;
+  else if (app) page = <AppPage key={app.id} id={app.id} tab={app.tab} official={me.official_catalog} canDeployBinary={!me.hosted || developer} />;
   else page = <Apps developer={developer} beta={me.hosted === true} official={me.official_catalog} />;
   return (
     <div className="app">
       <header className="navbar-surface"><div className="topbar">
         <Brand />
         <nav className="nav" aria-label="Pages">
-          {(!hostedAdmin || developer) && <a
+          {!hostedAdmin && <a
             href={viewHashes.apps}
             aria-current={
               view === "apps" || view === "app" || (view === "app-new" || view === "private-new")
@@ -284,8 +283,7 @@ function Workspace({
           {Math.ceil(me.trial_remaining_seconds / 60)} shared awake minutes left. Apps run locally until the buffer runs out, then stop with their data retained. A top-up resets the buffer to 60 minutes. <a href={viewHashes.credits}>Manage credits</a>
         </p>}
         {page}
-        {me.hosted && me.developer !== undefined && ((view === "apps" && (!hostedAdmin || (developer && !defaultPage))) ||
-          (hostedAdmin && (defaultPage || view === "admin-users"))) && <SharedApps />}
+        {me.hosted && !hostedAdmin && view === "apps" && <SharedApps />}
       </main>
     </div>
   );

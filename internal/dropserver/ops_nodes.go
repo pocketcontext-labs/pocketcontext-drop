@@ -317,7 +317,7 @@ func placementSet(c *Ctx, in *dropapi.PlacementSetInput) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		if hostedAdmin(c.App, owner) && !(app.GetBool("developer_private") && owner.GetBool("developer")) {
+		if hostedAdmin(c.App, owner) {
 			return nil, Forbidden("Only user-owned apps can be placed.")
 		}
 	}

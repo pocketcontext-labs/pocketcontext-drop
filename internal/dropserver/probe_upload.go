@@ -38,7 +38,7 @@ func betaProbeUpload(c *Ctx, in *dropapi.BetaDigest) (any, error) {
 func manifestUploadOwner(app core.App, hash string) (manifestUpload, error) {
 	var row manifestUpload
 	err := app.DB().NewQuery(`SELECT u.owner,u.digest FROM drop_manifest_uploads u JOIN users a ON a.id=u.owner
-    WHERE u.token_hash={:hash} AND u.expires_at>unixepoch() AND a.suspended=0 AND a.role='user'`).Bind(dbx.Params{"hash": hash}).One(&row)
+    WHERE u.token_hash={:hash} AND u.expires_at>unixepoch() AND a.suspended=0 AND a.role='developer'`).Bind(dbx.Params{"hash": hash}).One(&row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return row, uploadLinkInvalid()
 	}

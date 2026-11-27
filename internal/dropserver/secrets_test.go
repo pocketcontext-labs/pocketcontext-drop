@@ -88,8 +88,8 @@ func TestSecretSentinel(t *testing.T) {
 	sentinel := "SENTINEL-" + hex.EncodeToString(random)
 	other := sentinel + "-2"
 
-	_, token := h.User("user@example.test", "user")
-	_, otherToken := h.User("other@example.test", "user")
+	_, token := h.User("user@example.test", "developer")
+	_, otherToken := h.User("other@example.test", "developer")
 	owner := h.Token(h.Owner())
 	var answers []string
 	call := func(auth, op string, input any, key ...string) droptest.OpResult {
@@ -191,7 +191,7 @@ func TestSecretSentinel(t *testing.T) {
 
 func TestSecretDeletionCommitAndRecovery(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
-	_, owner := h.User("app-owner@example.test", "user")
+	_, owner := h.User("app-owner@example.test", "developer")
 	id := newApp(t, h, owner, "cleanup")
 	set := map[string]any{"app": id, "name": "TOKEN", "value": "initial"}
 	del := map[string]any{"app": id, "name": "TOKEN"}

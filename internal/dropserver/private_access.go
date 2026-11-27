@@ -45,10 +45,14 @@ func privateAppKey(app core.App, id string) (ed25519.PrivateKey, error) {
 // Rotate affected keys when the owner loses developer access or a runtime
 // tester is suspended. Node desired hashes include the new verification keys.
 func invalidatePrivateAccountAccess(app core.App, user *core.Record) error {
-	return waitExec(app, `UPDATE drop_private_keys SET seed=randomblob(32)
+	err := waitExec(app, `UPDATE drop_private_keys SET seed=randomblob(32)
 	WHERE app IN (SELECT id FROM apps WHERE owner={:user}) OR
-	({:suspended} AND app IN (SELECT app FROM drop_private_testers WHERE account={:user}))`,
-		dbx.Params{"user": user.Id, "suspended": user.GetBool("suspended")})
+	({:revokeTester} AND app IN (SELECT app FROM drop_private_testers WHERE account={:user}))`,
+		dbx.Params{"user": user.Id, "revokeTester": user.GetBool("suspended") || hostedAdmin(app, user)})
+	if err != nil || !hostedAdmin(app, user) {
+		return err
+	}
+	return waitExec(app, "DELETE FROM drop_private_testers WHERE account={:id}", dbx.Params{"id": user.Id})
 }
 
 func privateTester(c *Ctx, in *dropapi.PrivateTesterInput) (any, error) {
@@ -76,7 +80,7 @@ func privateTester(c *Ctx, in *dropapi.PrivateTesterInput) (any, error) {
 	p := dbx.Params{"app": a.Id, "account": u.Id}
 	grant := c.Spec.Name == "private.grant"
 	if grant {
-		if u.GetBool("suspended") {
+		if u.GetBool("suspended") || hostedAdmin(c.App, u) {
 			return nil, NotFound("Account")
 		}
 		err = waitExec(c.App, "INSERT INTO drop_private_testers(app,account) VALUES ({:app},{:account}) ON CONFLICT DO NOTHING", p)
@@ -120,7 +124,7 @@ func privateAccess(c *Ctx, in *dropapi.PrivateAccessInput) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !owner.GetBool("developer") || owner.GetBool("suspended") {
+	if !isDeveloper(owner) || owner.GetBool("suspended") {
 		return nil, NotFound("App")
 	}
 	if c.Auth.Id != owner.Id {
@@ -159,8 +163,11 @@ func privateShared(c *Ctx, _ *dropapi.MeInput) (any, error) {
 		Hostname string `db:"hostname" json:"hostname"`
 	}
 	apps := []sharedApp{}
+	if c.Admin {
+		return map[string]any{"apps": apps}, nil
+	}
 	err := c.App.DB().NewQuery(`SELECT a.id, a.name, a.slug || '.' || {:domain} AS hostname FROM drop_private_testers t
 	JOIN apps a ON a.id=t.app JOIN users u ON u.id=a.owner WHERE t.account={:account} AND a.developer_private=1 AND a.deleting=0 AND a.archived=0
-	AND u.suspended=0 AND u.developer=1 ORDER BY a.created DESC, a.id`).Bind(dbx.Params{"domain": servicesOf(c.App).AppDomain, "account": c.Auth.Id}).All(&apps)
+	AND u.suspended=0 AND u.role='developer' ORDER BY a.created DESC, a.id`).Bind(dbx.Params{"domain": servicesOf(c.App).AppDomain, "account": c.Auth.Id}).All(&apps)
 	return map[string]any{"apps": apps}, err
 }

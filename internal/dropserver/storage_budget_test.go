@@ -19,8 +19,8 @@ import (
 // collection may lag or redeliver records, independently of node completion.
 func TestStorageBudgetIsolationAndSettlement(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{Usage: true})
-	user, token := h.User("budget-owner@example.test", "user")
-	_, second := h.User("separate-owner@example.test", "user")
+	user, token := h.User("budget-owner@example.test", "developer")
+	_, second := h.User("separate-owner@example.test", "developer")
 	admin := h.Token(h.Owner())
 	node, _, agent := h.Node("budget-node", hostA)
 	_, _, otherNode := h.Node("other-budget-node", hostB)

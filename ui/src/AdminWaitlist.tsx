@@ -1,6 +1,7 @@
+import { WaitlistInvitation } from "./AccountRoles";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatDate } from "./Apps";
-import { dropApi, type WaitlistEntry } from "./dropApi";
+import { dropApi, type Role, type WaitlistEntry } from "./dropApi";
 import { message } from "./errors";
 
 const pageSize = 50;
@@ -56,7 +57,7 @@ export default function AdminWaitlist({ account }: { account: string }) {
     return () => clearTimeout(timer);
   }, [entries, load]);
 
-  async function change({ entry, action }: Pending) {
+  async function change({ entry, action }: Pending, role?: Role) {
     if (busy) return;
     setBusy(true);
     setError("");
@@ -67,7 +68,7 @@ export default function AdminWaitlist({ account }: { account: string }) {
           suspended: action === "suspend",
         });
       } else {
-        await dropApi.changeWaitlist(action, entry.id);
+        await dropApi.changeWaitlist(action, entry.id, role);
       }
       const labels: Record<Action, string> = {
         invite: "Invitation queued",
@@ -227,13 +228,8 @@ export default function AdminWaitlist({ account }: { account: string }) {
                 ) : (
                   <div className="waitlist-actions">
                     {state === "Waiting" && (
-                      <button
-                        className="primary"
-                        disabled={busy}
-                        onClick={() => void change({ entry, action: "invite" })}
-                      >
-                        Invite and send welcome email
-                      </button>
+                      <WaitlistInvitation disabled={busy} label="Invite and send welcome email"
+                        onInvite={role => void change({ entry, action: "invite" }, role)} />
                     )}
                     {state === "Invited" && (
                       <>

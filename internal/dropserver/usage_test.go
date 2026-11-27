@@ -78,8 +78,8 @@ func usageEvents(t *testing.T, h *droptest.Hosted, app, action string) int {
 func TestUsageCollectEndToEnd(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{Usage: true})
 	owner := h.Token(h.Owner())
-	_, a := h.User("a@example.test", "user")
-	_, b := h.User("b@example.test", "user")
+	_, a := h.User("a@example.test", "developer")
+	_, b := h.User("b@example.test", "developer")
 	n1, _, _ := h.Node("node-one", hostA)
 	appA := deployedApp(t, h, a, "app-of-a", 1)
 	appB := deployedApp(t, h, b, "app-of-b", 2)
@@ -205,7 +205,7 @@ func TestUsageCollectEndToEnd(t *testing.T) {
 func TestUsageCollectUnavailable(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	wantError(t, h.Op(h.Token(h.Owner()), "usage.collect", nil), 503, "usage_unavailable")
-	_, a := h.User("a@example.test", "user")
+	_, a := h.User("a@example.test", "developer")
 	app := createApp(t, h, mustUser(t, h, "a@example.test"), "plain-app")
 	if got := h.MustOp(a, "usage.get", map[string]any{"app": app}); got["metered"] != false || got["stored"] != nil {
 		t.Fatalf("usage %v", got)
@@ -226,7 +226,7 @@ func gz(t *testing.T, text string) []byte {
 func TestUsageInventory(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{Usage: true})
 	owner := h.Token(h.Owner())
-	_, a := h.User("a@example.test", "user")
+	_, a := h.User("a@example.test", "developer")
 	appA := createApp(t, h, mustUser(t, h, "a@example.test"), "app-of-a")
 	nibA := appRecord(t, h, appA).GetString("nib_app_id")
 	h.MustOp(a, "app.set", map[string]any{"app": appA, "desired_state": "running"})
@@ -269,7 +269,7 @@ func TestUsageInventory(t *testing.T) {
 func TestUsageMetricsFilters(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{Usage: true})
 	const alice = "alice@example.test"
-	h.Invite(alice, "user")
+	h.Invite(alice, "developer")
 	a := h.SignIn(alice).Token
 	plain := appOf(t, h.MustOp(a, "app.create", map[string]any{"name": "Plain", "slug": "plain-app"}))
 	crew := appOf(t, h.MustOp(a, "app.create", map[string]any{"name": "Crew", "slug": "crew-app", "kind": "crew"}))
@@ -315,9 +315,9 @@ func TestUsageMetricsFilters(t *testing.T) {
 func TestReplicaSyncIntervalSetting(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
 	const alice = "alice@example.test"
-	h.Invite(alice, "user")
+	h.Invite(alice, "developer")
 	a := h.SignIn(alice).Token
-	_, b := h.User("b@example.test", "user")
+	_, b := h.User("b@example.test", "developer")
 	crew := appOf(t, h.MustOp(a, "app.create", map[string]any{"name": "Crew", "slug": "crew-app", "kind": "crew"}))
 	plain := appOf(t, h.MustOp(a, "app.create", map[string]any{"name": "Plain", "slug": "plain-app"}))
 	if crew["replica_sync_interval"] != "10s" || plain["replica_sync_interval"] != nil {

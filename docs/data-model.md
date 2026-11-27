@@ -14,9 +14,8 @@ Migration `1820001400_app_http_port.js` lowers the minimum guest HTTP port to 1.
 
   | Field | Type | Rules |
   | --- | --- | --- |
-  | `role` | select `admin` or `user` | required; set at creation (below), changed only by `user.set` |
+  | `role` | select `user`, `developer` or `admin` | required; set at creation (below), changed only by `user.set` |
   | `app_quota` | number 0-100 | legacy app count (default 3), retained for API compatibility |
-  | `developer` | bool | Developer capability for private apps, initially false for every account. Admins grant and revoke it through `user.set`. |
   | `suspended` | bool | changed by `user.set`; a suspended account cannot sign in or renew a session |
   | `invited_by` | relation to `users` | the admin whose invite created the account |
 
@@ -33,7 +32,7 @@ Migration `1820001400_app_http_port.js` lowers the minimum guest HTTP port to 1.
 | Field | Type | Rules |
 | --- | --- | --- |
 | `email`, `email_lower` | text, at most 254 | the canonical (trimmed, lower-cased ASCII) address |
-| `role` | select `admin` or `user` | the role the account gets |
+| `role` | select `user`, `developer` or `admin` | the role the account gets |
 | `app_quota` | number 0-100 | legacy app-count metadata |
 | `invited_by` | relation to `users` | required: the admin who invited |
 | `expires_at` | date | required: 1-30 days after creation (default 7) |
@@ -100,6 +99,12 @@ Unique indexes on `slug` and `nib_app_id`, and an index on `(owner, created)`. L
 Migration `1820002580_archive_provenance.js` adds optional `archive_sha256`, `executable_sha256`, and `executable_path` fields to releases. The reader records the source archive digest and selected member in the packaged release, and the upload handler reads that metadata. The server computes the complete upload’s `sha256` for storage and admission.
 
 What the node needs to run a release (M7 and M9) is `sha256`, `s3_key` and `size_bytes` of the app's `current_release`: the desired-state route fills `render.Release{SHA256, S3Key, SizeBytes}` from them, and the agent downloads `s3_key` and refuses bytes whose size or digest differ. An app without a current release is not rendered.
+
+### Catalog submissions
+
+`drop_catalog_submissions` stores one review request per private release. It records the immutable release ID, submitting account, product and version from the executable’s inspected manifest, plaintext SHA-256, submission time, the admin who authorized copying the verified executable into catalog storage, and acceptance status. The release and account are foreign keys with cascading deletion. Only the developer who owns the app can submit its currently deployed executable. Admins review pending requests through `catalog.submissions`; this table has no records endpoint or SQL reader entry.
+
+Submission keeps the artifact encrypted under the private app’s key. Accepting an exact digest verifies the decrypted bytes and stages a separately addressed official release. The official artifact survives deletion of the source app. The catalog makes it available to users after an admin records the required rehearsal and publishes it.
 
 ## Nodes
 
@@ -230,3 +235,17 @@ index as nonce under that content-specific key. The assigned node receives
 the content key in its authenticated desired document. App deletion purges the
 object by stored key. Identical binaries uploaded to different private apps
 therefore have separate ciphertext, records, keys and deletion lifetimes.
+
+### Migrating existing hosted roles
+
+The exclusive-role migration keeps account IDs. An existing user with Developer access becomes a developer and keeps the same workspaces, billing history and invitations. Existing admins retain their administrative role. New invitations record the selected role directly.
+
+Before upgrading, inspect a consistent backup for private workspaces owned by an admin:
+
+```sql
+SELECT a.id, a.slug, u.email
+FROM apps AS a JOIN users AS u ON u.id = a.owner
+WHERE a.developer_private = 1 AND u.role = 'admin';
+```
+
+If any rows appear, identify a separate developer account with the owner before proceeding. The migration stops in that case. Keep the previous binary and matching database backup together for rollback.

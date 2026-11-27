@@ -66,7 +66,6 @@ type UserList struct {
 
 // UserSetInput changes one account, named by id or email. Absent fields stay.
 type UserSetInput struct {
-	Developer *bool  `json:"developer,omitempty"`
 	User      string `json:"user"`
 	Role      *Role  `json:"role,omitempty"`
 	AppQuota  *int   `json:"app_quota,omitempty"`

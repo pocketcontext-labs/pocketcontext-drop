@@ -890,7 +890,7 @@ def hosted_scenario(pc, r):
         status, body = hosted_request(port, 'POST', '/api/collections/users/request-otp', {'email': 'stranger@example.test'})
         check(status == 200 and 'otpId' in json.loads(body), 'an unknown address gets the ordinary sign-in answer')
         check(hosted_request(port, 'POST', '/api/drop/op', {'op': 'me'})[0] == 401, 'operations require a session')
-        invited = subprocess.run([str(pc.binary), '--db', str(db), 'invite', 'create', 'invitee@example.test', '--role', 'user'],
+        invited = subprocess.run([str(pc.binary), '--db', str(db), 'invite', 'create', 'invitee@example.test', '--role', 'developer'],
                                  capture_output=True, text=True, encoding='utf-8', env=r.env, timeout=60)
         check(invited.returncode == 0, f'the owner invites through the private socket: {invited.stderr}')
         check(json.loads(invited.stdout)['sign_in_url'] == f'https://{HOSTED_DOMAIN}/#/invite?email=invitee%40example.test',
@@ -963,7 +963,7 @@ def hosted_scenario(pc, r):
     with closing(sqlite3.connect(db)) as conn:
         users = conn.execute('SELECT email, role FROM users ORDER BY created').fetchall()
         used = conn.execute("SELECT count(*) FROM invites WHERE used_by != ''").fetchone()[0]
-    check(users == [('owner@example.test', 'admin'), ('invitee@example.test', 'user')] and used == 1,
+    check(users == [('owner@example.test', 'admin'), ('invitee@example.test', 'developer')] and used == 1,
           f'only the owner (an admin) and the invited address (with the invite\'s role) got accounts: {users}')
     with closing(sqlite3.connect(db)) as conn:
         dump = '\n'.join(str(row) for table in [t[0] for t in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")]

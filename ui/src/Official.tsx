@@ -20,6 +20,15 @@ type Published = {
   size_bytes: number;
   published: number;
 };
+type Submission = {
+  app: string;
+  release: string;
+  submitted_by: string;
+  product: string;
+  version: string;
+  sha256: string;
+  size_bytes: number;
+};
 type Catalog = { enabled: boolean; releases: Published[] };
 const names: Record<string, string> = { crew: "Crew", atlas: "Atlas" };
 function Size({
@@ -97,7 +106,9 @@ export function OfficialCatalog({ releaseSelection = true }: { releaseSelection?
       <h2>
         {product ? ("Create " + (product === "atlas" ? "an " : "a ") + names[product] + " app") : "Catalog"}
       </h2>
-      {product ? (
+      {catalog && !catalog.enabled ? (
+        <p>The official catalog is awaiting activation.</p>
+      ) : product ? (
         <form
           className="stack app-create-form"
           onSubmit={async (e) => {
@@ -217,6 +228,22 @@ export function OfficialReleases({
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [status, setStatus] = useState("");
+  const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [submissionsError, setSubmissionsError] = useState("");
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    let active = true;
+    op<{ submissions: Submission[] }>("catalog.submissions", {})
+      .then(result => {
+        if (active) {
+          setSubmissions(result.submissions);
+          setSubmissionsError("");
+        }
+      })
+      .catch(e => { if (active) setSubmissionsError(message(e)); });
+    return () => { active = false; };
+  }, [revision]);
+
   async function act(fn: () => Promise<string>) {
     if (busy) return;
     setBusy(true);
@@ -303,6 +330,28 @@ export function OfficialReleases({
       </form>
       {(error || loadError) && <p role="alert">{error || loadError}</p>}
       {status && <p role="status">{status}</p>}
+      {submissionsError && <p role="alert">Could not load submitted releases. {submissionsError}{" "}
+        <button className="link" onClick={() => setRevision(n => n + 1)}>Retry</button>
+      </p>}
+      {submissions?.length > 0 && <section aria-labelledby="submitted-title">
+        <h3 id="submitted-title">Submitted for review</h3>
+        <ul className="release-list">
+          {submissions.map(candidate => (
+            <li className="release-card" key={candidate.release}>
+              <div className="release-info">
+                <strong>{names[candidate.product]} {candidate.version}</strong>
+                <p className="release-meta">Submitted by {candidate.submitted_by} · {(candidate.size_bytes / 1048576).toFixed(1)} MiB</p>
+                <code className="candidate-digest">sha256: {candidate.sha256}</code>
+              </div>
+              <button className="secondary" disabled={busy} onClick={() => void act(async () => {
+                await op("catalog.accept", { app: candidate.app, release: candidate.release, sha256: candidate.sha256 });
+                setRevision(n => n + 1);
+                return "Candidate accepted. Attach a successful data rehearsal before publishing.";
+              })}>Accept for rehearsal</button>
+            </li>
+          ))}
+        </ul>
+      </section>}
       <ul className="release-list">
         {catalog?.releases.map((r) => (
           <li key={r.sha256} className="release-card">

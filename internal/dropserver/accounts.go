@@ -45,6 +45,10 @@ func isOwner(app core.App, record *core.Record) bool {
 	return rt != nil && rt.IsOwner(app, record)
 }
 
+func isDeveloper(account *core.Record) bool {
+	return account.GetString("role") == string(dropapi.RoleDeveloper)
+}
+
 func hostedAdmin(app core.App, record *core.Record) bool {
 	return accountsOf(app).hosted && (isOwner(app, record) || record.GetString("role") == string(dropapi.RoleAdmin))
 }

@@ -17,7 +17,7 @@ func TestPrivateTesterAccessIsolation(t *testing.T) {
 	tester, testerToken := h.User("tester@example.test", "user")
 	_, stranger := h.User("uninvited@example.test", "user")
 	admin := h.Token(h.Owner())
-	h.MustOp(admin, "user.set", map[string]any{"user": owner.Id, "developer": true})
+	h.MustOp(admin, "user.set", map[string]any{"user": owner.Id, "role": "developer"})
 	app := newApp(t, h, ownerToken, "private-test")
 	a, err := h.App.FindRecordById("apps", app)
 	if err != nil {
@@ -30,7 +30,9 @@ func TestPrivateTesterAccessIsolation(t *testing.T) {
 	}
 	ref := map[string]any{"app": app}
 	grant := map[string]any{"app": app, "email": tester.Email()}
-	for _, token := range []string{admin, testerToken, stranger} {
+	wantError(t, h.Op(admin, "private.access", ref), 403, "forbidden")
+	wantError(t, h.Op(ownerToken, "private.grant", map[string]any{"app": app, "email": h.Owner().Email()}), 404, "not_found")
+	for _, token := range []string{testerToken, stranger} {
 		if r := h.Op(token, "private.access", ref); r.Status != 404 {
 			t.Fatalf("access before invitation returned %d", r.Status)
 		}
@@ -40,10 +42,8 @@ func TestPrivateTesterAccessIsolation(t *testing.T) {
 	if len(list) != 1 || list[0].(map[string]any)["id"] != app {
 		t.Fatal(list)
 	}
-	for _, token := range []string{admin, stranger} {
-		if r := h.Op(token, "private.access", ref); r.Status != 404 {
-			t.Fatal(r.Status)
-		}
+	wantError(t, h.Op(stranger, "private.access", ref), 404, "not_found")
+	for _, token := range []string{stranger, admin} {
 		if list := h.MustOp(token, "private.shared", nil)["apps"].([]any); len(list) != 0 {
 			t.Fatal(list)
 		}
@@ -82,4 +82,14 @@ func TestPrivateTesterAccessIsolation(t *testing.T) {
 	if err := verify("d-" + app); err == nil {
 		t.Fatal("revocation did not replace the node verification key")
 	}
+	h.MustOp(ownerToken, "private.grant", grant)
+	raw = h.MustOp(testerToken, "private.access", ref)["token"].(string)
+	h.MustOp(admin, "user.set", map[string]any{"user": tester.Id, "role": "admin"})
+	wantError(t, h.Op(testerToken, "private.access", ref), 403, "forbidden")
+	if err := verify("d-" + app); err == nil {
+		t.Fatal("promoted tester's issued token is still valid")
+	}
+	h.MustOp(admin, "user.set", map[string]any{"user": tester.Id, "role": "user"})
+	wantError(t, h.Op(testerToken, "private.access", ref), 404, "not_found")
+
 }

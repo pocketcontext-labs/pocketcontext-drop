@@ -99,8 +99,8 @@ func TestLocalReadsAndWritesArePrivate(t *testing.T) {
 // own token, and app.create sets the owner to the caller.
 func TestAppRecordsAreReadOnly(t *testing.T) {
 	h := droptest.NewHosted(t, droptest.Options{})
-	owner, ownerToken := h.User("app-owner@example.test", "user")
-	other, _ := h.User("other@example.test", "user")
+	owner, ownerToken := h.User("app-owner@example.test", "developer")
+	other, _ := h.User("other@example.test", "developer")
 	created := h.MustOp(ownerToken, "app.create", map[string]any{"name": "Owner app", "slug": "owner-app"})["app"].(map[string]any)
 	if created["owner"] != owner.Id {
 		t.Fatalf("app.create chose owner %v", created["owner"])
