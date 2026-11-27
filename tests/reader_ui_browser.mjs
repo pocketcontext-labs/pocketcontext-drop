@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -81,6 +81,14 @@ try {
   assert.equal(html, built, 'the binary must embed the current ui/dist; rebuild with make ui && make build');
   assert.match(served.headers.get('content-security-policy'), /script-src 'self';/);
   ok('the binary serves the current built reader under the production policy');
+  const assetDir = path.join(root, 'ui/dist/assets');
+  const launchers = (await readdir(assetDir)).filter(name => name.includes('drop-guest') && name.endsWith('.js'));
+  assert.equal(launchers.length, 1, 'the build includes the split archive launcher');
+  const launcher = await fetch(origin + '/assets/' + launchers[0]);
+  assert.equal(launcher.status, 200, 'the compiled binary serves the lazy archive launcher');
+  assert((await readFile(path.join(assetDir, launchers[0]))).equals(Buffer.from(await launcher.arrayBuffer())),
+    'the response contains the built launcher bytes');
+  ok('the binary serves the generated archive launcher chunk');
 
   browser = await chromium.launch({ headless: true, executablePath: option('--browser') });
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, colorScheme: 'light' });
@@ -267,6 +275,7 @@ try {
   const confirm = modal.getByRole('button', {name: 'Delete ' + messages[2], exact: true});
   assert(await confirm.isDisabled());
   await modal.getByLabel('Type third-app to confirm').fill('third-app');
+  await confirm.click({trial: true}); // Wait for the inventory read to enable confirmation.
   await confirm.focus();
   await page.keyboard.press('Enter');
   await page.getByRole('heading', {name: 'Deletion requested'}).waitFor();
