@@ -322,8 +322,7 @@ With `catalog.list {all_versions:true}`, customers and administrators see every 
 Customers use `catalog.list`, `workspace.create {product,name,multiplier}`,
 `workspace.resize {app,multiplier}` and `workspace.upgrade {app,sha256}`.
 Both products support 1×–8× compute (4× suggested) within the chosen release’s manifest minimum. An older release that requires 4× must be upgraded before selecting 1×. A target release requiring more CPU or memory needs a resize before installation. Each unit provides
-256 MiB memory and a quarter vCPU. New workspaces allocate at least 2 GiB
-persistent disk. Resizing compute keeps that disk fixed. Publication affects
+256 MiB memory and a quarter vCPU. New catalog workspaces reserve 2 GiB of persistent disk per unit, independently of the legacy per-account disk quota. Placed volumes keep their original size during compute upgrades. A downgrade that would require a smaller volume is refused. Publication affects
 new workspaces immediately. Existing workspaces install only the specific
 version their owner accepts. A matching healthy node report confirms the
 installed version. Failed deployments can retry the same target; a failed

@@ -374,6 +374,7 @@ func cleanName(name string) (string, error) {
 }
 
 type runtimeFeatures struct {
+	tieredDisk  bool
 	storage     bool
 	signInEmail bool
 	ownerEmail  bool
@@ -452,8 +453,10 @@ func createApp(c *Ctx, in *dropapi.AppCreateInput, features runtimeFeatures) (an
 	if err := allowCreditDeployment(c.App, c.Auth.Id); err != nil {
 		return nil, err
 	}
-	if err := c.checkDisk(s.diskMiB); err != nil {
-		return nil, err
+	if !features.tieredDisk {
+		if err := c.checkDisk(s.diskMiB); err != nil {
+			return nil, err
+		}
 	}
 	collection, err := c.App.FindCachedCollectionByNameOrId("apps")
 	if err != nil {

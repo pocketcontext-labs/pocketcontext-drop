@@ -213,8 +213,11 @@ func workspaceCreate(c *Ctx, in *dropapi.WorkspaceCreate) (any, error) {
 		return nil, Invalid("multiplier", "This release requires at least "+strconv.Itoa(r.Minimum)+"× resources.")
 	}
 	port, hook := m.HTTPPort, m.HookPort
-	cpu, mem, disk := (in.Multiplier+3)/4, in.Multiplier*256, max(2048, m.Minimum.DiskMiB)
-	raw, err := createApp(c, &dropapi.AppCreateInput{Name: in.Name, Slug: r.Product + "-" + core.GenerateDefaultRandomId(), Kind: "crew", ExecutableName: r.Product, VCPU: &cpu, MemoryMiB: &mem, DiskMiB: &disk, Env: map[string]string{"PORT": strconv.Itoa(port)}, HTTPPort: &port, HookPort: &hook, HealthKind: "tcp"}, runtimeFeatures{storage: true, signInEmail: true, ownerEmail: true})
+	cpu, mem, disk := (in.Multiplier+3)/4, in.Multiplier*256, in.Multiplier*2048
+	if disk < m.Minimum.DiskMiB {
+		return nil, Invalid("multiplier", "Choose a larger size for this release.")
+	}
+	raw, err := createApp(c, &dropapi.AppCreateInput{Name: in.Name, Slug: r.Product + "-" + core.GenerateDefaultRandomId(), Kind: "crew", ExecutableName: r.Product, VCPU: &cpu, MemoryMiB: &mem, DiskMiB: &disk, Env: map[string]string{"PORT": strconv.Itoa(port)}, HTTPPort: &port, HookPort: &hook, HealthKind: "tcp"}, runtimeFeatures{tieredDisk: true, storage: true, signInEmail: true, ownerEmail: true})
 	if err != nil {
 		return nil, err
 	}
@@ -290,6 +293,9 @@ func workspaceResize(c *Ctx, in *dropapi.WorkspaceResize) (any, error) {
 	}
 	if in.Multiplier < a.GetInt("official_minimum") {
 		return nil, Invalid("multiplier", "The installed workspace requires a larger size. Upgrade it first to use smaller sizes.")
+	}
+	if in.Multiplier*256 < a.GetInt("memory_mib") && in.Multiplier*2048 < a.GetInt("disk_mib") {
+		return nil, Conflict(dropapi.CodeDiskLocked, "This size requires a smaller disk. The node cannot safely shrink the existing volume.")
 	}
 	if a.GetInt("memory_mib") != in.Multiplier*256 || a.GetInt("vcpu") != (in.Multiplier+3)/4 {
 		a.Set("beta_digest", a.GetString("official_target"))

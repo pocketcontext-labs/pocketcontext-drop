@@ -1,12 +1,11 @@
 import RuntimeState from "./RuntimeState";
 import OpenArrow from "./OpenArrow";
 import { OpenPrivateApp } from "./PrivateApps";
-import HelpTip from "./HelpTip";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { appURL } from "./AppAddress";
 import CopyButton from "./CopyButton";
-import { dropApi, type App, type Quota } from "./dropApi";
+import { dropApi, type App } from "./dropApi";
 import { message } from "./errors";
 import { appHash, viewHashes } from "./routes";
 
@@ -26,15 +25,8 @@ export const stateLabels: Record<App["desired_state"], string> = {
   stopped: "Stopped",
 };
 
-export function quotaText(quota: Quota): string {
-  const gib = (mib: number) => (mib / 1024).toLocaleString(undefined, {maximumFractionDigits: 2});
-  return quota.unlimited ? `${gib(quota.used)} GiB of app disk reserved` : `${gib(quota.used)} of ${gib(quota.limit)} GiB of app disk reserved`;
-}
-
-/** The account's apps, newest first, with its quota. */
 export default function Apps({ beta = false, official=false, developer=false, admin=false }: { beta?: boolean; official?:boolean; developer?: boolean; admin?: boolean }) {
   const [apps, setApps] = useState<App[] | null>(null);
-  const [quota, setQuota] = useState<Quota | null>(null);
   const [error, setError] = useState("");
   const mounted = useRef(true);
   const reads = useRef(0);
@@ -44,7 +36,6 @@ export default function Apps({ beta = false, official=false, developer=false, ad
       const list = await dropApi.listApps();
       if (mounted.current && read === reads.current) {
         setApps(list.apps);
-        setQuota(list.quota);
         setError("");
       }
     } catch (e) {
@@ -68,24 +59,17 @@ export default function Apps({ beta = false, official=false, developer=false, ad
       stop?.();
     };
   }, [load]);
-  const full = quota !== null && !quota.unlimited && quota.used >= quota.limit;
   return (
     <section className="app-dashboard" aria-labelledby="apps-title">
       <div className="row heading">
         <h2 id="apps-title">Your apps</h2>
-        {full ? (
-          <span className="quiet">Quota reached</span>
-        ) : (
           <div className="row">
             {developer && <a className="button secondary" href={viewHashes["private-new"]}>Create private app</a>}
             {!admin && <a className="button primary" href={official?viewHashes.catalog:beta ? viewHashes.deploy : viewHashes["app-new"]}>
             {official?"Create app":beta ? "Deploy an app" : "New app"}
           </a>}
           </div>
-        )}
       </div>
-      {quota && <p className="quiet">{quotaText(quota)} <HelpTip topic="app storage">Each app reserves its full disk size, even when its files use less space. Suspended and archived apps keep their reservation. Permanently deleting an app frees its space for another app.</HelpTip></p>}
-      {quota && !quota.unlimited && quota.limit > 0 && <progress aria-label="Storage used" value={quota.used} max={quota.limit} />}
       {error && (
         <p role="alert" className="error">
           {error}

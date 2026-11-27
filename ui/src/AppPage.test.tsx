@@ -35,22 +35,21 @@ afterEach(() => {
   history.replaceState(null, "", "/");
 });
 
-it("lists the apps with the quota and links each to its page", async () => {
+it("lists the apps and links each to its page", async () => {
   history.replaceState(null, "", "/#/apps");
   vi.spyOn(dropApi, "listApps").mockResolvedValue({ apps: [app], quota: { used: 1024, limit: 10240, unlimited: false }, has_more: false });
   render(<App />);
   expect(await screen.findByRole("link", { name: "Hello app" })).toHaveAttribute("href", `#/apps/${id}`);
-  expect(screen.getByText("1 of 10 GiB of app disk reserved")).toBeInTheDocument();
+  expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
   expect(screen.getByRole("link", {name: "Open"})).toHaveAttribute("href", "https://" + app.hostname);
   expect(screen.getByRole("button", {name: "Copy app URL"})).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Deploy an app" })).toHaveAttribute("href", "#/deploy");
 });
 
-it("hides New app when the quota is reached", async () => {
+it("keeps creation available at the former account limit", async () => {
   vi.spyOn(dropApi, "listApps").mockResolvedValue({ apps: [app, app, app].map((a, i) => ({ ...a, id: `app00000000000${i}` })), quota: { used: 3, limit: 3, unlimited: false }, has_more: false });
   render(<App />);
-  expect(await screen.findByText("Quota reached")).toBeInTheDocument();
-  expect(screen.queryByRole("link", { name: "Deploy an app" })).not.toBeInTheDocument();
+  expect(await screen.findByRole("link", { name: "Deploy an app" })).toBeInTheDocument();
 });
 
 it("lets a local developer create an app from #/apps/new and opens its page", async () => {

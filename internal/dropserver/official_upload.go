@@ -67,8 +67,8 @@ func (u *uploader) candidateOrProbe(re *core.RequestEvent, hash string) error {
 	if outcome != "success" || err != nil || m.App != link.Product || m.Version != link.Version || m.HookPort == 0 || !slices.Contains(m.Optional, "s3_replica") || !slices.Contains(m.Requires, "persistent_volume") || !slices.Contains(m.Requires, "sign_in_email") || !slices.Contains(m.Requires, "verified_owner_email") {
 		return writeError(re, Invalid("manifest", "The executable must declare this product, version, lifecycle hooks, owner sign-in, persistent volume and optional backup storage."))
 	}
-	minimum := max(m.Minimum.CPUQuarters, (m.Minimum.MemoryMiB+255)/256)
-	if minimum > 8 || m.Minimum.DiskMiB > 10240 {
+	minimum := max(m.Minimum.CPUQuarters, (m.Minimum.MemoryMiB+255)/256, (m.Minimum.DiskMiB+2047)/2048)
+	if minimum > 8 || m.Minimum.DiskMiB > 8*2048 {
 		return writeError(re, Invalid("minimum", "The manifest exceeds the workspace resource allowance."))
 	}
 	key, err := awsx.ReleaseKey(digest)
