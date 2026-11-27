@@ -74,7 +74,7 @@ func testPrivateDeveloperRelease(t *testing.T, withManifest bool) {
 	wantError(t, h.Op(user, "developer.create", input), 403, dropapi.CodeForbidden)
 	wantError(t, h.Op(admin, "developer.create", input), 403, dropapi.CodeForbidden)
 	h.MustOp(admin, "user.set", map[string]any{"user": joe.Id, "role": "developer"})
-	if _, err := h.App.DB().NewQuery("INSERT INTO drop_app_deletions (app,owner,slug,nib,completed) VALUES ('past','past','retired-build','d-past',1)").Execute(); err != nil {
+	if _, err := h.App.DB().NewQuery("INSERT INTO drop_app_deletions (app,owner,slug,nib,completed) VALUES ('past','past','dev-retired-build','d-past',1)").Execute(); err != nil {
 		t.Fatal(err)
 	}
 	wantError(t, h.Op(user, "developer.create", map[string]any{"slug": "retired-build", "name": "Retired host"}), 409, dropapi.CodeSlugTaken)

@@ -19,7 +19,7 @@ func TestPrivateAppMetadataOnlyVisibleToOwner(t *testing.T) {
 	account, developer := h.User("owner-preview@example.test", "user")
 	h.MustOp(operator, "user.set", map[string]any{"user": account.Id, "role": "developer"})
 	public := newApp(t, h, developer, "ordinary-app")
-	const slug = "private-preview"
+	const slug = "dev-private-preview"
 	id := appOf(t, h.MustOp(developer, "developer.create", map[string]any{"name": slug, "slug": slug}))["id"].(string)
 	ref := map[string]any{"app": id}
 	// A released file in the owner's private app.

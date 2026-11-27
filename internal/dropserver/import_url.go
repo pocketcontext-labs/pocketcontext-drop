@@ -70,6 +70,12 @@ func dialRelease(ctx context.Context, network, address string) (net.Conn, error)
 }
 
 func importReleaseURL(c *Ctx, in *dropapi.ImportURLInput) (any, error) {
+	return downloadReleaseURL(c, in, func(data []byte, digest string) (any, error) {
+		return map[string]any{"sha256": digest, "content_base64": data}, nil
+	})
+}
+
+func downloadReleaseURL(c *Ctx, in *dropapi.ImportURLInput, accept func([]byte, string) (any, error)) (any, error) {
 	u, err := url.Parse(in.URL)
 	if err != nil || !releaseURLAllowed(u) {
 		return nil, Invalid("url", "Enter a public HTTPS release URL.")
@@ -115,5 +121,5 @@ func importReleaseURL(c *Ctx, in *dropapi.ImportURLInput) (any, error) {
 	if in.SHA256 != "" && digest != in.SHA256 {
 		return nil, Invalid("sha256", "Downloaded release checksum does not match.")
 	}
-	return map[string]any{"sha256": digest, "content_base64": data}, nil
+	return accept(data, digest)
 }

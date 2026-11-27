@@ -188,7 +188,7 @@ func (u *uploader) serve(re *core.RequestEvent) error {
 		return writeError(re, err)
 	}
 	if link == nil {
-		return u.candidateOrProbe(re, hash)
+		return u.privateBuildOrCandidate(re, hash)
 	}
 	app, err := re.App.FindRecordById("apps", link.GetString("app"))
 	if err != nil {
@@ -250,6 +250,9 @@ func (u *uploader) serve(re *core.RequestEvent) error {
 		if err != nil {
 			return writeError(re, Conflict("probe_pending", "The private release checker is unavailable. Retry this upload."))
 		}
+		if app.GetBool("private_tiered") && outcome != "success" {
+			return writeError(re, Invalid("manifest", "The executable must implement --drop-manifest."))
+		}
 		if outcome == "success" {
 			parsed, err := parseBetaManifest(raw)
 			if err != nil {
@@ -259,22 +262,12 @@ func (u *uploader) serve(re *core.RequestEvent) error {
 		}
 		// Encrypt from the verified bytes, without giving another node a
 		// usable copy even if it knows the object key or plaintext digest.
-		releaseKey, err := privateblob.Key(app.GetString("private_release_master"), sha)
+		blob, storedHash, err = sealPrivateRelease(file, size, app.GetString("private_release_master"), sha)
 		if err != nil {
 			return writeError(re, err)
 		}
-		blob, err = os.CreateTemp("", "drop-private-release-*")
-		if err != nil {
-			return writeError(re, err)
-		}
-		defer os.Remove(blob.Name())
 		defer blob.Close()
-		h := sha256.New()
-		err = privateblob.Seal(io.MultiWriter(blob, h), io.NewSectionReader(file, 0, size), releaseKey, size)
-		if err != nil {
-			return writeError(re, err)
-		}
-		storedSize, storedHash = privateblob.StoredSize(size), hex.EncodeToString(h.Sum(nil))
+		storedSize = privateblob.StoredSize(size)
 	}
 	key, err := awsx.ReleaseKey(storedHash)
 	if err != nil {
@@ -502,4 +495,26 @@ func pruneUploadLinks(app core.App, now time.Time) error {
 	}
 	_, err = app.DB().NewQuery("DELETE FROM upload_links WHERE used_at = '' AND expires_at < {:cutoff}").Bind(dbx.Params{"cutoff": cutoff.String()}).Execute()
 	return err
+}
+
+// Keep private bytes outside the shared plaintext release namespace.
+func sealPrivateRelease(file *os.File, size int64, master, digest string) (*os.File, string, error) {
+	key, err := privateblob.Key(master, digest)
+	if err != nil {
+		return nil, "", err
+	}
+	blob, err := os.CreateTemp("", "drop-private-release-*")
+	if err != nil {
+		return nil, "", err
+	}
+	if err := os.Remove(blob.Name()); err != nil {
+		blob.Close()
+		return nil, "", err
+	}
+	hash := sha256.New()
+	if err := privateblob.Seal(io.MultiWriter(blob, hash), io.NewSectionReader(file, 0, size), key, size); err != nil {
+		blob.Close()
+		return nil, "", err
+	}
+	return blob, hex.EncodeToString(hash.Sum(nil)), nil
 }

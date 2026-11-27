@@ -118,7 +118,7 @@ func testCatalogPromotion(t *testing.T, h *droptest.Hosted, store *promotionStor
 
 func testCatalogSourceDeletion(t *testing.T, h *droptest.Hosted, owner, node, app string, rel dropapi.Release) {
 	t.Helper()
-	h.MustOp(owner, "app.delete", map[string]any{"app": app, "confirm_slug": "private-build"})
+	h.MustOp(owner, "app.delete", map[string]any{"app": app, "confirm_slug": "dev-private-build"})
 	d, _ := desired(t, h, node)
 	ack := reportOf(hostB)
 	ack["desiredSeq"] = d.DesiredSeq

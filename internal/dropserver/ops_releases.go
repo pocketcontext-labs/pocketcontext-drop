@@ -236,6 +236,12 @@ func checkPrivateManifest(tx core.App, app, release *core.Record) error {
 			return err
 		}
 	}
+	if app.GetBool("private_tiered") && manifest.Schema == "" {
+		return Invalid("manifest", "The executable must implement --drop-manifest.")
+	}
+	if app.GetBool("private_tiered") && manifest.App != app.GetString("executable_name") {
+		return Invalid("manifest", "The manifest product must match this private app.")
+	}
 	if manifest.Schema == "" {
 		app.Set("required_s3", false)
 		return nil
@@ -243,10 +249,15 @@ func checkPrivateManifest(tx core.App, app, release *core.Record) error {
 	if app.GetInt("http_port") != manifest.HTTPPort || app.GetInt("hook_port") != manifest.HookPort {
 		return Invalid("app", "The app's HTTP and lifecycle ports must match the private release manifest.")
 	}
-	if app.GetInt("vcpu")*4 < manifest.Minimum.CPUQuarters || app.GetInt("memory_mib") < manifest.Minimum.MemoryMiB || app.GetInt("disk_mib") < manifest.Minimum.DiskMiB {
+	cpuQuarters := app.GetInt("vcpu") * 4
+	if quarters := betaFractionalQuota(app); quarters != 0 {
+		cpuQuarters = quarters
+	}
+	if cpuQuarters < manifest.Minimum.CPUQuarters || app.GetInt("memory_mib") < manifest.Minimum.MemoryMiB || app.GetInt("disk_mib") < manifest.Minimum.DiskMiB {
 		return Invalid("app", "The app is smaller than the private release's minimum resources.")
 	}
-	if app.GetString("crew_enrollment") == "" && (slices.Contains(manifest.Requires, "s3_replica") || slices.Contains(manifest.Requires, "sign_in_email") || slices.Contains(manifest.Requires, "verified_owner_email")) {
+	if (app.GetString("crew_enrollment") == "" && slices.Contains(manifest.Requires, "s3_replica")) ||
+		((app.GetString("crew_owner_email") == "" || app.GetBool("private_owner_email")) && slices.Contains(manifest.Requires, "verified_owner_email")) {
 		return Invalid("kind", "Create a private app with managed owner services (kind crew) for this release.")
 	}
 	if slices.Contains(manifest.Requires, "sign_in_email") && !app.GetBool("sign_in_email_enabled") {

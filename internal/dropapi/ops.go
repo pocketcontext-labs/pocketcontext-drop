@@ -111,6 +111,9 @@ var specs = []Spec{
 
 	{Name: "credits.accounts", Role: RoleAdmin, Read: true, Input: &CreditAccountListInput{}, Summary: "List account balances and simulated purchases for the administrator."},
 	{Name: "credits.get", Role: RoleUser, Read: true, Input: &CreditViewInput{}, Summary: "Read your balance and ledger. Administrators can select an account."},
+	{Name: "developer.build_upload", Role: RoleDeveloper, MCP: true, OnceResult: true, Input: &MeInput{}, Summary: "Get a one-time PUT URL to inspect a private executable."},
+	{Name: "developer.build_import", Role: RoleDeveloper, MCP: true, Standalone: true, Input: &ImportURLInput{}, Summary: "Download and inspect a private executable from a public HTTPS URL."},
+	{Name: "developer.build_create", Role: RoleDeveloper, MCP: true, Input: &PrivateBuildCreate{}, Summary: "Create a private workspace from your inspected executable and selected multiplier."},
 	{Name: "developer.create", Role: RoleDeveloper, MCP: true, Input: &AppCreateInput{}, Summary: "Create your own private app. Supply its name, unique slug and runtime settings; kind crew enables owner sign-in and recovery services."},
 	{Name: "developer.upload_link", Role: RoleDeveloper, MCP: true, OnceResult: true, Input: &ReleaseUploadLinkInput{}, Summary: "Create a one-time PUT URL for a private app you own. Upload your Linux executable directly, then use developer.deploy."},
 	{Name: "developer.deploy", Role: RoleDeveloper, MCP: true, Input: &ReleaseDeployInput{}, Summary: "Place your private app and deploy one of its uploaded releases by immutable release ID."},
@@ -199,7 +202,7 @@ var specs = []Spec{
 func init() {
 	seen := map[string]bool{}
 	for _, s := range specs {
-		if !opName.MatchString(s.Name) || seen[s.Name] || (s.Role != RoleUser && s.Role != RoleAdmin && s.Role != RoleDeveloper) || s.Input == nil || s.Summary == "" || (s.Read && (s.SecretInput || s.MCP || s.Standalone)) || (s.Standalone && (s.SecretInput || s.MCP || s.OnceResult)) {
+		if !opName.MatchString(s.Name) || seen[s.Name] || (s.Role != RoleUser && s.Role != RoleAdmin && s.Role != RoleDeveloper) || s.Input == nil || s.Summary == "" || (s.Read && (s.SecretInput || s.MCP || s.Standalone)) || (s.Standalone && (s.SecretInput || s.OnceResult)) {
 			panic(fmt.Sprintf("dropapi: invalid operation spec %q", s.Name))
 		}
 		seen[s.Name] = true

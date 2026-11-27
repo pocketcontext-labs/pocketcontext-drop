@@ -399,6 +399,12 @@ type runtimeFeatures struct {
 }
 
 func appCreate(c *Ctx, in *dropapi.AppCreateInput) (any, error) {
+	if c.Spec.Name == "developer.create" && !strings.HasPrefix(in.Slug, "dev-") {
+		if !slugPattern.MatchString(in.Slug) {
+			return nil, Invalid("slug", "Choose a valid private app slug.")
+		}
+		in.Slug = "dev-" + in.Slug
+	}
 	crew := in.Kind == "crew"
 	return createApp(c, in, runtimeFeatures{storage: crew, signInEmail: crew, ownerEmail: crew})
 }
@@ -426,11 +432,12 @@ func createApp(c *Ctx, in *dropapi.AppCreateInput, features runtimeFeatures) (an
 		return nil, Invalid("slug", "The slug "+in.Slug+" is reserved.")
 	}
 
+	private := c.Spec.Name == "developer.create" || c.Spec.Name == "developer.build_create"
 	var taken bool
 	err = c.App.DB().NewQuery(`SELECT EXISTS (SELECT 1 FROM apps WHERE slug={:slug}
 		UNION ALL SELECT 1 FROM drop_private_slugs WHERE slug={:slug}
 		UNION ALL SELECT 1 FROM drop_app_deletions WHERE slug={:slug} AND {:private}=1)`).
-		Bind(dbx.Params{"slug": in.Slug, "private": c.Spec.Name == "developer.create"}).Row(&taken)
+		Bind(dbx.Params{"slug": in.Slug, "private": private}).Row(&taken)
 	if err != nil {
 		return nil, err
 	}
@@ -513,7 +520,7 @@ func createApp(c *Ctx, in *dropapi.AppCreateInput, features runtimeFeatures) (an
 	default:
 		return nil, Invalid("kind", "App kind must be ordinary or crew.")
 	}
-	if c.Spec.Name == "developer.create" {
+	if private {
 		app.Set("developer_private", true)
 		app.Set("private_release_master", privateblob.NewMaster())
 	}
@@ -540,7 +547,7 @@ func appSet(c *Ctx, in *dropapi.AppSetInput) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if app.GetString("beta_digest") != "" || app.GetString("official_product") != "" {
+	if app.GetString("beta_digest") != "" || app.GetString("official_product") != "" || app.GetBool("private_tiered") {
 		// Only the enrollment transition is also needed by the managed runtime.
 		if *in != (dropapi.AppSetInput{App: in.App, FinishEnrollment: true}) {
 			return nil, Forbidden("Drop manages the settings for this Beta deployment.")

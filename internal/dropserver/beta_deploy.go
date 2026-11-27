@@ -304,7 +304,7 @@ func betaDeploy(c *Ctx, in *dropapi.ReleaseDeployInput) (any, error) {
 // Whole-core configurations can also run on older nodes.
 func betaFractionalQuota(a *core.Record) int {
 	units := a.GetInt("memory_mib") / 256
-	if a.GetString("beta_digest") != "" && units%4 != 0 {
+	if (a.GetString("beta_digest") != "" || a.GetBool("private_tiered")) && units%4 != 0 {
 		return units
 	}
 	return 0

@@ -75,6 +75,9 @@ func UseServices(s Services) {
 // SetServices sets the services of one app directly (tests).
 func SetServices(app core.App, s Services) {
 	app.Store().Set(servicesStoreKey, s.withDefaults())
+	if !app.Store().Has(buildCacheKey) {
+		app.Store().Set(buildCacheKey, &privateBuildCache{entries: make(map[string]*inspectedBuild)})
+	}
 }
 
 func (s Services) withDefaults() Services {
