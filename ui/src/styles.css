@@ -923,3 +923,23 @@ button.connect-address { width: 100%; min-height: 48px; text-align: start; paddi
 .credit-table th { font-size: 13px; color: var(--muted); }
 .credit-history { border-top: 1px solid var(--border); padding-top: 14px; }
 .credit-history summary { cursor: pointer; font-weight: 600; }
+
+.app-status-card .status-back { color: var(--muted); text-decoration: none; font-size: 14px; }
+.app-status-card .status-back:hover { text-decoration: underline; }
+.status-header, .status-identity { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.status-header { justify-content: space-between; margin: 14px 0; }
+.status-header h1 { margin: 0; overflow-wrap: anywhere; }
+.ready-pill { display: inline-flex; align-items: center; gap: 6px; background: var(--accent-soft); color: var(--text); border-radius: 20px; padding: 3px 9px; font-size: 13px; font-weight: 600; }
+.ready-pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.app-status-card .app-address { display: flex; flex-wrap: wrap; padding: 5px 8px 5px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; margin: 0; }
+.app-status-card .app-address a { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 14px/1.5 monospace; text-decoration: none; }
+.app-status-card .app-address a:hover { text-decoration: underline; }
+.app-status-card .app-address button { display: grid; place-items: center; min-width: 36px; min-height: 36px; }
+.app-status-card .status-refresh { background: transparent; color: var(--muted); padding: 7px 0; font-size: 14px; }
+.app-status-card .workspace-checks { margin-top: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
+.workspace-checks summary small { float: right; color: var(--text); }
+.official-page input[type=file] { min-width: 0; padding: 3px; color: var(--muted); }
+.official-page input[type=file]::file-selector-button { border: 0; border-radius: 5px; background: var(--accent-soft); color: var(--text); font: inherit; font-weight: 600; padding: 6px 10px; margin-right: 8px; cursor: pointer; }
+@media (min-width: 761px) {
+  .official-page .directory-filters:has(input[type=file]) { grid-template-columns: minmax(90px, 1fr) minmax(85px, .8fr) minmax(215px, 1.65fr) auto; }
+}

@@ -1,8 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 /** Copies the displayed value and reports whether the clipboard accepted it. */
 export default function CopyButton({ text, label = "Copy", icon = false, showAddress = false }: { text: string; label?: string; icon?: boolean; showAddress?: boolean }) {
   const [result, setResult] = useState<{ value: string; copied: boolean }>();
+  useEffect(() => {
+    if (!result?.copied) return;
+    const timer = window.setTimeout(() => setResult(undefined), 2000);
+    return () => window.clearTimeout(timer);
+  }, [result]);
   async function copy() {
     let copied = false;
     try {

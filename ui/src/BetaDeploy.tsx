@@ -291,27 +291,25 @@ export function BetaStatus({
         </ol>
   );
   return (
-    <section className="panel beta-flow">
-      <a href={viewHashes.apps}>{officialDigest ? "← Apps" : "Your apps"}</a>
-      <h1>{name}</h1>
-      <p role="status">
-        {url
-          ? (officialDigest ? "Your app is ready." : "Your app is live.")
-          : failed
-            ? "Your app could not start."
-            : phase === "archived"
-              ? "This app is archived."
-              : (phases[phase ?? ""] ?? "Checking deployment…")}
-      </p>
+    <section className="panel beta-flow app-status-card">
+      <a className="status-back" href={viewHashes.apps}>{officialDigest ? "← Apps" : "Your apps"}</a>
+      <header className="status-header">
+        <div className="status-identity">
+          <h1>{name}</h1>
+          {url && <span className="ready-pill" role="status">Ready</span>}
+        </div>
+        {url && <a className="button primary" href={url} target="_blank" rel="noreferrer">
+          Open app <span aria-hidden="true">↗</span>
+        </a>}
+      </header>
+      {!url && <p role="status">{failed ? "Your app could not start."
+        : phase === "archived" ? "This app is archived."
+        : (phases[phase ?? ""] ?? "Checking deployment…")}</p>}
       <AppAddress hostname={status?.hostname || hostname} />
-      {url && (
+      {url && !activeSetup && <button className="status-refresh" onClick={() => setRefresh(x => x + 1)}
+        aria-label="Refresh deployment status"><span aria-hidden="true">↻</span> Refresh</button>}
+      {url && activeSetup && (
         <div className="beta-actions">
-          <a className="button primary" href={url} target="_blank" rel="noreferrer">
-            Open app
-          </a>
-          {!activeSetup && (
-            <button className="secondary" onClick={() => setRefresh(x => x + 1)}>Refresh deployment status</button>
-          )}
           {activeSetup?.kind === "pocketbase_installer" && (
             <a className="button secondary" href={url + "/_/#/pbinstall/" + encodeURIComponent(activeSetup.value)} target="_blank" rel="noreferrer">
               Open PocketBase installer
@@ -328,7 +326,7 @@ export function BetaStatus({
       )}
       {release && phase !== "archived" && (
         officialDigest && url ? <details className="workspace-checks">
-          <summary>Startup checks</summary>
+          <summary>Startup checks <small>{processStarted ? "✓ All checks passed" : "2/3 passed"}</small></summary>
           {checks}
         </details> : checks
       )}
