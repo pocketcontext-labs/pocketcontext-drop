@@ -5,7 +5,7 @@ import { message } from "./errors";
 interface Account { id: string; email: string; balance: number; purchases: number }
 interface Ledger {
   account: string;
-  state: { balance: number; reserved?: number; paid: boolean; trial_seconds: number };
+  state: { balance: number; reserved?: number; pending_compute_seconds?: number; paid: boolean; trial_seconds: number };
   settings: { pack: number; euro_micros_per_credit: number };
   entries: { id: number; kind: string; delta: number; app: string; created: number }[];
   apps: { id: string; name: string; rate: number; compute: number; s3: number }[];
@@ -70,8 +70,9 @@ export default function Credits({ admin, onPurchase }: { admin: boolean; onPurch
     {data && <>
       <p><strong>{credits(data.state.balance)} credits</strong> · {rate} credits per awake hour</p>
       {(data.state.reserved ?? 0) > 0 && <p>{credits(data.state.reserved ?? 0)} credits reserved for storage requests.</p>}
+      {(data.state.pending_compute_seconds ?? 0) > 0 && <p>{data.state.pending_compute_seconds} awake seconds await storage settlement.</p>}
       {rate > 0 && data.state.balance > 0 && <p>About {(data.state.balance / 1_000_000 / rate).toFixed(1)} hours left at this compute rate.</p>}
-      {data.state.balance <= (data.state.reserved ?? 0) && <p>{Math.ceil((3600 - data.state.trial_seconds) / 60)} shared awake minutes left. Workspaces run locally until the buffer runs out, then stop with their data retained. A top-up resets the buffer to 60 minutes.</p>}
+      {data.state.balance === 0 && <p>{Math.ceil((3600 - data.state.trial_seconds) / 60)} shared awake minutes left. Workspaces run locally until the buffer runs out, then stop with their data retained. A top-up resets the buffer to 60 minutes.</p>}
       {admin ?
         <label>Adjustment in credits <input type="number" step="0.000001" value={delta} onChange={e => setDelta(e.target.value)} /></label> :
         <p>Simulated purchase. No payment is collected.</p>}

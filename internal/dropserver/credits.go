@@ -26,6 +26,8 @@ func creditSettings(app core.App) (dropapi.CreditSettings, error) {
 }
 
 type creditAccount struct {
+	Pending  int64 `db:"pending" json:"pending_compute_seconds"`
+	ResetAt  int64 `db:"reset_at" json:"-"`
 	Reserved int64 `db:"reserved" json:"reserved"`
 	FundedAt int64 `db:"funded_at" json:"-"`
 	Balance  int64 `db:"balance" json:"balance"`
@@ -35,7 +37,10 @@ type creditAccount struct {
 
 func balanceOf(app core.App, owner string) (creditAccount, error) {
 	var a creditAccount
-	err := app.DB().NewQuery("SELECT balance,paid,trial_seconds,funded_at,COALESCE((SELECT SUM(held) FROM drop_storage_reservations WHERE owner={:o} AND held>0),0) AS reserved FROM drop_credit_accounts WHERE owner={:o}").Bind(dbx.Params{"o": owner}).One(&a)
+	err := app.DB().NewQuery(`SELECT balance,paid,trial_seconds,funded_at,
+	COALESCE((SELECT SUM(seconds) FROM drop_credit_pending_compute WHERE owner={:o}),0) AS pending,
+	COALESCE((SELECT at FROM drop_credit_resets WHERE owner={:o}),0) AS reset_at,
+	COALESCE((SELECT SUM(held) FROM drop_storage_reservations WHERE owner={:o} AND held>0),0) AS reserved FROM drop_credit_accounts WHERE owner={:o}`).Bind(dbx.Params{"o": owner}).One(&a)
 	return a, err
 }
 
@@ -140,36 +145,22 @@ func creditChange(c *Ctx, owner, kind string, delta, cap int64) (any, error) {
 		return nil, err
 	}
 	if kind == "purchase" {
+		if _, err := c.App.DB().NewQuery("INSERT INTO drop_credit_resets(owner,at) VALUES({:o},{:at}) ON CONFLICT(owner) DO UPDATE SET at=excluded.at").Bind(dbx.Params{"o": owner, "at": agentStateOf(c.App).clock().Unix()}).Execute(); err != nil {
+			return nil, err
+		}
 		if _, err := c.App.DB().Update("drop_credit_accounts", dbx.Params{"trial_seconds": 0}, dbx.HashExp{"owner": owner}).Execute(); err != nil {
 			return nil, err
 		}
 	}
-	if creditBlocked(state) && delta > 0 && state.Balance > 0 {
-		if err := resumeCreditHolds(c.App, owner); err != nil {
-			return nil, err
-		}
-	}
 	if state.Balance == 0 && delta > 0 {
-		// Missing reports can straddle a purchase. Do not charge the newly
-		// funded account for any runtime before this transaction.
+		// Only a zero-to-funded transition cuts off previously unfunded time.
 		_, err := c.App.DB().Update("drop_credit_accounts", dbx.Params{"funded_at": agentStateOf(c.App).clock().Unix()}, dbx.HashExp{"owner": owner}).Execute()
 		if err != nil {
 			return nil, err
 		}
-		if err := resumeCreditHolds(c.App, owner); err != nil {
-			return nil, err
-		}
 	}
-	if state.Balance+delta == 0 {
-		state.Balance = 0
-		if err := enforceCredits(c.App, owner, state); err != nil {
-			return nil, err
-		}
-	}
-	if (state.Balance == 0 && delta > 0) || (delta < 0 && state.Balance == 0) {
-		if err := changeStorageMode(c.App, owner); err != nil {
-			return nil, err
-		}
+	if err := settleWalletChange(c.App, owner, state); err != nil {
+		return nil, err
 	}
 	c.Event(Event{SubjectUser: owner, Detail: map[string]any{"microcredits": delta}})
 	return balanceOf(c.App, owner)

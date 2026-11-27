@@ -122,7 +122,7 @@ func storageBudget(tx core.App, node string, in dropapi.StorageBudget) error {
 				return err
 			}
 		}
-		return applyStorageSettlement(tx, owner, before)
+		return settleWalletChange(tx, owner, before)
 	}
 	if in.Action != "reserve" {
 		return NotFound("Reservation")
@@ -190,7 +190,7 @@ func reconcileStorageBudget(tx core.App, id string, obs usage.BudgetUsage) (bool
 		return false, err
 	}
 	if r.State == "pending" && r.Expired {
-		return true, applyStorageSettlement(tx, owner, before)
+		return true, settleWalletChange(tx, owner, before)
 	}
 	if r.Paid > 0 {
 		if err := appendCredit(tx, owner, id, "s3", "proxy-reconcile:"+obs.Token, r.Paid); err != nil {
@@ -201,12 +201,17 @@ func reconcileStorageBudget(tx core.App, id string, obs usage.BudgetUsage) (bool
 	if err := chargeS3At(tx, id, "proxy:"+obs.Token, obs.Counts, usage.Stored{}, 1, &pricing); err != nil {
 		return false, err
 	}
-	return true, applyStorageSettlement(tx, owner, before)
+	return true, settleWalletChange(tx, owner, before)
 }
 
 // Apply a billing transition to the final net wallet, including any unused
 // portion of a hold that became spendable again.
-func applyStorageSettlement(tx core.App, owner string, before creditAccount) error {
+func settleWalletChange(tx core.App, owner string, before creditAccount) error {
+	if before.Pending > 0 {
+		if err := settlePendingCompute(tx, owner); err != nil {
+			return err
+		}
+	}
 	after, err := balanceOf(tx, owner)
 	if err != nil {
 		return err
@@ -249,7 +254,7 @@ func expireStorageReservations(app core.App) error {
 			if err != nil {
 				return err
 			}
-			return applyStorageSettlement(tx, owner, before)
+			return settleWalletChange(tx, owner, before)
 		}); err != nil {
 			return err
 		}

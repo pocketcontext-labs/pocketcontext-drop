@@ -334,3 +334,50 @@ func TestDeploymentRatesAndCounterBounds(t *testing.T) {
 		t.Fatalf("balance %d want %d, %+v", balance, expect, got)
 	}
 }
+
+func TestSecondPurchasePreservesPaidIntervalAndResetsOnlyFutureBuffer(t *testing.T) {
+	h := droptest.NewHosted(t, droptest.Options{})
+	account, token := h.User("again@example.test", "user")
+	admin := h.Token(h.Owner())
+	node, _, agent := h.Node("purchases", hostA)
+	app := deployedApp(t, h, token, "two-purchases", 1)
+	h.MustOp(admin, "placement.set", map[string]any{"app": app, "node": node})
+	r := appRecord(t, h, app)
+	nib := r.GetString("nib_app_id")
+	now := time.Now().UTC().Truncate(time.Second)
+	dropserver.SetAgentClock(h.App, func() time.Time { return now })
+	send := func() {
+		body := reportOf(hostA, appReport(nib, nib+"-dep-"+r.GetString("deployment_seq"), "running"))
+		body["nibrunner"].(map[string]any)["reportedAt"] = now.Format(time.RFC3339)
+		if n, reply := report(t, h, agent, body); n != 200 {
+			t.Fatalf("report %d %v", n, reply)
+		}
+	}
+	buy := func(key string) {
+		if res := h.Op(token, "credits.buy", nil, key); res.Status != 200 {
+			t.Fatal(res.Raw)
+		}
+	}
+	buy("first")
+	send()
+	now = now.Add(30 * time.Second)
+	buy("second")
+	now = now.Add(30 * time.Second)
+	send()
+	wallet := h.MustOp(token, "credits.get", nil)["state"].(map[string]any)
+	if n := num(wallet["balance"]); n != 1000000000-60*1000000/3600 {
+		t.Fatalf("paid interval lost across second purchase: %v", wallet)
+	}
+	now = now.Add(30 * time.Second)
+	buy("third")
+	wallet = h.MustOp(token, "credits.get", nil)["state"].(map[string]any)
+	if res := h.Op(admin, "credits.adjust", map[string]any{"account": account.Id, "microcredits": 1 - num(wallet["balance"])}, "nearly-empty"); res.Status != 200 {
+		t.Fatal(res.Raw)
+	}
+	now = now.Add(30 * time.Second)
+	send()
+	wallet = h.MustOp(token, "credits.get", nil)["state"].(map[string]any)
+	if n := num(wallet["trial_seconds"]); n != 30 {
+		t.Fatalf("pre-reset seconds debited from fresh buffer: %v", wallet)
+	}
+}

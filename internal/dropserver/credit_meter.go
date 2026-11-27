@@ -12,7 +12,7 @@ import (
 )
 
 func creditBlocked(state creditAccount) bool {
-	return state.Balance <= state.Reserved && state.Trial >= 3600
+	return state.Balance <= state.Reserved && state.Trial+state.Pending >= 3600
 }
 func allowCreditDeployment(app core.App, owner string) error {
 	state, err := balanceOf(app, owner)
@@ -189,50 +189,111 @@ func settleCompute(tx core.App, app *core.Record, node, deployment string, at, s
 	if err != nil {
 		return false, err
 	}
-	// When a report spans a top-up, pre-purchase seconds belong to its old epoch.
+	// A truly unfunded interval before the most recent zero-to-funded
+	// transition belongs to the earlier buffer. A purchase while funded
+	// never cuts off billable runtime.
 	if state.FundedAt != 0 {
 		seconds = min(seconds, max(0, at-state.FundedAt))
 	}
-	bufferSeconds := seconds
-	depleted := false
-	available := state.Balance - state.Reserved
-	if available > 0 {
-		var rem int64
-		if err := tx.DB().NewQuery("SELECT COALESCE((SELECT remainder FROM drop_credit_compute_carry WHERE app={:a}),0)").Bind(dbx.Params{"a": app.Id}).Row(&rem); err != nil {
+	source := fmt.Sprintf("compute:%s:%s:%d", deployment, node, at)
+	remaining, err := billComputeInterval(tx, owner, app.Id, source, at, seconds, units, state)
+	if err != nil {
+		return false, err
+	}
+	if remaining > 0 {
+		_, err := tx.DB().Insert("drop_credit_pending_compute", dbx.Params{"source": source, "owner": owner, "app": app.Id, "at": at, "seconds": remaining, "units": units}).Execute()
+		if err != nil {
 			return false, err
+		}
+	}
+	after, err := balanceOf(tx, owner)
+	if err != nil {
+		return false, err
+	}
+	if state.Balance > 0 && after.Balance == 0 {
+		if err := changeStorageMode(tx, owner); err != nil {
+			return false, err
+		}
+	}
+	if creditBlocked(after) {
+		return true, enforceCredits(tx, owner, after)
+	}
+	return false, nil
+}
+
+// Bill the spendable portion first. A positive wallet with pending storage
+// reservations defers any unpaid seconds until the storage exchange settles.
+// Only a genuinely depleted wallet can draw from the shared buffer.
+func billComputeInterval(tx core.App, owner, appID, source string, at, seconds, units int64, state creditAccount) (int64, error) {
+	available := state.Balance - state.Reserved
+	if available > 0 && seconds > 0 {
+		var rem int64
+		if err := tx.DB().NewQuery("SELECT COALESCE((SELECT remainder FROM drop_credit_compute_carry WHERE app={:a}),0)").Bind(dbx.Params{"a": appID}).Row(&rem); err != nil {
+			return 0, err
 		}
 		// Saturate before multiplication. The wallet cap fits 10^12 microcredits
 		// and units is constrained to 1..16 when the deployment is recorded.
 		rate := units * microcredits
 		paidSeconds := min(seconds, (available*3600-rem+rate-1)/rate)
-		bufferSeconds -= paidSeconds
+		seconds -= paidSeconds
 		numerator := paidSeconds*rate + rem
 		amount := min(available, numerator/3600)
-		if _, err := tx.DB().NewQuery("INSERT INTO drop_credit_compute_carry(app,remainder) VALUES({:a},{:r}) ON CONFLICT(app) DO UPDATE SET remainder=excluded.remainder").Bind(dbx.Params{"a": app.Id, "r": numerator % 3600}).Execute(); err != nil {
-			return false, err
+		if _, err := tx.DB().NewQuery("INSERT INTO drop_credit_compute_carry(app,remainder) VALUES({:a},{:r}) ON CONFLICT(app) DO UPDATE SET remainder=excluded.remainder").Bind(dbx.Params{"a": appID, "r": numerator % 3600}).Execute(); err != nil {
+			return 0, err
 		}
 		if amount > 0 {
-			key := fmt.Sprintf("compute:%s:%s:%d", deployment, node, at)
-			if err := appendCredit(tx, owner, app.Id, "compute", key, -amount); err != nil {
-				return false, err
+			if err := appendCredit(tx, owner, appID, "compute", source, -amount); err != nil {
+				return 0, err
 			}
 			state.Balance -= amount
-			depleted = state.Balance == 0
 		}
 	}
-	if bufferSeconds > 0 {
-		state.Trial += min(bufferSeconds, 3600-state.Trial)
-		if _, err := tx.DB().Update("drop_credit_accounts", dbx.Params{"trial_seconds": state.Trial}, dbx.HashExp{"owner": owner}).Execute(); err != nil {
-			return false, err
+
+	if seconds == 0 || state.Balance > 0 {
+		return seconds, nil
+	}
+	// An ordinary report or previously deferred interval may straddle the
+	// latest reset. Only awake seconds after that reset can consume it.
+	used := min(seconds, max(0, at-state.ResetAt), 3600-state.Trial)
+	if used > 0 {
+		_, err := tx.DB().Update("drop_credit_accounts", dbx.Params{"trial_seconds": state.Trial + used}, dbx.HashExp{"owner": owner}).Execute()
+		return 0, err
+	}
+	return 0, nil
+}
+
+func settlePendingCompute(tx core.App, owner string) error {
+	type interval struct {
+		Source  string `db:"source"`
+		App     string `db:"app"`
+		At      int64  `db:"at"`
+		Seconds int64  `db:"seconds"`
+		Units   int64  `db:"units"`
+	}
+	var pending []interval
+	if err := tx.DB().NewQuery("SELECT source,app,at,seconds,units FROM drop_credit_pending_compute WHERE owner={:o} ORDER BY at,source").Bind(dbx.Params{"o": owner}).All(&pending); err != nil {
+		return err
+	}
+	for _, row := range pending {
+		wallet, err := balanceOf(tx, owner)
+		if err != nil {
+			return err
+		}
+		if wallet.Balance > 0 && wallet.Balance == wallet.Reserved {
+			return nil
+		}
+		key := fmt.Sprintf("%s:deferred:%d", row.Source, row.Seconds)
+		left, err := billComputeInterval(tx, owner, row.App, key, row.At, row.Seconds, row.Units, wallet)
+		if err != nil {
+			return err
+		}
+		if left > 0 {
+			_, err = tx.DB().Update("drop_credit_pending_compute", dbx.Params{"seconds": left}, dbx.HashExp{"source": row.Source}).Execute()
+			return err
+		}
+		if _, err = tx.DB().Delete("drop_credit_pending_compute", dbx.HashExp{"source": row.Source}).Execute(); err != nil {
+			return err
 		}
 	}
-	if depleted {
-		if err := changeStorageMode(tx, owner); err != nil {
-			return false, err
-		}
-	}
-	if creditBlocked(state) {
-		return true, enforceCredits(tx, owner, state)
-	}
-	return false, nil
+	return nil
 }

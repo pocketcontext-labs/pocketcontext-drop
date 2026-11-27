@@ -38,7 +38,7 @@ func me(c *Ctx) (dropapi.Me, error) {
 		if err != nil {
 			return out, err
 		}
-		if state.Balance <= state.Reserved {
+		if state.Balance == 0 {
 			left := 3600 - state.Trial
 			out.TrialRemainingSeconds = &left
 		}

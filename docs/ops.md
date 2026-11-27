@@ -252,7 +252,7 @@ A hosted restore drops unverified waitlist requests and cancels queued delivery,
 
 ## Private Beta credits
 
-The Credits page and these operations use integer microcredits (1,000,000 per credit). Each account starts with a shared 3,600-second awake buffer. Each successful purchase resets it to 3,600 seconds once, including when the balance was already positive. Adjustments and purchase retries preserve it. Paid compute consumes spendable credits first. At zero, each running workspace uses one buffer second per awake second regardless of size, so two awake workspaces use two seconds together. Sleeping consumes zero compute credits. At size N×, the hourly rate is N credits.
+The Credits page and these operations use integer microcredits (1,000,000 per credit). Each account starts with a shared 3,600-second awake buffer. Each successful purchase resets it to 3,600 seconds once, including when the balance was already positive. Adjustments and purchase retries preserve it. Paid compute consumes spendable credits first. When an in-flight S3 request has reserved a positive balance, Drop retains unsettled compute seconds and bills them when funds become available. These seconds draw from the buffer only after actual depletion, and only for time since the last purchase. Workspaces can pause if outstanding compute would exhaust the remaining buffer while funding is unresolved. At zero, each running workspace uses one buffer second per awake second regardless of size, so two awake workspaces use two seconds together. Sleeping consumes zero compute credits. At size N×, the hourly rate is N credits.
 
 | Operation | Role | Input and result |
 | --- | --- | --- |

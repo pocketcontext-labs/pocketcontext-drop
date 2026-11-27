@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropserver"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/droptest"
 )
 
@@ -132,6 +133,38 @@ func TestStorageBudgetIsolationAndSettlement(t *testing.T) {
 	collect(t, h)
 	if bal, res := state(); bal != 50 || res != 0 {
 		t.Fatalf("late unconfirmed record charged wallet %d held %d", bal, res)
+	}
+
+	held := abandoned
+	held.Token = fmt.Sprintf("%032x", 9)
+	held.Bytes = 0
+	held.Action = "reserve"
+	if n := call(agent, held); n != 200 {
+		t.Fatalf("exact-wallet hold %d", n)
+	}
+	now := time.Now().UTC().Truncate(time.Second)
+	dropserver.SetAgentClock(h.App, func() time.Time { return now })
+	send := func(phase string) {
+		body := reportOf(hostA, appReport(held.App, held.Deployment, phase))
+		body["nibrunner"].(map[string]any)["reportedAt"] = now.Format(time.RFC3339)
+		if n, reply := report(t, h, agent, body); n != 200 {
+			t.Fatalf("compute report: %d %v", n, reply)
+		}
+	}
+	send("running")
+	now = now.Add(time.Minute)
+	send("sleeping")
+	wallet := h.MustOp(token, "credits.get", nil)["state"].(map[string]any)
+	if num(wallet["trial_seconds"]) != 0 || num(wallet["pending_compute_seconds"]) != 60 || num(wallet["balance"]) != 50 {
+		t.Fatalf("compute spent buffer during storage hold: %v", wallet)
+	}
+	held.Action = "observed"
+	if n := call(agent, held); n != 200 {
+		t.Fatal(n)
+	}
+	wallet = h.MustOp(token, "credits.get", nil)["state"].(map[string]any)
+	if num(wallet["trial_seconds"]) != 60 || num(wallet["pending_compute_seconds"]) != 0 || num(wallet["balance"]) != 0 {
+		t.Fatalf("deferred compute after actual depletion: %v", wallet)
 	}
 
 }
