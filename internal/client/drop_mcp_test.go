@@ -794,7 +794,7 @@ func TestMCPDeveloperAccess(t *testing.T) {
 			}
 			result := mustTool(t, h, token, "drop_write", write)
 			app := result["result"].(map[string]any)["app"].(map[string]any)
-			if app["owner"] != account.Id || app["slug"] != role+"-build" {
+			if app["owner"] != account.Id || app["slug"] != "dev-"+role+"-build" {
 				t.Fatalf("%s created an unexpected app: %v", role, app)
 			}
 			upload := mustTool(t, h, token, "drop_write", map[string]any{"op": "developer.upload_link", "input": map[string]any{"app": app["id"]}})
