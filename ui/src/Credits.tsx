@@ -70,7 +70,7 @@ export default function Credits({ admin, onPurchase }: { admin: boolean; onPurch
     {data && <>
       <p><strong>{credits(data.state.balance)} credits</strong> · {rate} credits per awake hour</p>
       {rate > 0 && data.state.balance > 0 && <p>About {(data.state.balance / 1_000_000 / rate).toFixed(1)} hours left at this compute rate.</p>}
-      {!data.state.paid && <p>{Math.ceil((3600 - data.state.trial_seconds) / 60)} awake minutes left. Your apps are archived after 60 awake minutes unless you buy credits. During the trial nothing is backed up.</p>}
+      {data.state.balance === 0 && <p>{Math.ceil((3600 - data.state.trial_seconds) / 60)} shared awake minutes left. Workspaces run locally until the buffer runs out, then stop with their data retained. A top-up resets the buffer to 60 minutes.</p>}
       {admin ?
         <label>Adjustment in credits <input type="number" step="0.000001" value={delta} onChange={e => setDelta(e.target.value)} /></label> :
         <p>Simulated purchase. No payment is collected.</p>}

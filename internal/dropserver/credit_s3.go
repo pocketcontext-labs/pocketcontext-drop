@@ -50,7 +50,7 @@ func chargeS3(tx core.App, id, source string, c usage.Counts, stored usage.Store
 	if err != nil || inserted == 0 {
 		return err
 	}
-	// A zero balance already disables storage and suspends paid apps. A
+	// Retained versions remain visible to inventory even at zero. A
 	// late observation cannot cause an overdraft or a charge on replay.
 	if state.Balance == 0 {
 		return nil
@@ -86,6 +86,11 @@ func chargeS3(tx core.App, id, source string, c usage.Counts, stored usage.Store
 		return err
 	}
 	state.Balance -= amount.Int64()
+	if state.Balance == 0 {
+		if err := changeStorageMode(tx, owner); err != nil {
+			return err
+		}
+	}
 	return enforceCredits(tx, owner, state)
 }
 func chargeInventory(tx core.App, id, day string, stored usage.Stored) error {

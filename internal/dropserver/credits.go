@@ -138,15 +138,15 @@ func creditChange(c *Ctx, owner, kind string, delta, cap int64) (any, error) {
 	if err := appendCredit(c.App, owner, "", kind, c.creditKey, delta); err != nil {
 		return nil, err
 	}
+	if kind == "purchase" {
+		if _, err := c.App.DB().Update("drop_credit_accounts", dbx.Params{"trial_seconds": 0}, dbx.HashExp{"owner": owner}).Execute(); err != nil {
+			return nil, err
+		}
+	}
 	if state.Balance == 0 && delta > 0 {
 		// Missing reports can straddle a purchase. Do not charge the newly
 		// funded account for any runtime before this transaction.
 		_, err := c.App.DB().Update("drop_credit_accounts", dbx.Params{"funded_at": agentStateOf(c.App).clock().Unix()}, dbx.HashExp{"owner": owner}).Execute()
-		if err != nil {
-			return nil, err
-		}
-		// Running trial deployments keep their current local-storage contract until redeployed.
-		_, err = c.App.DB().NewQuery("INSERT OR REPLACE INTO drop_credit_local_deploy(app,seq) SELECT id,deployment_seq FROM apps WHERE owner={:o} AND current_release<>''").Bind(dbx.Params{"o": owner}).Execute()
 		if err != nil {
 			return nil, err
 		}
@@ -157,6 +157,11 @@ func creditChange(c *Ctx, owner, kind string, delta, cap int64) (any, error) {
 	if state.Balance+delta == 0 {
 		state.Balance = 0
 		if err := enforceCredits(c.App, owner, state); err != nil {
+			return nil, err
+		}
+	}
+	if (state.Balance == 0 && delta > 0) || (delta < 0 && state.Balance == 0) {
+		if err := changeStorageMode(c.App, owner); err != nil {
 			return nil, err
 		}
 	}
@@ -185,4 +190,15 @@ func creditsAccounts(c *Ctx, in *dropapi.UserListInput) (any, error) {
 		return nil, err
 	}
 	return map[string]any{"accounts": rows[:min(limit, len(rows))], "has_more": len(rows) > limit}, nil
+}
+
+// NibRunner reapplies guest storage configuration on a new deployment.
+// Preserve the release, data volume, address and the owner's desired state.
+func changeStorageMode(tx core.App, owner string) error {
+	_, err := tx.DB().NewQuery(`UPDATE apps SET deployment_seq=deployment_seq+1
+		WHERE owner={:o} AND current_release<>'' AND crew_enrollment<>'' AND archived=0`).Bind(dbx.Params{"o": owner}).Execute()
+	if err != nil {
+		return err
+	}
+	return syncDesiredSeqs(tx)
 }

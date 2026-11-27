@@ -83,11 +83,11 @@ func TestSharedTrialAndPaidSuspension(t *testing.T) {
 	now = now.Add(time.Minute)
 	send("sleeping", "running")
 	for _, id := range ids {
-		if !appRecord(t, h, id).GetBool("archived") {
-			t.Fatal("expired trial did not archive", id)
+		if r := appRecord(t, h, id); r.GetBool("archived") || r.GetString("desired_state") != "stopped" {
+			t.Fatal("expired buffer did not stop in place", id)
 		}
 	}
-	wantError(t, h.Op(token, "app.restore", map[string]any{"app": ids[0]}), 409, "credits_required")
+	wantError(t, h.Op(token, "app.start", map[string]any{"app": ids[0]}), 409, "credits_required")
 	if r := h.Op(token, "credits.buy", nil, "trial-top-up"); r.Status != 200 {
 		t.Fatal(r.Raw)
 	}
@@ -103,6 +103,20 @@ func TestSharedTrialAndPaidSuspension(t *testing.T) {
 	now = now.Add(time.Second)
 	send("running", "sleeping")
 	now = now.Add(time.Minute)
+	send("running", "sleeping")
+	view = h.MustOp(token, "credits.get", nil)
+	left := num(view["state"].(map[string]any)["trial_seconds"])
+	if left != 59 {
+		t.Fatalf("buffer consumed %d seconds crossing zero, want 59", left)
+	}
+	if res := h.Op(token, "credits.buy", nil, "trial-top-up"); !res.Replayed {
+		t.Fatal("expected purchase replay")
+	}
+	view = h.MustOp(token, "credits.get", nil)
+	if num(view["state"].(map[string]any)["trial_seconds"]) != left {
+		t.Fatal("replayed top-up reset buffer")
+	}
+	now = now.Add(time.Hour)
 	send("running", "sleeping")
 	for _, id := range ids {
 		r := appRecord(t, h, id)
@@ -274,7 +288,7 @@ func TestExistingManagedCrewEntersTrial(t *testing.T) {
 	if r := h.Op(token, "credits.buy", nil, "legacy-pack"); r.Status != 200 {
 		t.Fatal(r.Raw)
 	}
-	checkStorage(false)
+	checkStorage(true)
 	h.MustOp(token, "release.deploy", map[string]any{"app": id, "release": before.GetString("current_release")})
 	checkStorage(true)
 }

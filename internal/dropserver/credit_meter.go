@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"time"
 
 	"ganigeorgiev.com/pocketbase/dbx"
 	"ganigeorgiev.com/pocketbase/pocketbase/core"
@@ -13,7 +12,7 @@ import (
 )
 
 func creditBlocked(state creditAccount) bool {
-	return state.Balance == 0 && (state.Paid || state.Trial >= 3600)
+	return state.Balance == 0 && state.Trial >= 3600
 }
 func allowCreditDeployment(app core.App, owner string) error {
 	state, err := balanceOf(app, owner)
@@ -38,16 +37,10 @@ func enforceCredits(tx core.App, owner string, state creditAccount) error {
 	}
 	for _, app := range apps {
 		previous := app.GetString("desired_state")
-		if state.Paid && previous == "stopped" {
+		if previous == "stopped" {
 			continue
 		}
-		reason := "balance"
-		if !state.Paid {
-			reason = "trial"
-			app.Set("archived", true)
-			app.Set("archived_at", time.Now().UTC())
-		}
-		_, err := tx.DB().NewQuery("INSERT OR IGNORE INTO drop_credit_holds(app,reason,previous_state) VALUES({:a},{:r},{:s})").Bind(dbx.Params{"a": app.Id, "r": reason, "s": previous}).Execute()
+		_, err := tx.DB().NewQuery("INSERT OR IGNORE INTO drop_credit_holds(app,reason,previous_state) VALUES({:a},{:r},{:s})").Bind(dbx.Params{"a": app.Id, "r": "buffer", "s": previous}).Execute()
 		if err != nil {
 			return err
 		}
@@ -196,9 +189,13 @@ func settleCompute(tx core.App, app *core.Record, node, deployment string, at, s
 	if err != nil {
 		return false, err
 	}
-	switch {
-	case state.Balance > 0:
+	// When a report spans a top-up, pre-purchase seconds belong to its old epoch.
+	if state.FundedAt != 0 {
 		seconds = min(seconds, max(0, at-state.FundedAt))
+	}
+	bufferSeconds := seconds
+	depleted := false
+	if state.Balance > 0 {
 		var rem int64
 		if err := tx.DB().NewQuery("SELECT COALESCE((SELECT remainder FROM drop_credit_compute_carry WHERE app={:a}),0)").Bind(dbx.Params{"a": app.Id}).Row(&rem); err != nil {
 			return false, err
@@ -206,8 +203,9 @@ func settleCompute(tx core.App, app *core.Record, node, deployment string, at, s
 		// Saturate before multiplication. The wallet cap fits 10^12 microcredits
 		// and units is constrained to 1..16 when the deployment is recorded.
 		rate := units * microcredits
-		seconds = min(seconds, (state.Balance*3600+rate-1)/rate)
-		numerator := seconds*rate + rem
+		paidSeconds := min(seconds, (state.Balance*3600-rem+rate-1)/rate)
+		bufferSeconds -= paidSeconds
+		numerator := paidSeconds*rate + rem
 		amount := min(state.Balance, numerator/3600)
 		if _, err := tx.DB().NewQuery("INSERT INTO drop_credit_compute_carry(app,remainder) VALUES({:a},{:r}) ON CONFLICT(app) DO UPDATE SET remainder=excluded.remainder").Bind(dbx.Params{"a": app.Id, "r": numerator % 3600}).Execute(); err != nil {
 			return false, err
@@ -218,10 +216,17 @@ func settleCompute(tx core.App, app *core.Record, node, deployment string, at, s
 				return false, err
 			}
 			state.Balance -= amount
+			depleted = state.Balance == 0
 		}
-	case !state.Paid:
-		state.Trial += min(seconds, 3600-state.Trial)
+	}
+	if bufferSeconds > 0 {
+		state.Trial += min(bufferSeconds, 3600-state.Trial)
 		if _, err := tx.DB().Update("drop_credit_accounts", dbx.Params{"trial_seconds": state.Trial}, dbx.HashExp{"owner": owner}).Execute(); err != nil {
+			return false, err
+		}
+	}
+	if depleted {
+		if err := changeStorageMode(tx, owner); err != nil {
 			return false, err
 		}
 	}

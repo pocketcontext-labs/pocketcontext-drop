@@ -236,7 +236,7 @@ function Workspace({
       </header>
       <main className="content">
         {view !== "credits" && me.trial_remaining_seconds !== undefined && <p className="panel" role="status">
-          {Math.ceil(me.trial_remaining_seconds / 60)} awake minutes left. Your apps are archived after 60 awake minutes unless you buy credits. During the trial nothing is backed up. <a href={viewHashes.credits}>Manage credits</a>
+          {Math.ceil(me.trial_remaining_seconds / 60)} shared awake minutes left. Workspaces run locally until the buffer runs out, then stop with their data retained. A top-up resets the buffer to 60 minutes. <a href={viewHashes.credits}>Manage credits</a>
         </p>}
         {page}
       </main>
