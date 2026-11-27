@@ -107,7 +107,7 @@ try {
   await admin.getByRole("combobox", { name: /^Role/ }).selectOption("user");
   await admin.getByLabel("Has apps").selectOption("yes");
   await admin.getByLabel("Has credits").selectOption("no");
-  await admin.getByRole("button", { name: "browser@example.test" }).waitFor();
+  await admin.getByRole("button", { name: "browser@example.test", exact: true }).waitFor();
   await admin.setViewportSize({ width: 390, height: 844 });
   const fits = await admin.evaluate(
     () => document.documentElement.scrollWidth <= innerWidth,
@@ -124,7 +124,7 @@ try {
       .waitFor();
     await page.goto(origin + "/#/deploy?name=obsolete");
     await page.getByRole("button", { name: "Choose " + product }).click();
-    const resources = page.getByRole("combobox");
+    const resources = page.getByRole("combobox", { name: "Resources", exact: true });
     assert.equal(await resources.inputValue(), "4");
     assert.equal(await resources.getByRole("option").count(), 8);
     await resources.selectOption(String(size));

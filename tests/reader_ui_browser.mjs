@@ -135,10 +135,10 @@ try {
     await appList.getByText(message, { exact: true }).waitFor();
     await page.waitForTimeout(20); // Distinct creation times keep the order deterministic.
   }
-  const listed = await appList.locator('li > p > a').allTextContents();
+  const listed = await appList.locator('a[href^="#/apps/"]').allTextContents();
   assert.deepEqual(listed, [...messages].reverse().concat('An app from the CLI'), 'apps are listed newest first');
   assert.equal(await page.locator('.apps b').count(), 0, 'names render as text');
-  await page.getByText(/GiB retained$/).waitFor();
+  assert.equal(await page.getByRole('progressbar', { name: 'Storage used' }).count(), 0);
   await page.getByRole('link', { name: 'New app' }).click();
   await page.getByLabel('App name').fill('Duplicate slug');
   await page.getByLabel('Slug').fill('first-app');

@@ -31,6 +31,8 @@ it("offers the same resource units for Atlas and creates the named app", async (
   const size = screen.getByLabelText("Resources");
   expect(size).toHaveValue("4");
   expect(size.querySelectorAll("option")).toHaveLength(8);
+  expect(screen.getByRole("option", { name: "1× · 0.25 vCPU · 256 MiB RAM · 2 GiB disk" })).toBeInTheDocument();
+  expect(screen.getByRole("option", { name: "8× · 2 vCPU · 2048 MiB RAM · 16 GiB disk" })).toBeInTheDocument();
   fireEvent.change(size, { target: { value: "8" } });
   fireEvent.change(screen.getByLabelText("App name"), {
     target: { value: "Research" },
