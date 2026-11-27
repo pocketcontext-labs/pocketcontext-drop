@@ -202,7 +202,31 @@ func appGet(c *Ctx, in *dropapi.AppGetInput) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return dropapi.AppDetail{App: c.appOut(app, nil), Secrets: secrets}, nil
+	detail := dropapi.AppDetail{App: c.appOut(app, nil), Secrets: secrets}
+	if app.GetBool("archived") {
+		detail.DeletionPending, err = deletionPending(c.App, app.Id)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if in.DeletionInventory {
+		inventory := dropapi.DeletionInventory{ReplicaMode: "none"}
+		if err := c.App.DB().NewQuery("SELECT COUNT(*) FROM releases WHERE app={:app}").Bind(dbx.Params{"app": app.Id}).Row(&inventory.ReleaseCount); err != nil {
+			return nil, err
+		}
+		if app.GetString("crew_enrollment") != "" && servicesOf(c.App).CrewReplicaBucket != "" {
+			eligible, err := replicaEligible(c.App, app)
+			if err != nil {
+				return nil, err
+			}
+			inventory.ReplicaMode = "local"
+			if eligible {
+				inventory.ReplicaMode = "enabled"
+			}
+		}
+		detail.DeletionInventory = &inventory
+	}
+	return detail, nil
 }
 
 // settings is an app's configuration as the operations validate it.

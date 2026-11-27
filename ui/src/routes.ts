@@ -33,12 +33,12 @@ export const viewHashes: Record<Exclude<View, "app">, string> = {
   "admin-nodes": "#/admin/nodes",
 };
 
-export type AppTab = "overview" | "settings" | "env" | "releases" | "usage";
+export type AppTab = "overview" | "settings" | "env" | "releases" | "usage" | "deletion";
 export interface AppRoute {
   id: string;
   tab: AppTab;
 }
-const appPattern = /^#\/apps\/([a-z0-9]{15})(?:\/(settings|env|releases|usage))?$/;
+const appPattern = /^#\/apps\/([a-z0-9]{15})(?:\/(settings|env|releases|usage|deletion))?$/;
 /** The app and tab of `#/apps/<id>[/settings|/env|/releases|/usage]`, or null. */
 export function appRouteFromHash(hash: string): AppRoute | null {
   const match = appPattern.exec(hash);

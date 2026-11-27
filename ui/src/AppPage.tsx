@@ -1,3 +1,4 @@
+import { DeleteApp, DeletionStatus } from "./AppDeletion";
 import {
   useCallback,
   useEffect,
@@ -10,7 +11,6 @@ import { NumberInput, type NumberField } from "./AppNew";
 import { formatDate, stateLabels } from "./Apps";
 import {
   dropApi,
-  op,
   OpError,
   type App,
   type AppSettings,
@@ -130,32 +130,6 @@ function Phase({ app }: { app: App }) {
       </>}
     </>
   );
-}
-
-function DeleteApp({ app }: { app: App }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  async function remove() {
-    const slug = window.prompt(`Permanently delete ${app.name}? Its disk, S3 data, releases and secrets cannot be recovered. Type ${app.slug} to confirm.`);
-    if (slug === null) return;
-    if (slug !== app.slug) {
-      setError("The slug did not match.");
-      return;
-    }
-    setBusy(true);
-    try {
-      await op("app.delete", { app: app.id, confirm_slug: slug });
-      window.location.hash = viewHashes.apps;
-    } catch (e) {
-      setError(message(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-  return <>
-    <button type="button" disabled={busy} onClick={() => void remove()}>Delete app permanently</button>
-    {error && <p role="alert" className="error">{error}</p>}
-  </>;
 }
 
 function Overview({
@@ -745,6 +719,11 @@ function Secrets({
 
 /** `#/apps/<id>`: one app with its Overview, Releases, Settings, Env & secrets and Usage tabs. */
 export default function AppPage({ id, tab }: { id: string; tab: AppTab }) {
+  if (tab === "deletion") return <DeletionStatus key={id} id={id} />;
+  return <AppDetailPage id={id} tab={tab} />;
+}
+
+function AppDetailPage({ id, tab }: { id: string; tab: AppTab }) {
   const [app, setApp] = useState<App | null>(null);
   const [secrets, setSecrets] = useState<Secret[]>([]);
   const [missing, setMissing] = useState(false);
@@ -755,6 +734,10 @@ export default function AppPage({ id, tab }: { id: string; tab: AppTab }) {
     try {
       const detail = await dropApi.getApp(id);
       if (!mounted.current) return;
+      if (detail.deletion_pending) {
+        window.location.hash = appHash(id, "deletion");
+        return;
+      }
       setApp(detail.app);
       setSecrets(detail.secrets);
       setError("");

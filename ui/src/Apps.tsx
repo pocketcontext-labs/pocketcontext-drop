@@ -1,3 +1,4 @@
+import { DeletionHistory } from "./AppDeletion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import AppAddress from "./AppAddress";
@@ -121,6 +122,7 @@ export default function Apps({ beta = false }: { beta?: boolean }) {
           ))}
         </ol>
       )}
+      <DeletionHistory />
     </section>
   );
 }

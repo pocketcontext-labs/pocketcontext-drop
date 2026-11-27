@@ -142,8 +142,7 @@ func desiredApp(app core.App, record *core.Record, services Services) (dropapi.D
 	}
 	if state := record.GetString("crew_enrollment"); state != "" {
 		a.ManagedCrew = true
-		var eligible bool
-		err := app.DB().NewQuery("SELECT balance>0 AND NOT EXISTS(SELECT 1 FROM drop_credit_local_deploy WHERE app={:app} AND seq={:seq}) FROM drop_credit_accounts WHERE owner={:owner}").Bind(dbx.Params{"app": record.Id, "seq": record.GetInt("deployment_seq"), "owner": record.GetString("owner")}).Row(&eligible)
+		eligible, err := replicaEligible(app, record)
 		if err != nil {
 			return a, false, err
 		}
@@ -198,4 +197,13 @@ func allocatable(node *core.Record) (vcpu, memoryMib int) {
 		memoryMib = *a.MemoryMib
 	}
 	return
+}
+
+// replicaEligible reports whether this deployment may use the replica bucket.
+// A funded account's last local-only deployment stays local until redeploy.
+func replicaEligible(app core.App, record *core.Record) (bool, error) {
+	var eligible bool
+	err := app.DB().NewQuery(`SELECT balance>0 AND NOT EXISTS(SELECT 1 FROM drop_credit_local_deploy WHERE app={:app} AND seq={:seq})
+ FROM drop_credit_accounts WHERE owner={:owner}`).Bind(dbx.Params{"app": record.Id, "seq": record.GetInt("deployment_seq"), "owner": record.GetString("owner")}).Row(&eligible)
+	return eligible, err
 }

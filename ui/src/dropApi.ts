@@ -27,6 +27,7 @@ export const OPS = [
   "app.set",
   "app.start",
   "app.stop",
+  "app.deletions",
   "app.delete",
   "app.archive",
   "app.restore",
@@ -364,8 +365,15 @@ async function listApps(
 ): Promise<{ apps: App[]; quota: Quota; has_more: boolean }> {
   return op("app.list", { archived, limit: 500 });
 }
-async function getApp(app: string): Promise<{ app: App; secrets: Secret[] }> {
-  return op("app.get", { app });
+export interface DeletionReceipt { app: string; slug: string; completed: boolean; waiting_nodes: number }
+interface AppDetail {
+  app: App;
+  secrets: Secret[];
+  deletion_pending?: boolean;
+  deletion_inventory?: { release_count: number; replica_mode: "enabled" | "local" | "none" };
+}
+async function getApp(app: string, inventory = false): Promise<AppDetail> {
+  return op("app.get", inventory ? { app, deletion_inventory: true } : { app });
 }
 async function createApp(
   input: { name: string; slug: string; kind?: AppKind; env?: Record<string, string> } & AppSettings,
@@ -594,6 +602,9 @@ export const dropApi = {
   revokeInvite,
   listApps,
   getApp,
+  listDeletions: (app = "", offset = 0) =>
+    op<{deletions: DeletionReceipt[]; has_more: boolean}>("app.deletions", { app, offset, limit: 25 }),
+  deleteApp: (app: string, slug: string) => op("app.delete", { app, confirm_slug: slug }),
   createApp,
   setApp,
   appAction,

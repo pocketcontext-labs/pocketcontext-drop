@@ -77,3 +77,64 @@ func TestConfirmedAppDeletion(t *testing.T) {
 		t.Fatal("audit missing")
 	}
 }
+
+func TestDeletionReceiptAfterNodeConfirmationAndRetry(t *testing.T) {
+	h := droptest.NewHosted(t, droptest.Options{})
+	admin := h.Token(h.Owner())
+	_, owner := h.User("receipt-owner@example.test", "user")
+	_, other := h.User("other@example.test", "user")
+	_, _, node := h.Node("node-one", hostA)
+	app := deployedApp(t, h, owner, "receipt-app", 1)
+	h.MustOp(admin, "placement.set", map[string]any{"app": app, "node": "node-one"})
+	ref := map[string]any{"app": app}
+	preview := h.MustOp(owner, "app.get", map[string]any{"app": app, "deletion_inventory": true})["deletion_inventory"].(map[string]any)
+	if num(preview["release_count"]) != 1 || preview["replica_mode"] != "none" {
+		t.Fatal(preview)
+	}
+	h.MustOp(owner, "app.delete", map[string]any{"app": app, "confirm_slug": "receipt-app"})
+	if detail := h.MustOp(owner, "app.get", ref); detail["deletion_pending"] != true {
+		t.Fatal(detail)
+	}
+	receipt := func(completed bool, nodes int) {
+		t.Helper()
+		for _, token := range []string{owner, admin} {
+			items := h.MustOp(token, "app.deletions", ref)["deletions"].([]any)
+			if len(items) != 1 {
+				t.Fatal(items)
+			}
+			r := items[0].(map[string]any)
+			if r["app"] != app || r["slug"] != "receipt-app" || r["completed"] != completed || num(r["waiting_nodes"]) != nodes {
+				t.Fatal(r)
+			}
+		}
+	}
+	receipt(false, 1)
+	for _, query := range []map[string]any{nil, ref} {
+		if items := h.MustOp(other, "app.deletions", query)["deletions"].([]any); len(items) != 0 {
+			t.Fatal(items)
+		}
+	}
+	if err := dropserver.FinishAppDeletionForTest(t.Context(), h.App, app); err != nil {
+		t.Fatal(err)
+	}
+	receipt(false, 1)
+	d, _ := desired(t, h, node)
+	ack := reportOf(hostA)
+	ack["desiredSeq"] = d.DesiredSeq
+	ack["deleted"] = d.Deleted
+	if status, result := report(t, h, node, ack); status != 200 {
+		t.Fatal(result)
+	}
+	receipt(false, 0)
+	dropserver.SetServices(h.App, dropserver.Services{})
+	if err := dropserver.FinishAppDeletionForTest(t.Context(), h.App, app); err == nil {
+		t.Fatal("expected unavailable release store")
+	}
+	receipt(false, 0)
+	dropserver.SetServices(h.App, dropserver.Services{Releases: h.Releases, Secrets: h.Secrets})
+	if err := dropserver.FinishAppDeletionForTest(t.Context(), h.App, app); err != nil {
+		t.Fatal(err)
+	}
+	newApp(t, h, other, "receipt-app")
+	receipt(true, 0)
+}

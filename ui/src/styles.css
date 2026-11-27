@@ -668,3 +668,17 @@ section > h3 {
 .waitlist-entries strong { overflow-wrap: anywhere; }
 .waitlist-confirm { border-left: 3px solid var(--accent); padding: 8px 12px; }
 .beta-landing .waitlist-actions a { color: inherit; }
+
+.delete-app-dialog {
+  width: min(34rem, calc(100% - 2rem));
+  box-sizing: border-box;
+  max-height: 90vh;
+  border-radius: .75rem;
+  padding: 1.5rem;
+  color: inherit;
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+.delete-app-dialog::backdrop { background: rgb(0 0 0 / 55%); }
+.delete-app-dialog .row { margin-top: 1rem; }
+.delete-app-dialog .delete-confirm:not(:disabled) { background: #a51920; color: white; }

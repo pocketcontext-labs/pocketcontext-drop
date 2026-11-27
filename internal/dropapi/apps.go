@@ -112,12 +112,35 @@ type AppList struct {
 }
 
 // AppGetInput names the app to read.
-type AppGetInput = AppRef
+type AppGetInput struct {
+	App               string `json:"app"`
+	DeletionInventory bool   `json:"deletion_inventory,omitempty"`
+}
+
+type AppDeletionsInput struct {
+	App    string `json:"app,omitempty"`
+	Limit  int    `json:"limit,omitempty"`
+	Offset int    `json:"offset,omitempty"`
+}
+
+type DeletionReceipt struct {
+	App          string `db:"app" json:"app"`
+	Slug         string `db:"slug" json:"slug"`
+	Completed    bool   `db:"completed" json:"completed"`
+	WaitingNodes int    `db:"waiting_nodes" json:"waiting_nodes"`
+}
+
+type DeletionInventory struct {
+	ReleaseCount int    `json:"release_count"`
+	ReplicaMode  string `json:"replica_mode"`
+}
 
 // AppDetail is one app with the names of its secrets.
 type AppDetail struct {
-	App     App      `json:"app"`
-	Secrets []Secret `json:"secrets"`
+	DeletionPending   bool               `json:"deletion_pending,omitempty"`
+	DeletionInventory *DeletionInventory `json:"deletion_inventory,omitempty"`
+	App               App                `json:"app"`
+	Secrets           []Secret           `json:"secrets"`
 }
 
 // AppCreateInput creates an app. Absent settings take the defaults:

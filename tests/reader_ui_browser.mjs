@@ -254,6 +254,28 @@ try {
   await page.getByText('Third app about telescopes', { exact: true }).waitFor();
   ok('password sign-in works');
 
+  await page.getByRole('link', { name: messages[2], exact: true }).click();
+  const deleteButton = page.getByRole('button', { name: 'Delete app permanently' });
+  await deleteButton.focus();
+  await page.keyboard.press('Enter');
+  const modal = page.getByRole('dialog');
+  await modal.waitFor();
+  await page.keyboard.press('Escape');
+  await modal.waitFor({state: 'hidden'});
+  assert(await deleteButton.evaluate(el => el === document.activeElement), 'dismissal returns keyboard focus');
+  await page.keyboard.press('Enter');
+  const confirm = modal.getByRole('button', {name: 'Delete ' + messages[2], exact: true});
+  assert(await confirm.isDisabled());
+  await modal.getByLabel('Type third-app to confirm').fill('third-app');
+  await confirm.focus();
+  await page.keyboard.press('Enter');
+  await page.getByRole('heading', {name: 'Deletion requested'}).waitFor();
+  await page.reload();
+  await page.getByText(/Cleanup pending.*volume removal/).waitFor();
+  await page.getByRole('link', {name: '← Your apps'}).click();
+  await page.getByRole('link', {name: 'third-app · Deletion requested'}).waitFor();
+  ok('keyboard deletion is exact-slug confirmed and pending cleanup survives refresh');
+
   // Refused requests (a wrong password, a taken slug) log their status.
   const unexpected = errors.filter(text => !/Failed to load resource: the server responded with a status of (400|409)/.test(text));
   assert.deepEqual(unexpected, [], 'no runtime or security-policy errors');

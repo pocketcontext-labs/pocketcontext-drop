@@ -265,3 +265,52 @@ it("lets the local administrator override an app's soft limits", async () => {
   expect(await screen.findByText("Limits saved.")).toBeInTheDocument();
   expect(set).toHaveBeenCalledWith(id, { requests_a: 100000, requests_b: 1000000, bytes_out: 5 * 2 ** 30, stored_bytes: 2 ** 30 });
 });
+
+it("requires an exact slug in the permanent deletion dialog and opens its durable receipt", async () => {
+  // jsdom does not implement the dialog element's top-layer methods.
+  const modal = HTMLDialogElement.prototype;
+  Object.defineProperties(modal, {
+    showModal: { configurable: true, value(this: HTMLDialogElement) { this.open = true; } },
+    close: { configurable: true, value(this: HTMLDialogElement) {
+      this.open = false;
+      this.dispatchEvent(new Event("close"));
+    } },
+  });
+  history.replaceState(null, "", `/#/apps/${id}`);
+  vi.spyOn(dropApi, "getApp").mockResolvedValue({
+    app, secrets: [], deletion_inventory: { release_count: 1, replica_mode: "local" },
+  });
+  const remove = vi.spyOn(dropApi, "deleteApp").mockResolvedValue({ accepted: true });
+  vi.spyOn(dropApi, "listDeletions").mockResolvedValue({
+    deletions: [{ app: id, slug: app.slug, completed: false, waiting_nodes: 1 }], has_more: false,
+  });
+  render(<App />);
+  const open = await screen.findByRole("button", {name: "Delete app permanently"});
+  fireEvent.click(open);
+  fireEvent.click(await screen.findByRole("button", { name: "Keep the app" }));
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(remove).not.toHaveBeenCalled();
+  fireEvent.click(open);
+  expect(await screen.findByText(/uses local storage/)).toBeInTheDocument();
+  const field = screen.getByLabelText("Type hello-app to confirm");
+  const submit = screen.getByRole("button", { name: "Delete Hello app" });
+  fireEvent.change(field, {target: {value: "Hello-app"}});
+  expect(submit).toBeDisabled();
+  fireEvent.change(field, {target: {value: app.slug}});
+  fireEvent.click(submit);
+  expect(remove).toHaveBeenCalledWith(id, app.slug);
+  expect(await screen.findByRole("heading", {name: "Deletion requested"})).toBeInTheDocument();
+  expect(screen.getByText(/Waiting for volume removal/)).toBeInTheDocument();
+});
+
+it("can reopen a completed receipt after the original app is gone", async () => {
+  history.replaceState(null, "", `/#/apps/${id}/deletion`);
+  const readApp = vi.spyOn(dropApi, "getApp");
+  vi.spyOn(dropApi, "listDeletions").mockResolvedValue({
+    deletions: [{ app: id, slug: app.slug, completed: true, waiting_nodes: 0 }], has_more: false,
+  });
+  render(<App />);
+  expect(await screen.findByRole("heading", {name: "Cleanup complete"})).toBeInTheDocument();
+  expect(readApp).not.toHaveBeenCalled();
+  expect(screen.getByText(app.slug)).toBeInTheDocument();
+});

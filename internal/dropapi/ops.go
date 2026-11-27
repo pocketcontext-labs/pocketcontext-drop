@@ -125,6 +125,7 @@ var specs = []Spec{
 		Summary: "Start a stopped app in the state it had before it stopped (running or on-request)."},
 	{Name: "app.stop", Role: RoleUser, MCP: true, Input: &AppStopInput{},
 		Summary: "Stop an app; its data stays."},
+	{Name: "app.deletions", Role: RoleUser, Read: true, Input: &AppDeletionsInput{}, Summary: "List your deletion receipts or read a receipt by immutable app ID."},
 	{Name: "app.delete", Role: RoleUser, Input: &AppDeleteInput{}, Summary: "Permanently delete an app after confirming its slug."},
 	{Name: "app.archive", Role: RoleUser, Input: &AppArchiveInput{},
 		Summary: "Archive an app: it stops running and keeps its retained disk allocation. Its data, secrets and slug stay; app.restore brings it back."},

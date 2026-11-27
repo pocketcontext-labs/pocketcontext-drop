@@ -13,7 +13,34 @@ import (
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
 )
 
-func init() { register("app.delete", deleteApp) }
+func init() {
+	register("app.delete", deleteApp)
+	register("app.deletions", appDeletions)
+}
+
+func appDeletions(c *Ctx, in *dropapi.AppDeletionsInput) (any, error) {
+	limit, offset, err := page(in.Limit, in.Offset)
+	if err != nil {
+		return nil, err
+	}
+	if in.App != "" && !recordID.MatchString(in.App) {
+		return nil, Invalid("app", "Use the immutable app ID.")
+	}
+	params := dbx.Params{"owner": c.Auth.Id, "app": in.App, "admin": c.Admin, "limit": limit + 1, "offset": offset}
+	receipts := []dropapi.DeletionReceipt{}
+	err = c.App.DB().NewQuery(`SELECT d.app, d.slug, d.completed,
+ (SELECT COUNT(*) FROM drop_volume_deletions v WHERE v.nib=d.nib) AS waiting_nodes
+ FROM drop_app_deletions d WHERE (d.owner={:owner} OR ({:admin} AND {:app}!=''))
+ AND ({:app}='' OR d.app={:app}) ORDER BY d.rowid DESC LIMIT {:limit} OFFSET {:offset}`).Bind(params).All(&receipts)
+	if err != nil {
+		return nil, err
+	}
+	more := len(receipts) > limit
+	if more {
+		receipts = receipts[:limit]
+	}
+	return map[string]any{"deletions": receipts, "has_more": more}, nil
+}
 
 func deletionPending(app core.App, id string) (bool, error) {
 	var pending bool
