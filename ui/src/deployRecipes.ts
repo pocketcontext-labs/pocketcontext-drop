@@ -79,7 +79,7 @@ export function readDeployLink(hash: string): DeployLinkResult {
   }
 
   const name = (params.get("name") ?? "").trim();
-  if (!name || name.length > 120 || /[\u0000-\u001f\u007f]/.test(name)) return { error: "Enter a valid app name in the deployment link." };
+  if (!name || [...name].length > 80 || /\p{Cc}/u.test(name)) return { error: "Enter a valid app name in the deployment link." };
   const binary = params.get("binary") ?? "";
   let url: URL;
   try {
