@@ -118,7 +118,7 @@ func secretSet(c *Ctx, in *dropapi.SecretSetInput) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if app.GetString("beta_digest") != "" {
+	if app.GetString("beta_digest") != "" || app.GetString("official_product") != "" {
 		return nil, Forbidden("Drop manages the environment for this Beta deployment.")
 	}
 	if reason := appspec.CheckAppEnvName(in.Name, app.GetString("crew_enrollment") != ""); reason != "" {

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ACCOUNT_EMAIL, api, pb, type SignInOptions } from "./api";
+import UserDirectory from "./UserDirectory";
+import {OfficialCatalog,OfficialReleases} from "./Official";
 import AdminNodes from "./AdminNodes";
 import AdminUsers from "./AdminUsers";
 import AdminWaitlist from "./AdminWaitlist";
@@ -76,6 +78,7 @@ function SignInGate({
 }) {
   const [login, setLogin] = useState(false);
   if (options.mode === "email") {
+    if(options.official)return <Login documents={options.legal} initialEmail={inviteEmailFromHash(hash)} betaEnrollment={!!inviteEmailFromHash(hash)}/>;
     const deployAccess = !!file || !!recipe;
     const landing = ["", "#/", viewHashes.deploy].includes(hash);
     if (landing && !login && !file)
@@ -108,7 +111,7 @@ function NotFound({admin = false}: {admin?: boolean}) {
     <section className="panel" aria-labelledby="not-found-title">
       <h2 id="not-found-title">Not found</h2>
       <p>
-        This page does not exist. <a href={admin ? viewHashes["admin-waitlist"] : viewHashes.apps}>{admin ? "Go to the waitlist" : "Go to your apps"}</a>.
+        This page does not exist. <a href={admin ? viewHashes["admin-users"] : viewHashes.apps}>{admin ? "Go to Users" : "Go to your apps"}</a>.
       </p>
     </section>
   );
@@ -137,7 +140,7 @@ function Workspace({
     dropApi.me().then(
       (value) => {
         if (!active) return;
-        if (fromSignIn && value.hosted && value.admin) location.hash = viewHashes["admin-waitlist"];
+        if (fromSignIn && value.hosted && value.admin) location.hash = viewHashes[value.official_catalog?"admin-users":"admin-waitlist"];
         setMe(value);
       },
       () => {
@@ -162,7 +165,10 @@ function Workspace({
   const administration = view === "admin-waitlist" || view === "admin-users" || view === "admin-nodes";
   let page;
   const app = view === "app" ? appRouteFromHash(hash) : null;
-  if (view === "credits") page = <Credits admin={me.admin} />;
+  if(hostedAdmin&&view==="admin-releases")page=<OfficialReleases/>;
+  else if(hostedAdmin&&me.official_catalog&&(defaultPage||view==="admin-waitlist"||view==="admin-users"))page=<UserDirectory me={me} waiting={view==="admin-waitlist"}/>;
+  else if(view==="admin-releases")page=<NotFound/>;
+  else if (view === "credits") page = <Credits admin={me.admin} />;
   else if (hostedAdmin && (defaultPage || view === "admin-waitlist"))
     page = <AdminWaitlist account={me.id} />;
   else if (hostedAdmin && !administration) page = <NotFound admin />;
@@ -170,12 +176,13 @@ function Workspace({
     if (!me.admin || view === "admin-waitlist") page = <NotFound />;
     else page = view === "admin-users" ? <AdminUsers me={me} /> : <AdminNodes />;
   } else if (view === "connect") page = <Connect />;
+  else if(me.official_catalog&&["catalog","deploy","app-new"].includes(view))page=<OfficialCatalog/>;
   else if (view === "catalog") page = me.hosted ? <AppCatalog /> : <NotFound />;
   else if (view === "deploy" || (view === "app-new" && me.hosted))
     page = <BetaDeploy key={recipe ? hash : "generic"} recipe={recipe} initialFile={recipe ? null : file} account={me.id} />;
   else if (view === "app-new") page = <AppNew hosted={false} />;
-  else if (app) page = <AppPage key={app.id} id={app.id} tab={app.tab} />;
-  else page = <Apps beta={me.hosted === true} />;
+  else if (app) page = <AppPage key={app.id} id={app.id} tab={app.tab} official={me.official_catalog} />;
+  else page = <Apps beta={me.hosted === true} official={me.official_catalog} />;
   return (
     <div className="app">
       <header className="topbar">
@@ -189,12 +196,12 @@ function Workspace({
                 : undefined
             }
           >
-            Apps
+            {me.official_catalog?"Workspaces":"Apps"}
           </a>}
           {me.hosted && !hostedAdmin && (
             <a href={viewHashes.catalog} aria-current={view === "catalog" ? "page" : undefined}>Catalog</a>
           )}
-          {hostedAdmin && (
+          {hostedAdmin&&!me.official_catalog && (
             <a href={viewHashes["admin-waitlist"]} aria-current={defaultPage || view === "admin-waitlist" ? "page" : undefined}>
               Waitlist
             </a>
@@ -202,11 +209,12 @@ function Workspace({
           {me?.admin && (
             <a
               href={viewHashes["admin-users"]}
-              aria-current={view === "admin-users" ? "page" : undefined}
+              aria-current={view === "admin-users" || (me.official_catalog && (defaultPage||view==="admin-waitlist")) ? "page" : undefined}
             >
               Users
             </a>
           )}
+          {hostedAdmin&&<a href={viewHashes["admin-releases"]} aria-current={view==="admin-releases"?"page":undefined}>Releases</a>}
           {me?.admin && (
             <a
               href={viewHashes["admin-nodes"]}
@@ -388,7 +396,7 @@ export default function App() {
         }}
       />
     );
-  if (deployLink.error) return <Status><h1>Invalid deployment link</h1><p role="alert">{deployLink.error}</p><a href={viewHashes.deploy}>Open deployment form</a></Status>;
+  if (!options.official && deployLink.error) return <Status><h1>Invalid deployment link</h1><p role="alert">{deployLink.error}</p><a href={viewHashes.deploy}>Open deployment form</a></Status>;
   if (!signedIn)
     return <SignInGate recipe={deployLink.recipe} options={options} hash={hash} file={file} onSelect={setFile} />;
   if (oauthTarget)

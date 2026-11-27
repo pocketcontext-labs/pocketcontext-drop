@@ -196,3 +196,15 @@ The waitlist uses private SQL tables outside the collection API. `drop_waitlist`
 Migration `1820002400_credits.js` creates private SQLite tables. No raw accounting table is exposed over the record, SQL, or realtime API. New accounts receive a wallet through a trigger. Each ledger insertion atomically updates the materialized balance, and triggers reject ledger updates and deletes. Permanent source keys deduplicate purchases, adjustments and collector charges. The meter persists the last sample and fractional compute charge. Storage receipts and per-app fractional carry track late access logs and daily inventories across collector retries. Comparison rows persist start and end times for each pair of comparable observations. Deployment rows retain the execution’s original rate, including after a resize. Hold rows distinguish automatic stops and archives from the owner's actions.
 
 The shared buffer migration preserves exhausted billing holds and initializes already-funded accounts with 60 buffer minutes. The private `drop_storage_reservations` table correlates node authorization, observed request charges and final provider settlement. An in-flight hold reduces funds available for simultaneous requests, compute charges and account adjustments. Provider corrections and provisional usage are append-only ledger entries.
+### Official workspace releases
+
+Private tables `drop_official_releases`, `drop_official_uploads`,
+`drop_official_rehearsals` and `drop_official_config` hold the immutable
+product/version-to-digest mapping, short-lived hashed admin upload links,
+per-baseline rehearsal receipts and the cutover flag. Ordinary workspace
+release records share content-addressed bytes with the catalog. Per-app
+deletion retains every catalog digest. The app's `official_product` marks an
+official workspace, `official_target` pins its desired binary, and
+`official_installed` and `official_version` track the most recent healthy
+target confirmed by the node. Hosted restore invalidates outstanding admin
+upload links alongside customer links.

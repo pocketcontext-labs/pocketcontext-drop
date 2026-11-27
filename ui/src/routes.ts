@@ -20,6 +20,7 @@ export type View =
   | "connect"
   | "admin-waitlist"
   | "admin-users"
+  | "admin-releases"
   | "admin-nodes";
 export const viewHashes: Record<Exclude<View, "app">, string> = {
   catalog: "#/catalog",
@@ -30,6 +31,7 @@ export const viewHashes: Record<Exclude<View, "app">, string> = {
   connect: "#/connect",
   "admin-waitlist": "#/admin/waitlist",
   "admin-users": "#/admin/users",
+  "admin-releases":"#/admin/releases",
   "admin-nodes": "#/admin/nodes",
 };
 
@@ -52,6 +54,7 @@ export function appHash(id: string, tab: AppTab = "overview"): string {
 
 /** The page of a hash; anything unknown is the apps page. */
 export function viewFromHash(hash: string): View {
+  if(hash===viewHashes["admin-releases"])return "admin-releases";
   if (hash === viewHashes.credits) return "credits";
   if (/^#\/connect(?:\?.*)?$/.test(hash)) return "connect";
   if (hash === viewHashes["admin-waitlist"]) return "admin-waitlist";

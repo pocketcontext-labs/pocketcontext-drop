@@ -9,7 +9,7 @@ import type { PublishedLegal } from "./api";
 import AppAddress, { appURL } from "./AppAddress";
 import { BetaLegalLinks } from "./BetaLegal";
 import {
-  dropApi,
+  op,dropApi,
   MAX_RELEASE_BYTES,
   OpError,
   releaseFileProblem,
@@ -207,8 +207,9 @@ export function BetaStatus({
   id,
   name,
   release,
-  hostname,
+  hostname, officialDigest,
 }: {
+ officialDigest?:string;
   id: string;
   name: string;
   release: string;
@@ -270,7 +271,7 @@ export function BetaStatus({
   const retry = async () => {
     setBusy(true);
     try {
-      await dropApi.deployBeta(id, release);
+      if(officialDigest)await op("workspace.upgrade",{app:id,sha256:officialDigest});else await dropApi.deployBeta(id, release);
       setStatus(undefined);
       setError("");
       setRefresh((x) => x + 1);

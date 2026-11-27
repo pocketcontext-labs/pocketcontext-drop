@@ -28,7 +28,7 @@ export function quotaText(quota: Quota): string {
 }
 
 /** The account's apps, newest first, with its quota. */
-export default function Apps({ beta = false }: { beta?: boolean }) {
+export default function Apps({ beta = false, official=false }: { beta?: boolean; official?:boolean }) {
   const [apps, setApps] = useState<App[] | null>(null);
   const [quota, setQuota] = useState<Quota | null>(null);
   const [archived, setArchived] = useState(false);
@@ -69,12 +69,12 @@ export default function Apps({ beta = false }: { beta?: boolean }) {
   return (
     <section className="panel wide" aria-labelledby="apps-title">
       <div className="row heading">
-        <h2 id="apps-title">Your apps</h2>
+        <h2 id="apps-title">{official?"Your workspaces":"Your apps"}</h2>
         {full ? (
           <span className="quiet">Quota reached</span>
         ) : (
-          <a className="button primary" href={beta ? viewHashes.deploy : viewHashes["app-new"]}>
-            {beta ? "Deploy an app" : "New app"}
+          <a className="button primary" href={official?viewHashes.catalog:beta ? viewHashes.deploy : viewHashes["app-new"]}>
+            {official?"Create workspace":beta ? "Deploy an app" : "New app"}
           </a>
         )}
       </div>
@@ -111,7 +111,8 @@ export default function Apps({ beta = false }: { beta?: boolean }) {
               </p>
               <p className="quiet">
                 {app.archived ? "Archived" : stateLabels[app.desired_state]}
-                {app.kind === "crew" && <> · Crew · {app.crew_owner_email}</>}
+                {app.official_product&&<> · {app.official_product==="crew"?"Crew":"Atlas"} · {app.memory_mib/256}×</>}
+                {!app.official_product&&app.kind === "crew" && <> · Crew · {app.crew_owner_email}</>}
                 {" · "}
                 <time dateTime={app.created.replace(" ", "T")}>
                   {formatDate(app.created)}

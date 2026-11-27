@@ -277,3 +277,55 @@ It accepts a public IPv4 HTTPS origin on port 443, follows up to five HTTPS
 redirects and checks the optional SHA-256 against the exact downloaded bytes.
 The response contains the digest and base64 content. The control plane limits
 downloads to 90 MiB, two concurrent imports, and two minutes per download.
+
+## Official Crew and Atlas workspaces
+
+The administrator stages and checks both binaries before switching an existing
+installation. Use **Releases** in the hosted admin reader. All transitions also
+use the authenticated operation endpoint.
+
+1. Call `catalog.upload` with `product` (`crew` or `atlas`) and `version`.
+   PUT the Linux executable to its one-time path. Drop computes its digest,
+   checks the ELF, runs the existing isolated manifest probe and checks the
+   product, version, hooks, verified sign-in and optional replica capabilities.
+2. Exercise the actual candidate on disposable data. For a first release,
+   create records and attachments, restart it and verify their contents.
+   For an upgrade, seed the exact baseline, run the candidate against the
+   same volume and compare complete record and attachment digests. Retain
+   the test inputs, outputs and binary hashes at an immutable evidence URL.
+3. Import the JSON receipt under **Data rehearsal receipt**, or call
+   `catalog.rehearse` with these fields:
+
+   | Field | Value |
+   | --- | --- |
+   | `sha256`, `baseline_sha256` | Candidate and baseline executable SHA-256. Use an empty baseline for the initial release. |
+   | `evidence_url`, `evidence_sha256` | Durable HTTPS artifact URL and its SHA-256. |
+   | `records`, `attachments` | Positive fixture counts. |
+   | `before_records_sha256`, `after_records_sha256` | Canonical record content digests before and after migration. |
+   | `before_attachments_sha256`, `after_attachments_sha256` | Canonical attachment-content digests before and after migration. |
+
+   The receipt records the operator’s attestation. Drop checks the hashes and
+   exact version pair and retains the immutable receipt; the operator runs
+   the rehearsal and retains its evidence. Keep secrets and customer data
+   out of these artifacts.
+4. `catalog.publish {sha256}` requires a matching receipt for the currently
+   published baseline. Workspaces several versions behind need a receipt
+   for their own installed baseline before upgrading. After publishing both
+   products, call `catalog.activate {}` to switch hosted creation to the
+   official catalog. Existing placements, volumes and addresses remain in
+   place. Old customer upload links expire at cutover.
+
+Customers use `catalog.list`, `workspace.create {product,name,multiplier}`,
+`workspace.resize {app,multiplier}` and `workspace.upgrade {app,sha256}`.
+Both products support 1×–8× compute (4× suggested) within the chosen release’s manifest minimum. An older release that requires 4× must be upgraded before selecting 1×. A target release requiring more CPU or memory needs a resize before installation. Each unit provides
+256 MiB memory and a quarter vCPU. New workspaces allocate at least 2 GiB
+persistent disk. Resizing compute keeps that disk fixed. Publication affects
+new workspaces immediately. Existing workspaces install only the specific
+version their owner accepts. A matching healthy node report confirms the
+installed version. Failed deployments can retry the same target; a failed
+migration never selects an older executable to open the migrated volume.
+
+Hosted admins use `user.directory` to page a combined directory of signed-in
+accounts, verified waitlist entries and invitations. Search accepts an email
+substring or account ID. Filters cover account status, role, presence of
+workspaces, and positive credit balance. Waiting is a directory status.

@@ -1,3 +1,4 @@
+import { OfficialWorkspace } from "./Official";
 import { DeleteApp, DeletionStatus } from "./AppDeletion";
 import {
   useCallback,
@@ -718,12 +719,12 @@ function Secrets({
 }
 
 /** `#/apps/<id>`: one app with its Overview, Releases, Settings, Env & secrets and Usage tabs. */
-export default function AppPage({ id, tab }: { id: string; tab: AppTab }) {
+export default function AppPage({ id, tab, official=false }: { id: string; tab: AppTab;official?:boolean }) {
   if (tab === "deletion") return <DeletionStatus key={id} id={id} />;
-  return <AppDetailPage id={id} tab={tab} />;
+  return <AppDetailPage id={id} tab={tab} official={official}/>;
 }
 
-function AppDetailPage({ id, tab }: { id: string; tab: AppTab }) {
+function AppDetailPage({ id, tab, official }: { id: string; tab: AppTab;official:boolean }) {
   const [app, setApp] = useState<App | null>(null);
   const [secrets, setSecrets] = useState<Secret[]>([]);
   const [updating, setUpdating] = useState("");
@@ -768,6 +769,8 @@ function AppDetailPage({ id, tab }: { id: string; tab: AppTab }) {
     setApp(next);
     setVersion((v) => v + 1);
   };
+  if(app?.official_product)return <OfficialWorkspace app={app} reload={()=>void load()}/>;
+  if(official&&app)return <><BetaStatus id={app.id} name={app.name} release={app.current_release} hostname={app.hostname}/><DeleteApp app={app} slider/></>;
   if (app?.beta_managed) return <>
     {!app.archived && (!app.current_release || updating === app.id)
       ? <BetaDeploy key={app.id} account={app.owner} initialFile={null} prepared={app} onComplete={() => { setUpdating(""); void load(); }} />

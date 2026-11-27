@@ -47,6 +47,7 @@ var dropReads = []dropRead{
 	{"status", "status", dropapi.RoleUser, "an app's runtime status (app)"},
 	{"usage", "usage.get", dropapi.RoleUser, "an app's S3 usage (app): last 24 hours by hour, month to date against its soft and hard limits, stored bytes and an estimated cost"},
 	{"events", "event.list", dropapi.RoleUser, "events (who changed what), newest first, of your apps or of one app (app); all:true (admins) lists every event"},
+	{"catalog", "catalog.list", dropapi.RoleUser, "current official Crew and Atlas releases"},
 	{"users", "user.list", dropapi.RoleAdmin, "every account with role, quota and suspension"},
 	{"invites", "invite.list", dropapi.RoleAdmin, "invites and their state (open, used, revoked, expired)"},
 	{"nodes", "node.list", dropapi.RoleAdmin, "hosts and their state"},
@@ -241,6 +242,10 @@ func writeSchema(role dropapi.Role) map[string]any {
 // newDropMCPServer builds the MCP server of one role: the same two tools,
 // with that role's enums and descriptions.
 func newDropMCPServer(api http.Handler, role dropapi.Role) *mcp.Server {
+	return makeDropMCPServer(api, role, false)
+}
+
+func makeDropMCPServer(api http.Handler, role dropapi.Role, official bool) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{Name: appconfig.Identity.DisplayName, Version: buildinfo.Version}, &mcp.ServerOptions{
 		Instructions: dropInstructions(role), Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}},
 	})
@@ -250,8 +255,20 @@ func newDropMCPServer(api http.Handler, role dropapi.Role) *mcp.Server {
 		Name: "drop_read", Title: "Read Drop", Description: dropReadDescription(role), InputSchema: readSchema(role),
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: &notDestructive, IdempotentHint: true, OpenWorldHint: &closed},
 	}, false, runDropRead)
+	schema := writeSchema(role)
+	description := dropWriteDescription(role)
+	if official {
+		names := []string{"workspace.create", "workspace.resize", "workspace.upgrade", "app.start", "app.stop"}
+		schema["properties"].(map[string]any)["op"].(map[string]any)["enum"] = names
+		lines := []string{"Manage official Crew and Atlas workspaces. Read the catalog before creation or an upgrade. Use the same idempotency key to retry a change."}
+		for _, name := range names {
+			spec, _ := dropapi.Lookup(name)
+			lines = append(lines, opTableRow(spec))
+		}
+		description = strings.Join(lines, "\n")
+	}
 	addDropTool(server, api, &mcp.Tool{
-		Name: "drop_write", Title: "Change Drop", Description: dropWriteDescription(role), InputSchema: writeSchema(role),
+		Name: "drop_write", Title: "Change Drop", Description: description, InputSchema: schema,
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: &destructive, OpenWorldHint: &closed},
 	}, true, runDropWrite)
 	return server

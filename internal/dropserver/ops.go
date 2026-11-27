@@ -94,6 +94,13 @@ func registerOpRoutes(e *core.ServeEvent) {
 	// A shareable deploy link opens the reader. Only the authenticated
 	// deployment flow may create an app or consume an invitation.
 	e.Router.GET("/deploy", func(re *core.RequestEvent) error {
+		enabled, err := officialEnabled(re.App)
+		if err != nil {
+			return err
+		}
+		if enabled {
+			return re.Redirect(http.StatusFound, "/#/catalog")
+		}
 		target := "/#/deploy"
 		if query := re.Request.URL.RawQuery; query != "" {
 			target += "?" + query
@@ -141,6 +148,18 @@ func accountContext(app core.App, account *core.Record, request *http.Request) (
 }
 
 func (c *Ctx) checkRole(spec dropapi.Spec) error {
+	if !c.Admin && accountsOf(c.App).hosted {
+		switch spec.Name {
+		case "app.create", "beta.prepare", "beta.deploy", "beta.inspect", "beta.probe_upload", "beta.import_url", "release.upload_link", "release.deploy":
+			enabled, err := officialEnabled(c.App)
+			if err != nil {
+				return err
+			}
+			if enabled {
+				return Forbidden("Choose a published Crew or Atlas workspace from the catalog.")
+			}
+		}
+	}
 	role := dropapi.RoleUser
 	if c.Admin {
 		if !accountsOf(c.App).hosted {

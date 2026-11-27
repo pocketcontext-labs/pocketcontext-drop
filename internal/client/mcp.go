@@ -43,13 +43,19 @@ type mcpCaller struct {
 }
 
 func newMCPHandler(api http.Handler) http.Handler {
-	servers := map[dropapi.Role]*mcp.Server{
-		dropapi.RoleUser:  newDropMCPServer(api, dropapi.RoleUser),
-		dropapi.RoleAdmin: newDropMCPServer(api, dropapi.RoleAdmin),
-	}
+	user := newDropMCPServer(api, dropapi.RoleUser)
+	official := makeDropMCPServer(api, dropapi.RoleUser, true)
+	admin := newDropMCPServer(api, dropapi.RoleAdmin)
 	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 		caller, _ := r.Context().Value(mcpRequestContextKey{}).(*mcpCaller)
-		return servers[mcpCallerRole(api, caller)]
+		me := mcpAccount(api, caller)
+		if me.Admin {
+			return admin
+		}
+		if me.OfficialCatalog {
+			return official
+		}
+		return user
 	}, &mcp.StreamableHTTPOptions{
 		Stateless: true, JSONResponse: true, MaxRequestBodyBytes: mcpInputLimit, PropagateRequestCancellation: true,
 		// The wrapper below requires the stronger exact-origin boundary and OAuth.
@@ -71,24 +77,24 @@ func newMCPHandler(api http.Handler) http.Handler {
 	})
 }
 
-// mcpCallerRole asks GET /api/drop/me, with the caller's own token, which
+// mcpAccount asks GET /api/drop/me, with the caller's own token, which
 // server to show. Anything but a confirmed admin gets the user server; the
 // role only shapes what is listed, since every call is checked again.
-func mcpCallerRole(api http.Handler, caller *mcpCaller) dropapi.Role {
+func mcpAccount(api http.Handler, caller *mcpCaller) dropapi.Me {
 	if caller == nil || caller.token == "" {
-		return dropapi.RoleUser
+		return dropapi.Me{}
 	}
 	r, err := http.NewRequestWithContext(caller.ctx, http.MethodGet, "https://"+caller.host+dropapi.MeRoute, http.NoBody)
 	if err != nil {
-		return dropapi.RoleUser
+		return dropapi.Me{}
 	}
 	out := &mcpResponse{header: make(http.Header)}
 	api.ServeHTTP(out, mcpInnerRequest(r, caller))
 	var me dropapi.Me
-	if out.err != nil || out.status != http.StatusOK || json.Unmarshal(out.body.Bytes(), &me) != nil || !me.Admin {
-		return dropapi.RoleUser
+	if out.err != nil || out.status != http.StatusOK || json.Unmarshal(out.body.Bytes(), &me) != nil {
+		return dropapi.Me{}
 	}
-	return dropapi.RoleAdmin
+	return me
 }
 
 // mcpInnerRequest makes an in-process API request carry only the caller's

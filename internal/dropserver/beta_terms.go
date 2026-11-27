@@ -37,6 +37,9 @@ func registerLegalHeaders(e *core.ServeEvent) {
 		if re.Request.Method == http.MethodGet && re.Request.URL.Path == "/api/bundle/auth-mode" && accountsOf(re.App).hosted {
 			h := re.Response.Header()
 			h.Set("Cache-Control", "no-store")
+			if enabled, err := officialEnabled(re.App); err == nil && enabled {
+				h.Set("X-Drop-Catalog", "official")
+			}
 			if legal := servicesOf(re.App).BetaLegal; legal.ready() {
 				h.Set("X-Drop-Terms-URL", legal.TermsURL)
 				h.Set("X-Drop-Privacy-URL", legal.PrivacyURL)

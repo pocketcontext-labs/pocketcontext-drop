@@ -178,7 +178,7 @@ func (u *uploader) serve(re *core.RequestEvent) error {
 		return writeError(re, err)
 	}
 	if link == nil {
-		return u.inspect(re, hash)
+		return u.candidateOrProbe(re, hash)
 	}
 	app, err := re.App.FindRecordById("apps", link.GetString("app"))
 	if err != nil {

@@ -346,6 +346,31 @@ func ingestApps(app core.App, nodeID string, reports []dropapi.AppReport, now ti
 		if billed {
 			out.changes++
 		}
+		// Confirm the target only on a healthy report for its exact deployment.
+		// A failed migration leaves the last known-good version visible.
+		digest := appRecord.GetString("official_target")
+		if appRecord.GetString("official_product") != "" && digest != appRecord.GetString("official_installed") &&
+			r.DeploymentID == deploymentID(appRecord) && (r.Phase == "running" || r.Phase == "sleeping") {
+			out.changes++
+			if apply {
+				fresh, err := app.FindRecordById("apps", appRecord.Id)
+				if err != nil {
+					return out, err
+				}
+				if deploymentID(fresh) == r.DeploymentID {
+					var release officialRelease
+					if err := app.DB().NewQuery("SELECT * FROM drop_official_releases WHERE digest={:d}").Bind(dbx.Params{"d": digest}).One(&release); err != nil {
+						return out, err
+					}
+					fresh.Set("official_installed", digest)
+					fresh.Set("official_version", release.Version)
+					fresh.Set("official_minimum", release.Minimum)
+					if err := app.Save(fresh); err != nil {
+						return out, err
+					}
+				}
+			}
+		}
 		row := existing[r.AppID]
 		previousPhase := ""
 		if row != nil {

@@ -1,9 +1,10 @@
+import DeleteSlider from "./DeleteSlider";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { dropApi, type App, type DeletionReceipt } from "./dropApi";
 import { message } from "./errors";
 import { appHash, viewHashes } from "./routes";
 
-export function DeleteApp({ app }: { app: App }) {
+export function DeleteApp({ app, slider = !!app.official_product }: { app: App; slider?:boolean }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -20,13 +21,13 @@ export function DeleteApp({ app }: { app: App }) {
     return () => { active = false; };
   }, [open, app.id]);
   const cancel = () => dialog.current?.close();
-  async function remove(event: FormEvent) {
-    event.preventDefault();
-    if (busy || slug !== app.slug || !detail?.deletion_inventory) return;
+  async function remove(event?: FormEvent) {
+    event?.preventDefault();
+    if (busy || (!slider && slug !== app.slug) || !detail?.deletion_inventory) return;
     setBusy(true);
     setError("");
     try {
-      await dropApi.deleteApp(app.id, slug);
+      await dropApi.deleteApp(app.id, app.slug);
       cancel();
       window.location.hash = appHash(app.id, "deletion");
     } catch (e) {
@@ -52,14 +53,14 @@ export function DeleteApp({ app }: { app: App }) {
         {inventory.release_count > 0 && <li>{inventory.release_count} release {inventory.release_count === 1 ? "record" : "records"} will be removed. Only unshared release objects will be erased.</li>}
       </ul>}
       {!inventory && !error && <p role="status">Loading affected resources…</p>}
-      <form onSubmit={remove}>
-        <label>Type {app.slug} to confirm
+      <form onSubmit={e=>{e.preventDefault();if(!slider)void remove()}}>
+        {slider?<DeleteSlider disabled={busy||!inventory} onConfirm={()=>void remove()}/>:<label>Type {app.slug} to confirm
           <input value={slug} onChange={e => setSlug(e.target.value)} autoComplete="off" spellCheck={false} disabled={busy} />
-        </label>
+        </label>}
         {error && <p role="alert">{error}</p>}
         <div className="row">
           <button autoFocus type="button" disabled={busy} onClick={cancel}>Keep the app</button>
-          <button type="submit" className="delete-confirm" disabled={busy || !inventory || slug !== app.slug}>Delete {app.name}</button>
+          {!slider&&<button type="submit" className="delete-confirm" disabled={busy || !inventory || slug !== app.slug}>Delete {app.name}</button>}
         </div>
       </form>
     </dialog>}

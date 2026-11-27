@@ -104,3 +104,10 @@ The reader is the server's own page at `{{URL}}`. For a signed-in browser, `drop
 ## Server
 
 Running, backing up and recovering the server, changing the password and issuing login codes happen on the agent computer, not here; those commands are refused with `--url`. So do public HTTPS and MCP setup and `open --public`, which are opt-in and only for when the user asks. `--url` accepts only loopback URLs; do not point it at a domain. A server started with `--domain` has no loopback TCP port, so a tunnel or SSH forward cannot reach it.
+
+When `drop_read what=me` reports `official_catalog`, read `what=catalog` and
+use `workspace.create {product,name,multiplier}` for Crew or Atlas. Both
+accept 1–8, suggest 4, and charge one credit per unit per awake hour. Resize
+through `workspace.resize`, and install a new release only on the owner's
+selection of that workspace and digest through `workspace.upgrade`. The
+reader shows the affected resources and requires sliding right to delete.

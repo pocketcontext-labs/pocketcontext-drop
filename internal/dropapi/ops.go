@@ -90,6 +90,16 @@ var opName = regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`)
 // Later milestones add their operations here (and their handlers in
 // internal/dropserver); a test checks that both sides agree.
 var specs = []Spec{
+	{Name: "catalog.list", Role: RoleUser, Input: &MeInput{}, Read: true, Summary: "List current official workspace releases."},
+	{Name: "catalog.upload", Role: RoleAdmin, Input: &OfficialUpload{}, OnceResult: true, Summary: "Upload a candidate for product and version checks."},
+	{Name: "catalog.rehearse", Role: RoleAdmin, Input: &OfficialRehearsal{}, Summary: "Record fixture evidence for an exact candidate and baseline."},
+	{Name: "catalog.publish", Role: RoleAdmin, Input: &BetaDigest{}, Summary: "Publish a checked candidate for new workspaces."},
+	{Name: "catalog.activate", Role: RoleAdmin, Input: &MeInput{}, Summary: "Switch hosted customer deployment to the official catalog."},
+	{Name: "workspace.create", Role: RoleUser, Input: &WorkspaceCreate{}, MCP: true, Summary: "Provision an official workspace at a selected size."},
+	{Name: "workspace.resize", Role: RoleUser, Input: &WorkspaceResize{}, MCP: true, Summary: "Change workspace compute resources while keeping its disk."},
+	{Name: "workspace.upgrade", Role: RoleUser, Input: &WorkspaceUpgrade{}, MCP: true, Summary: "Install the reviewed current official release on one workspace."},
+	{Name: "user.directory", Role: RoleAdmin, Input: &DirectoryInput{}, Read: true, Summary: "Search users and access requests with filters and pagination."},
+
 	{Name: "credits.accounts", Role: RoleAdmin, Read: true, Input: &UserListInput{}, Summary: "List account balances and simulated purchases for the administrator."},
 	{Name: "credits.get", Role: RoleUser, Read: true, Input: &CreditViewInput{}, Summary: "Read your balance and ledger. Administrators can select an account."},
 	{Name: "credits.buy", Role: RoleUser, Input: &MeInput{}, Summary: "Buy one simulated credit pack."},

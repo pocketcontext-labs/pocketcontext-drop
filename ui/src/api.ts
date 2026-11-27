@@ -222,6 +222,7 @@ export interface PublishedLegal {
   termsVersion: string;
 }
 export interface SignInOptions {
+  official?:boolean;
   mode: "email" | "password";
   legal?: PublishedLegal;
 }
@@ -250,7 +251,7 @@ export async function loginMode(): Promise<SignInOptions> {
   const { mode } = await response.json();
   if (mode === "password") return { mode };
   if (mode !== "email") throw new Error("Unable to load sign-in options. Please try again.");
-  return { mode, legal: publishedLegal(response.headers) };
+  return { mode, ...(response.headers.get("X-Drop-Catalog")==="official"?{official:true}:{}),legal: publishedLegal(response.headers) };
 }
 /** Returns the login request id that the emailed code is bound to. */
 export async function requestEmailLogin(email: string): Promise<string> {

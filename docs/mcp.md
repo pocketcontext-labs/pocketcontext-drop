@@ -66,3 +66,10 @@ Native clients can register HTTP callbacks on literal `127.0.0.1`, `[::1]` or ex
 ## Operate and revoke
 
 OAuth state is machine-local in the private cache, separate from the database. The reader's Connect page lists the account's connected apps and disconnects one (its tokens stop working at once); a browser visit to `/oauth/connections` leads there.
+
+On an installation with the official catalog enabled, read `what: "catalog"`
+to see the published Crew and Atlas releases. Customer writes offer
+`workspace.create`, `workspace.resize`, `workspace.upgrade`, `app.start`
+and `app.stop`. Creating a workspace needs a product, a name and a 1–8
+multiplier. Upgrading needs the workspace and exact reviewed digest. Use a
+stable idempotency key when retrying an operation.

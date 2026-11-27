@@ -156,6 +156,7 @@ func finishAppDeletion(ctx context.Context, app core.App, id string) error {
 		}
 		var hashes []string
 		if err := tx.DB().NewQuery(`SELECT DISTINCT sha256 FROM releases r WHERE app={:app}
+   AND NOT EXISTS(SELECT 1 FROM drop_official_releases catalog WHERE catalog.digest=r.sha256)
    AND NOT EXISTS(SELECT 1 FROM releases other WHERE other.sha256=r.sha256 AND other.app!=r.app)`).Bind(p).Column(&hashes); err != nil {
 			return err
 		}

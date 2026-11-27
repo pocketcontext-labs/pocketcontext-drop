@@ -123,8 +123,13 @@ func (c *Ctx) appOut(r *core.Record, emails map[string]string) dropapi.App {
 	if n := r.GetInt("replica_sync_seconds"); n > 0 && r.GetString("crew_enrollment") != "" {
 		syncInterval = appspec.ReplicaSyncInterval(n)
 	}
+	digest := r.GetString("beta_digest")
+	if official := r.GetString("official_target"); official != "" {
+		digest = official
+	}
 	return dropapi.App{
-		BetaSHA256:          r.GetString("beta_digest"),
+		MinimumMultiplier: r.GetInt("official_minimum"), InstalledVersion: r.GetString("official_version"), OfficialProduct: r.GetString("official_product"),
+		BetaSHA256:          digest,
 		BetaManaged:         r.GetString("beta_digest") != "",
 		GenericBeta:         r.GetBool("generic_beta"),
 		CrewFreshEnrollment: r.GetString("crew_enrollment") == "fresh", Kind: kind, CrewOwnerEmail: crewOwnerEmail, SignInEmailEnabled: r.GetBool("sign_in_email_enabled"),
@@ -493,7 +498,7 @@ func appSet(c *Ctx, in *dropapi.AppSetInput) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if app.GetString("beta_digest") != "" {
+	if app.GetString("beta_digest") != "" || app.GetString("official_product") != "" {
 		// Only the enrollment transition is also needed by the managed runtime.
 		if *in != (dropapi.AppSetInput{App: in.App, FinishEnrollment: true}) {
 			return nil, Forbidden("Drop manages the settings for this Beta deployment.")
@@ -654,7 +659,11 @@ func setState(c *Ctx, ref string, start bool) (any, error) {
 	}
 	state := appspec.StateStopped
 	if start {
-		if digest := app.GetString("beta_digest"); digest != "" {
+		digest := app.GetString("beta_digest")
+		if desired := app.GetString("official_target"); desired != "" {
+			digest = desired
+		}
+		if digest != "" {
 			if err := allowBetaRelease(c.App, app.GetString("owner"), digest); err != nil {
 				return nil, err
 			}
@@ -709,7 +718,11 @@ func appRestore(c *Ctx, in *dropapi.AppRestoreInput) (any, error) {
 		}
 		return nil, Conflict("app_deleting", "This app is being permanently deleted.")
 	}
-	if digest := app.GetString("beta_digest"); digest != "" {
+	digest := app.GetString("beta_digest")
+	if desired := app.GetString("official_target"); desired != "" {
+		digest = desired
+	}
+	if digest != "" {
 		if err := allowBetaRelease(c.App, app.GetString("owner"), digest); err != nil {
 			return nil, err
 		}

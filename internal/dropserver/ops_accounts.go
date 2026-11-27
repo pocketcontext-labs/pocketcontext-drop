@@ -33,6 +33,13 @@ func me(c *Ctx) (dropapi.Me, error) {
 		role = dropapi.RoleAdmin
 	}
 	out := dropapi.Me{Hosted: accountsOf(c.App).hosted, ID: c.Auth.Id, Email: c.Auth.Email(), Role: role, Admin: c.Admin, Owner: c.Owner, AppQuota: c.Auth.GetInt("app_quota")}
+	if out.Hosted {
+		var err error
+		out.OfficialCatalog, err = officialEnabled(c.App)
+		if err != nil {
+			return out, err
+		}
+	}
 	if out.Hosted && !out.Admin {
 		state, err := balanceOf(c.App, c.Auth.Id)
 		if err != nil {

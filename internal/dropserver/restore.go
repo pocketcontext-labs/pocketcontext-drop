@@ -31,6 +31,9 @@ func InvalidateNodeTokens(app core.App) error {
 		if err := waitExec(tx, "UPDATE node_reports SET log_tail = '', first_run = 'null'", nil); err != nil {
 			return err
 		}
+		if err := waitExec(tx, "DELETE FROM drop_official_uploads", nil); err != nil {
+			return err
+		}
 		if err := waitExec(tx, "DELETE FROM drop_manifest_uploads", nil); err != nil {
 			return err
 		}

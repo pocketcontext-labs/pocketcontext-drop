@@ -5,6 +5,16 @@ import { pb } from "./api";
 // input. OPS lists every operation name in the server's registry, in its
 // order: internal/dropapi's TestReaderKnowsEveryOperation compares them.
 export const OPS = [
+  "catalog.list",
+  "catalog.upload",
+  "catalog.rehearse",
+  "catalog.publish",
+  "catalog.activate",
+  "workspace.create",
+  "workspace.resize",
+  "workspace.upgrade",
+  "user.directory",
+
   "credits.accounts",
   "credits.get",
   "credits.buy",
@@ -61,6 +71,7 @@ export type Op = (typeof OPS)[number];
 
 export type Role = "admin" | "user";
 export interface Me {
+  official_catalog?: boolean;
   trial_remaining_seconds?: number;
   hosted?: boolean;
   id: string;
@@ -101,6 +112,9 @@ export type DesiredState = "running" | "on-request" | "stopped";
 export type HealthKind = "tcp" | "http";
 /** An app (internal/dropapi App). Env holds plain values only. */
 export interface App {
+  minimum_multiplier?:number;
+  installed_version?:string;
+  official_product?: string;
   kind: AppKind;
   beta_managed?: boolean;
   beta_sha256?: string;
