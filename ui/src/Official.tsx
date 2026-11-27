@@ -23,24 +23,27 @@ const names: Record<string, string> = { crew: "Crew", atlas: "Atlas" };
 function Size({
   value,
   minimum = 1,
+  separateRate = false,
   onChange,
 }: {
   value: number;
   minimum?: number;
+  separateRate?: boolean;
   onChange: (n: number) => void;
 }) {
   return (
     <div>
       <label className="size-label" htmlFor="workspace-size">Resources</label>{" "}
       <HelpTip topic="app size">The size sets how much memory and processing power your app gets. A larger size uses more credits while running. You can change it later in App settings.</HelpTip>
-      <select id="workspace-size" value={value} onChange={(e) => onChange(Number(e.target.value))}>
+      <select id="workspace-size" aria-describedby={separateRate ? "workspace-rate" : undefined} value={value} onChange={(e) => onChange(Number(e.target.value))}>
         {Array.from({ length: 9 - minimum }, (_, i) => i + minimum).map((n) => (
           <option value={n} key={n}>
-            {n}×{n === 4 ? " · recommended" : ""} · {n}{" "}
-            {n === 1 ? "credit" : "credits"} per awake hour
+            {n}×{n === 4 ? " · recommended" : ""}
+            {!separateRate && ` · ${n} ${n === 1 ? "credit" : "credits"} per awake hour`}
           </option>
         ))}
       </select>
+      {separateRate && <small id="workspace-rate" className="quiet">{value} {value === 1 ? "credit" : "credits"} per awake hour</small>}
     </div>
   );
 }
@@ -95,7 +98,7 @@ export function OfficialCatalog({ releaseSelection = true }: { releaseSelection?
       </h2>
       {product ? (
         <form
-          className="stack"
+          className="stack app-create-form"
           onSubmit={async (e) => {
             e.preventDefault();
             if (busy || !selected) return;
@@ -147,7 +150,7 @@ export function OfficialCatalog({ releaseSelection = true }: { releaseSelection?
             }} />
             Include archived releases
           </label>}
-          <Size
+          <Size separateRate
             value={Math.max(size, minimum)}
             minimum={minimum}
             onChange={(n) => {

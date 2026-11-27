@@ -1004,3 +1004,10 @@ html { scrollbar-gutter: stable; }
   .credit-usage td[data-label] { display: flex; justify-content: space-between; gap: 12px; }
   .credit-usage td[data-label]::before { content: attr(data-label); color: var(--muted); text-align: start; }
 }
+
+.app-create-form,
+.app-create-form > label { grid-template-columns: minmax(0, 1fr); }
+.app-create-form > * { min-width: 0; }
+.app-create-form select { width: 100%; min-width: 0; text-overflow: ellipsis; }
+.app-create-form #workspace-rate { display: block; margin-top: 4px; }
+.app-create-form .row { flex-wrap: wrap; }
