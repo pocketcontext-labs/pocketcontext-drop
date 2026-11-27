@@ -281,7 +281,7 @@ function Workspace({
           {Math.ceil(me.trial_remaining_seconds / 60)} shared awake minutes left. Apps run locally until the buffer runs out, then stop with their data retained. A top-up resets the buffer to 60 minutes. <a href={viewHashes.credits}>Manage credits</a>
         </p>}
         {page}
-        {me.hosted && ((view === "apps" && (!hostedAdmin || (developer && !defaultPage))) ||
+        {me.hosted && me.developer !== undefined && ((view === "apps" && (!hostedAdmin || (developer && !defaultPage))) ||
           (hostedAdmin && (defaultPage || view === "admin-users"))) && <SharedApps />}
       </main>
     </div>

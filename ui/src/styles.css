@@ -971,3 +971,9 @@ html { scrollbar-gutter: stable; }
   .dashboard-identity .slug, .dashboard-meta time { color: #70756f; }
 }
 .app-dashboard > .quiet { margin-top: 4px; }
+
+.directory-credit-editor { display: grid; gap: 4px; width: 8rem; white-space: normal; }
+.directory-credit-editor input { width: 100%; min-width: 0; }
+.directory-credit-actions { display: flex; gap: 4px; }
+.directory-credit-actions button { flex: 1; padding: 4px 6px; font-size: 13px; }
+.directory-credit-editor [role="alert"] { margin: 0; overflow-wrap: anywhere; color: var(--danger); }

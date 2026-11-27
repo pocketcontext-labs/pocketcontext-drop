@@ -32,18 +32,19 @@ const statuses = [
   "revoked",
   "expired",
 ];
-function CreditCell({ user, refresh }: { user: DirectoryUser; refresh: () => void }) {
+function CreditCell({ user, editable, refresh }: { user: DirectoryUser; editable: boolean; refresh: () => void }) {
   const [draft, setDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [key, setKey] = useState("");
   const balance = user.microcredits / 1e6;
   if (!user.account) return <>—</>;
+  if (!editable) return <>{balance.toLocaleString(undefined, { maximumFractionDigits: 2 })}</>;
   if (draft === null) return <button className="link" aria-label={`Edit credits for ${user.email}: ${balance}`}
     onClick={() => { setDraft(String(balance)); setError(""); setKey(crypto.randomUUID()); }}>
     {balance.toLocaleString(undefined, { maximumFractionDigits: 2 })} <span aria-hidden="true">✎</span>
   </button>;
-  return <form onSubmit={async event => {
+  return <form className="directory-credit-editor" onSubmit={async event => {
     event.preventDefault();
     if (busy) return;
     setBusy(true);
@@ -56,8 +57,10 @@ function CreditCell({ user, refresh }: { user: DirectoryUser; refresh: () => voi
     <input type="number" min="0" step="0.000001" required autoFocus disabled={busy}
       aria-label={`Credit balance for ${user.email}`} value={draft}
       onChange={event => { setDraft(event.target.value); setKey(crypto.randomUUID()); setError(""); }} />
-    <button className="secondary" disabled={busy || Number(draft) === balance}>Save</button>
+    <div className="directory-credit-actions">
+    <button className="secondary" disabled={busy || !draft || Number(draft) === balance}>Save</button>
     <button type="button" className="secondary" disabled={busy} onClick={() => setDraft(null)}>Cancel</button>
+    </div>
     {error && <p role="alert">{error}</p>}
   </form>;
 }
@@ -374,7 +377,7 @@ export default function UserDirectory({
           {!!results.users.length && (
             <div className="directory-scroll" tabIndex={0}>
               <table>
-                <caption className="sr-only">User directory</caption>
+                <caption className="visually-hidden">User directory</caption>
                 <thead>
                   <tr>
                     {[
@@ -406,7 +409,7 @@ export default function UserDirectory({
                       <td>{r.role}{r.developer && " · Developer"}</td>
                       <td>{r.workspaces}</td>
                       <td>
-                        <CreditCell user={r} refresh={() => setRevision(n => n + 1)} />
+                        <CreditCell user={r} editable={me.developer !== undefined} refresh={() => setRevision(n => n + 1)} />
                       </td>
                       <td>{formatDate(r.joined)}</td>
                     </tr>
