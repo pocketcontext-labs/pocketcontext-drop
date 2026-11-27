@@ -177,6 +177,7 @@ export default function UserDirectory({
           <button className="primary" disabled={busy}>
             Create invitation
           </button>
+          <small className="invite-access-note">After the first sign-in, open the account to grant Developer access for private apps.</small>
         </form>
       )}
       {link && (
@@ -291,6 +292,7 @@ export default function UserDirectory({
               Revoke invitation
             </button>
           )}
+          <div className="directory-access">
           {detail.account && (
             <label className="check">
               <input type="checkbox" checked={detail.developer} disabled={busy}
@@ -340,6 +342,7 @@ export default function UserDirectory({
               </button>
             </>
           )}
+          </div>
         </section>
       )}
       {!results && !error && <p role="status">Loading users…</p>}

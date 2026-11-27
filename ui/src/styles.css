@@ -1018,3 +1018,15 @@ html { scrollbar-gutter: stable; }
 .app-create-form #workspace-rate { display: block; margin-top: 4px; }
 .app-create-form .row { flex-wrap: wrap; }
 .balance-euro { display: block; color: var(--muted); margin-bottom: 6px; }
+
+.directory-access {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px 20px;
+}
+.directory-access .check { align-self: center; }
+.directory-access select { min-width: 9rem; }
+.directory-detail h3 { margin-block: 0; overflow-wrap: anywhere; }
+.directory-detail { margin-bottom: 16px; }
+.invite-access-note { flex-basis: 100%; color: var(--muted); }
