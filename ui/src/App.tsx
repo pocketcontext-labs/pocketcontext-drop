@@ -146,6 +146,7 @@ function Workspace({
   const email = accountEmail();
   // The account's role decides which pages it has; the server checks it on
   // every operation regardless.
+  const moreSheet = useRef<HTMLDialogElement>(null);
   const mobile = useSyncExternalStore(subscribeMobileNav, () => mobileNav?.matches ?? false);
   const [me, setMe] = useState<Me | null>(null);
   const [meFailed, setMeFailed] = useState(false);
@@ -238,30 +239,39 @@ function Workspace({
             </a>
           )}
           <a href={viewHashes.credits} aria-current={view === "credits" ? "page" : undefined}><NavIcon path="M3 5h18v14H3z M3 10h18 M6 15h4" />Credits</a>
-          {!hostedAdmin && <a
+          {!mobile && !hostedAdmin && <a
             href={viewHashes.connect}
             aria-current={view === "connect" ? "page" : undefined}
           >
             <NavIcon path="M8 8H5v4a7 7 0 0 0 14 0V8h-3 M9 4v5 M15 4v5 M12 19v3" />Connect
           </a>}
-          <button className="mobile-more" type="button" popoverTarget="mobile-account">
+          <button className="mobile-more" type="button" aria-haspopup="dialog" aria-controls="mobile-account" onClick={() => moreSheet.current?.showModal()}>
             <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
               <circle cx="4" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="20" cy="12" r="2" />
             </svg>
             More
           </button>
         </nav>
-        <div key={mobile ? "mobile" : "desktop"} className={mobile ? undefined : "account"}
-          id={mobile ? "mobile-account" : undefined} popover={mobile ? "auto" : undefined}>
-          {email && <span title={email}>{email}</span>}
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => api.logout()}
-          >
-            Sign out
-          </button>
-        </div>
+        {mobile ? (
+          <dialog id="mobile-account" ref={moreSheet} aria-labelledby="more-title"
+            onClick={event => {
+              if (event.target === event.currentTarget && event.clientY < event.currentTarget.getBoundingClientRect().top)
+                moreSheet.current?.close();
+            }}>
+            <div className="sheet-heading">
+              <h2 id="more-title">More</h2>
+              <button type="button" className="primary" onClick={() => moreSheet.current?.close()}>Done</button>
+            </div>
+            {!hostedAdmin && <a href={viewHashes.connect} onClick={() => moreSheet.current?.close()}>Connect an assistant</a>}
+            <button className="secondary" type="button" onClick={() => api.logout()}>Sign out</button>
+            {email && <p>{email}</p>}
+          </dialog>
+        ) : (
+          <div className="account">
+            {email && <span title={email}>{email}</span>}
+            <button type="button" className="secondary" onClick={() => api.logout()}>Sign out</button>
+          </div>
+        )}
       </header>
       <main className="content">
         {view !== "credits" && me.trial_remaining_seconds !== undefined && <p className="panel" role="status">
