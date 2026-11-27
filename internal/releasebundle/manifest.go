@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"strings"
+	"unicode"
 )
 
 var ErrUnbundled = errors.New("plain executable")
@@ -30,7 +31,7 @@ type Manifest struct {
 }
 
 func ValidPath(s string) bool {
-	return fs.ValidPath(s) && s != "." && len(s) <= 1024 && !strings.ContainsAny(s, "\\\x00")
+	return fs.ValidPath(s) && s != "." && len(s) <= 1024 && !strings.ContainsRune(s, '\\') && strings.IndexFunc(s, unicode.IsControl) < 0
 }
 
 func Payload(f *os.File) (*gzip.Reader, error) {
@@ -72,7 +73,7 @@ func ReadManifest(r io.Reader) (Manifest, error) {
 		return m, errors.New("invalid release paths")
 	}
 	for _, digest := range []string{m.ArchiveSHA256, m.ExecutableSHA256} {
-		if _, err := hex.DecodeString(digest); err != nil || len(digest) != 64 {
+		if _, err := hex.DecodeString(digest); err != nil || len(digest) != 64 || digest != strings.ToLower(digest) {
 			return m, errors.New("invalid release digest")
 		}
 	}

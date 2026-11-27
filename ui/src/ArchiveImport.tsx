@@ -14,6 +14,7 @@ import {
 type Props = {
   input: File | null;
   recipe?: DeployRecipe;
+  fixedPort?: number;
   onReady: (file: File, port: number) => void;
   onCancel: () => void;
 };
@@ -34,6 +35,7 @@ function stringArray(raw: string, label: string): string[] {
 export default function ArchiveImport({
   input,
   recipe,
+  fixedPort,
   onReady,
   onCancel,
 }: Props) {
@@ -45,7 +47,7 @@ export default function ArchiveImport({
   const [env, setEnv] = useState(JSON.stringify(recipe?.env ?? {}));
   const [assets, setAssets] = useState(JSON.stringify(recipe?.assets ?? []));
   const [seed, setSeed] = useState("");
-  const [port, setPort] = useState(recipe?.port ?? 8080);
+  const [port, setPort] = useState(fixedPort ?? recipe?.port ?? 8080);
   const [error, setError] = useState("");
   const [step, setStep] = useState("");
   const [busy, setBusy] = useState(false);
@@ -242,7 +244,7 @@ export default function ArchiveImport({
             min={1}
             max={65535}
             value={port}
-            disabled={busy}
+            disabled={busy || fixedPort != null}
             onChange={(e) => setPort(Number(e.target.value))}
           />
         </label>

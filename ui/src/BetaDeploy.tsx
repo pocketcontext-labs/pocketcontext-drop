@@ -596,7 +596,7 @@ export default function BetaDeploy({
       {prepared && product && !stagedRelease && !file && (
         <p>Select your original app file to finish the upload.</p>
       )}
-      {importing ? <ArchiveImport input={archiveFile} recipe={recipe} onCancel={()=>chooseFile(null)}
+      {importing ? <ArchiveImport input={archiveFile} recipe={recipe} fixedPort={prepared?.http_port} onCancel={()=>chooseFile(null)}
         onReady={(ready, httpPort)=>{setImporting(false);setPort(prepared?.http_port ?? httpPort);setFile(ready);}} /> :
         !file && !stagedRelease && (updating || !prepared || product) && <>
           <FilePicker onSelect={chooseFile} />
