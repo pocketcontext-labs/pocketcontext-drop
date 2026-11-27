@@ -8,7 +8,6 @@ package dropserver
 
 import (
 	"context"
-	"net/http"
 	"path/filepath"
 	"sync"
 
@@ -33,15 +32,6 @@ func Hooks() appserver.Hooks {
 			bindAccounts(app)
 			bindBetaTerms(app)
 			app.OnServe().BindFunc(func(e *core.ServeEvent) error {
-				// The private app gateway uses window.opener for the owner-only
-				// ticket exchange, then clears it before loading guest code.
-				e.Router.BindFunc(func(re *core.RequestEvent) error {
-					path := re.Request.URL.Path
-					if re.Request.Method == http.MethodGet && path == "/" && accountsOf(re.App).hosted {
-						re.Response.Header().Set("Cross-Origin-Opener-Policy", "same-origin-allow-popups")
-					}
-					return re.Next()
-				})
 				registerLegalHeaders(e)
 				registerWaitlist(e)
 				registerOpRoutes(e)

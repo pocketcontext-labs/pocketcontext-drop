@@ -11,7 +11,7 @@ import (
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/render"
 )
 
-func TestBrowserHandoffAndCredentialBoundaries(t *testing.T) {
+func TestAppRootAndRetiredSession(t *testing.T) {
 	const host = "test.apps.example.test"
 	const control = "https://drop.example.test"
 	const valid = "header.claims.signature"
@@ -24,11 +24,10 @@ func TestBrowserHandoffAndCredentialBoundaries(t *testing.T) {
 		if _, err := r.Cookie(sessionCookie); err != http.ErrNoCookie {
 			t.Error("browser gateway cookie reached the guest")
 		}
-		if r.Header.Get(render.PrivateAccessHeader) != valid {
-			http.Error(w, "Denied", 403)
-			return
+		if r.Header.Get(render.PrivateAccessHeader) != "" {
+			t.Error("legacy ticket reached the guest")
 		}
-		if c, err := r.Cookie("guest"); err != nil || c.Value != "yes" {
+		if c, err := r.Cookie("guest"); calls > 1 && (err != nil || c.Value != "yes") {
 			t.Error("guest session cookie missing")
 		}
 		w.Header().Set("Cache-Control", "public, immutable")
@@ -48,38 +47,27 @@ func TestBrowserHandoffAndCredentialBoundaries(t *testing.T) {
 		r := httptest.NewRequest(method, "https://"+host+path, strings.NewReader(body))
 		r.Header.Set("Content-Type", "application/json")
 		r.Header.Set("Origin", origin)
+		if cookie != "" {
+			r.Header.Set(render.PrivateAccessHeader, valid)
+		}
 		r.Header.Set("Cookie", cookie)
 		w := httptest.NewRecorder()
 		g.ServeHTTP(w, r)
 		return w
 	}
 	get := request("GET", sessionPath, "", "", "")
-	if get.Code != 200 || !strings.Contains(get.Body.String(), control) || !strings.Contains(get.Header().Get("Content-Security-Policy"), "frame-ancestors 'none'") || calls != 0 {
-		t.Fatal("bootstrap must be served locally and bounded to the configured origin")
+	if get.Code != http.StatusSeeOther || get.Header().Get("Location") != "/" || calls != 0 {
+		t.Fatal("old session bookmark did not redirect to root")
 	}
-	for _, origin := range []string{"", "https://other.apps.example.test", control} {
-		if w := request("POST", sessionPath, origin, `{"token":"`+valid+`"}`, ""); w.Code != 403 || len(w.Result().Cookies()) != 0 {
-			t.Fatal("unauthorized cookie handoff", origin, w.Code)
-		}
+	if w := request("POST", sessionPath, control, `{"token":"old"}`, ""); w.Code != http.StatusGone || calls != 0 {
+		t.Fatal("old session POST reached the guest")
 	}
-	if w := request("GET", "/", "", "", ""); w.Code != 403 {
-		t.Fatal("unauthenticated request accepted")
+	if w := request("GET", "/", "", "", ""); w.Code != 200 || w.Body.String() != "private content" {
+		t.Fatal("clean browser could not open the app")
 	}
-	w := request("POST", sessionPath, "https://"+host, `{"token":"`+valid+`"}`, "")
-	cookies := w.Result().Cookies()
-	if w.Code != 204 || len(cookies) != 1 || cookies[0].Name != sessionCookie || cookies[0].Domain != "" || cookies[0].Path != "/" || !cookies[0].Secure || !cookies[0].HttpOnly || cookies[0].SameSite != http.SameSiteLaxMode {
-		t.Fatalf("unsafe session cookie %+v", cookies)
-	}
-	cookie := sessionCookie + "=" + valid + "; guest=yes"
-	if w := request("POST", "/", "https://other.apps.example.test", "", cookie); w.Code != 403 || calls != 1 {
-		t.Fatal("cross-origin guest request with runtime cookie")
-	}
-	ok := request("GET", "/", "", "", cookie)
-	if ok.Header().Get("Cache-Control") != "private, no-store" || ok.Header().Get("Cloudflare-CDN-Cache-Control") != "" {
-		t.Fatal("private content would be stored by a shared cache")
-	}
-	if ok.Code != 200 || ok.Body.String() != "private content" || len(ok.Result().Cookies()) != 1 || ok.Result().Cookies()[0].Name != "ordinary" {
-		t.Fatal("runtime session not passed through correctly")
+	ok := request("GET", "/", "", "", sessionCookie+"="+valid+"; guest=yes")
+	if ok.Code != 200 || len(ok.Result().Cookies()) != 1 || ok.Result().Cookies()[0].Name != "ordinary" {
+		t.Fatal("guest cookies were not isolated from the former gateway cookie")
 	}
 }
 

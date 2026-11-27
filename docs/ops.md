@@ -222,7 +222,7 @@ For imported archives Drop checks the assigned public HTTPS origin after the pro
 
 The status of a generic app can include a private, expiring `first_run` action for the current deployment. Its owner can open the PocketBase installer at the assigned HTTPS hostname or copy the ZeroClaw pairing code into the dashboard. Only the matching app owner can read the action and startup output.
 
-Developers can inspect a private binary with `developer.build_upload` (one-time file PUT) or `developer.build_import` (public HTTPS URL), then create an instance with `developer.build_create {sha256,name,multiplier}`. Both sources accept a raw Linux amd64 executable or a tar.gz archive containing a single compatible executable. The extracted executable must implement `--drop-manifest`. The server binds the executable digest to the developer account and generates a `dev-` hostname. Users create workspaces from published catalog releases. Catalog and probe records stay out of account queries and the public route table.
+Developers can inspect a custom binary with `developer.build_upload` (one-time file PUT) or `developer.build_import` (public HTTPS URL), then create an instance with `developer.build_create {sha256,name,multiplier}`. Both sources accept a raw Linux amd64 executable or a tar.gz archive containing a single compatible executable. The extracted executable must implement `--drop-manifest`. The server binds the executable digest to the developer account and generates a `dev-` hostname whose HTTPS root opens directly. Guest applications handle their own sign-in. Users create workspaces from published catalog releases. Catalog and probe records stay out of account queries and the public route table.
 
 Install `deploy/drop-ax41/drop-manifest-probe.socket` and `drop-manifest-probe@.service` in the systemd unit directory on the NibRunner host serving Drop. Set the socket's owner to the Drop service account. Run `systemctl daemon-reload` and `systemctl enable --now drop-manifest-probe.socket`. Drop passes only validated bytes and their digest over the private socket. The worker calls `nibrunnerd probe-manifest` with the host's `/etc/nibrunner/config.toml`. NibRunner uses an isolated, time-limited microVM for `--drop-manifest`. The guest receives no account credentials, network or app volume. Infrastructure failures are retriable.
 
@@ -284,7 +284,7 @@ The administrator stages and checks both binaries before switching an existing
 installation. Use **Releases** in the hosted admin reader. All transitions also
 use the authenticated operation endpoint.
 
-A developer can submit a deployed private build with a compatible Drop manifest for review with
+A developer can submit a deployed custom build with a compatible Drop manifest for review with
 `developer.submit {app,release}`. The admin reviews explicitly submitted builds
 with `catalog.submissions {}` and stages one with
 `catalog.accept {app,release,sha256}`. Drop verifies the executable against that

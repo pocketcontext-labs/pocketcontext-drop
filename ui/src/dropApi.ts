@@ -5,7 +5,6 @@ import { pb } from "./api";
 // input. OPS lists every operation name in the server's registry, in its
 // order: internal/dropapi's TestReaderKnowsEveryOperation compares them.
 export const OPS = [
-  "private.access",
   "catalog.list",
   "catalog.import_url",
   "catalog.upload",

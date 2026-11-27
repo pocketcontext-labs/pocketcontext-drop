@@ -180,7 +180,7 @@ func betaPlacement(c *Ctx, a *core.Record) error {
 			continue
 		}
 		versions := jsonMap(node, "versions")
-		if a.GetBool("developer_private") && versions["privateIngress"] != true {
+		if a.GetBool("developer_private") && versions[dropapi.CustomPublicIngress] != true {
 			continue
 		}
 		if betaFractionalQuota(a) != 0 && versions["cpuQuarterQuota"] != true {

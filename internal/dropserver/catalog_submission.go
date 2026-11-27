@@ -55,7 +55,7 @@ func submitPrivateRelease(c *Ctx, in *dropapi.ReleaseDeployInput) (any, error) {
 		return nil, err
 	}
 	if a.GetBool("archived") || a.GetString("current_release") != r.Id {
-		return nil, Conflict("release_not_deployed", "Submit the private app's currently deployed release.")
+		return nil, Conflict("release_not_deployed", "Submit the custom app's currently deployed release.")
 	}
 	m, _, err := workspaceManifest([]byte(r.GetString("private_manifest")))
 	if err != nil {

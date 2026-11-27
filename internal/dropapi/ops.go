@@ -91,7 +91,6 @@ var opName = regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`)
 // Later milestones add their operations here (and their handlers in
 // internal/dropserver); a test checks that both sides agree.
 var specs = []Spec{
-	{Name: "private.access", Role: RoleDeveloper, OnceResult: true, Input: &PrivateAccessInput{}, Summary: "Issue short-lived runtime access to a private app you own."},
 	{Name: "catalog.list", Role: RoleUser, Input: &CatalogListInput{}, Read: true, Summary: "List current official workspace releases."},
 	{Name: "catalog.import_url", Role: RoleAdmin, Standalone: true, Input: &OfficialImportURL{}, Summary: "Download and check a catalog candidate from a public HTTPS URL."},
 	{Name: "catalog.upload", Role: RoleAdmin, Input: &OfficialUpload{}, OnceResult: true, Summary: "Upload a candidate for product and version checks."},
@@ -109,12 +108,12 @@ var specs = []Spec{
 
 	{Name: "credits.accounts", Role: RoleAdmin, Read: true, Input: &CreditAccountListInput{}, Summary: "List account balances and simulated purchases for the administrator."},
 	{Name: "credits.get", Role: RoleUser, Read: true, Input: &CreditViewInput{}, Summary: "Read your balance and ledger. Administrators can select an account."},
-	{Name: "developer.build_upload", Role: RoleDeveloper, MCP: true, OnceResult: true, Input: &MeInput{}, Summary: "Get a one-time PUT URL to inspect a private executable."},
-	{Name: "developer.build_import", Role: RoleDeveloper, MCP: true, Standalone: true, Input: &ImportURLInput{}, Summary: "Download and inspect a private executable from a public HTTPS URL."},
-	{Name: "developer.build_create", Role: RoleDeveloper, MCP: true, Input: &PrivateBuildCreate{}, Summary: "Create a private workspace from your inspected executable and selected multiplier."},
-	{Name: "developer.create", Role: RoleDeveloper, MCP: true, Input: &AppCreateInput{}, Summary: "Create your own private app. Supply its name, unique slug and runtime settings; kind crew enables owner sign-in and recovery services."},
-	{Name: "developer.upload_link", Role: RoleDeveloper, MCP: true, OnceResult: true, Input: &ReleaseUploadLinkInput{}, Summary: "Create a one-time PUT URL for a private app you own. Upload your Linux executable directly, then use developer.deploy."},
-	{Name: "developer.deploy", Role: RoleDeveloper, MCP: true, Input: &ReleaseDeployInput{}, Summary: "Place your private app and deploy one of its uploaded releases by immutable release ID."},
+	{Name: "developer.build_upload", Role: RoleDeveloper, MCP: true, OnceResult: true, Input: &MeInput{}, Summary: "Get a one-time PUT URL to inspect a custom executable."},
+	{Name: "developer.build_import", Role: RoleDeveloper, MCP: true, Standalone: true, Input: &ImportURLInput{}, Summary: "Download and inspect a custom executable from a public HTTPS URL."},
+	{Name: "developer.build_create", Role: RoleDeveloper, MCP: true, Input: &PrivateBuildCreate{}, Summary: "Create a custom app from your inspected executable and selected multiplier. Its hostname opens directly."},
+	{Name: "developer.create", Role: RoleDeveloper, MCP: true, Input: &AppCreateInput{}, Summary: "Create your own custom app. Supply its name, unique slug and runtime settings; kind crew enables owner sign-in and recovery services."},
+	{Name: "developer.upload_link", Role: RoleDeveloper, MCP: true, OnceResult: true, Input: &ReleaseUploadLinkInput{}, Summary: "Create a one-time PUT URL for a custom app you own. Upload your Linux executable directly, then use developer.deploy."},
+	{Name: "developer.deploy", Role: RoleDeveloper, MCP: true, Input: &ReleaseDeployInput{}, Summary: "Place your custom app and deploy one of its uploaded releases by immutable release ID."},
 	{Name: "credits.buy", Role: RoleUser, Input: &MeInput{}, Summary: "Buy one simulated credit pack."},
 	{Name: "credits.adjust", Role: RoleAdmin, Input: &CreditAdjustment{}, Summary: "Record a signed adjustment to an account balance."},
 	{Name: "credits.configure", Role: RoleAdmin, Input: &CreditSettings{}, Summary: "Set the simulated pack, cap, credit value, starting grant and S3 pricing conversions."},
@@ -243,7 +242,7 @@ func (s Spec) LegacyDeployment() bool {
 }
 
 // PrivateOwnerWrite identifies shared lifecycle handlers available to a
-// developer managing a private workspace through the official catalog interface.
+// developer managing a custom workspace through the official catalog interface.
 func (s Spec) PrivateOwnerWrite() bool {
 	switch s.Name {
 	case "app.set", "app.start", "app.stop", "secret.set", "secret.delete":

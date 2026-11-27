@@ -112,8 +112,8 @@ func validateApp(app App, lim Limits) *AppError {
 	if !deploymentIDOK(app.AppID, app.DeploymentID) {
 		return fail("deploymentId", "must be <appId>-dep-<1 to 9 digits>")
 	}
-	if app.Release.PrivateKey != "" && app.PrivateRoute == nil {
-		return fail("privateRoute", "encrypted releases require authenticated ingress")
+	if app.Release.PrivateKey != "" && app.platformHostname() == "" {
+		return fail("hostnames", "custom builds require one platform hostname")
 	}
 	if route := app.PrivateRoute; route != nil {
 		if len(route.PublicKey) != ed25519.PublicKeySize || len(app.Hostnames) != 0 {

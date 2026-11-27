@@ -193,11 +193,11 @@ func dropInstructions(role dropapi.Role) string {
 	if role == dropapi.RoleAdmin {
 		admin = " As an admin you also read accounts and invites and invite people (invite.create returns a sign-in URL for the person to pass on; Drop sends no invite email) and change accounts with user.set: do so only when the person asks, naming the address. You also manage nodes (node.create and node.rotate_secret return the node's agent password once: pass it on only to whoever installs the agent) and place apps on them (placement.set, placement.clear), only on the person's request."
 	}
-	private := ""
+	custom := ""
 	if role == dropapi.RoleDeveloper {
-		private = " For a private build, obtain a one-time PUT URL with developer.build_upload or import a public HTTPS executable with developer.build_import. Keep executable bytes out of this conversation. After inspection, use developer.build_create with the returned sha256, app name and multiplier."
+		custom = " For a custom app, obtain a one-time PUT URL with developer.build_upload or import a public HTTPS executable with developer.build_import. Keep executable bytes out of this conversation. After inspection, use developer.build_create with the returned sha256, app name and multiplier. Open the HTTPS root of the returned hostname directly."
 	}
-	return "Drop runs people's apps (one Linux executable each) on PocketContext-managed hosts. Two tools, both with the account that approved this connection: drop_read reads (start with what=me, then apps), drop_write changes things through Drop's operations. Every call is checked on the server against your role and ownership." + admin + private +
+	return "Drop runs people's apps (one Linux executable each) on PocketContext-managed hosts. Two tools, both with the account that approved this connection: drop_read reads (start with what=me, then apps), drop_write changes things through Drop's operations. Every call is checked on the server against your role and ownership." + admin + custom +
 		" A change to what an app runs with starts a new deployment, which restarts it. " + secretWarning +
 		" There is no shell, file access or server administration."
 }
@@ -247,7 +247,7 @@ func writeSchema(names []string) map[string]any {
 }
 
 // Official catalog users see the guided operations for official apps. Developer
-// accounts additionally manage their private apps.
+// accounts additionally manage their custom apps.
 type mcpProfile struct {
 	role     dropapi.Role
 	official bool

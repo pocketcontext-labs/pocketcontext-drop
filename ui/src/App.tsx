@@ -186,7 +186,7 @@ function Workspace({
   if(hostedAdmin&&view==="admin-releases")page=<OfficialReleases onActivated={()=>setMe({...me,official_catalog:true})}/>;
   else if(hostedAdmin&&me.official_catalog&&(defaultPage||view==="admin-waitlist"||view==="admin-users"))page=<UserDirectory me={me} waiting={view==="admin-waitlist"}/>;
   else if(view==="admin-releases")page=<NotFound/>;
-  else if (view === "private-new") page = developer ? <CreateWorkspace privateBuild /> : <NotFound admin={hostedAdmin} />;
+  else if (view === "custom-new") page = developer ? <CreateWorkspace privateBuild /> : <NotFound admin={hostedAdmin} />;
   else if (view === "credits") page = <Credits admin={me.admin} />;
   else if (hostedAdmin && (defaultPage || view === "admin-waitlist"))
     page = <AdminWaitlist account={me.id} />;
@@ -211,7 +211,7 @@ function Workspace({
           {!hostedAdmin && <a
             href={viewHashes.apps}
             aria-current={
-              view === "apps" || view === "app" || (view === "app-new" || view === "private-new")
+              view === "apps" || view === "app" || (view === "app-new" || view === "custom-new")
                 ? "page"
                 : undefined
             }

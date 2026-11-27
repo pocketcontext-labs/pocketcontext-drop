@@ -101,6 +101,9 @@ func TestRunWritesDesiredAndReports(t *testing.T) {
 	if r.Nibrunner == nil || r.Nibrunner.Capacity["extra"] != nil || r.Nibrunner.Versions["other"] != nil || r.Nibrunner.Capacity["vcpuCount"] == nil {
 		t.Fatalf("host report must keep only the known numbers and versions: %+v", r.Nibrunner)
 	}
+	if r.Nibrunner.Versions[dropapi.CustomPublicIngress] != true {
+		t.Fatal("agent must advertise custom app public routing independently of the legacy gateway")
+	}
 	all := e.server.allReports()
 	if strings.Contains(all, "cron") || strings.Contains(all, testSentinel) {
 		t.Fatal("a report must never carry cron or a secret value")

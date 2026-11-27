@@ -17,6 +17,10 @@ import (
 // render.Input after staging releases and resolving secret values, and sends
 // its report to AgentReportRoute (drop.report/v1).
 
+// CustomPublicIngress is advertised by agents that can stage encrypted custom
+// builds and serve them with the standard public HTTP route.
+const CustomPublicIngress = "customPublicIngress"
+
 // Agent routes and the node collection.
 const (
 	AgentDesiredRoute = "/api/drop/agent/desired"

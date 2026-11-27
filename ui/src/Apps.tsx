@@ -1,7 +1,6 @@
 import {productName} from "./Official";
 import RuntimeState from "./RuntimeState";
 import OpenArrow from "./OpenArrow";
-import { OpenPrivateApp } from "./PrivateApps";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { appURL } from "./AppAddress";
@@ -60,7 +59,7 @@ function CreateAppAction({ hosted, developer }: { hosted: boolean; developer: bo
         </svg>
       </button>
       <div id="create-options" hidden={!open}>
-        <a href={viewHashes["private-new"]}>Create private app</a>
+        <a href={viewHashes["custom-new"]}>Create custom app</a>
       </div>
     </>}
   </div>;
@@ -141,9 +140,7 @@ export default function Apps({ beta = false, official=false, developer=false }: 
               </div>
               {url && <div className="dashboard-actions">
                 <CopyButton text={url} icon label="Copy app URL" />
-                {app.developer_private
-                  ? <OpenPrivateApp app={app.id} hostname={app.hostname} disabled={!app.current_release || app.archived} />
-                  : <a className="button secondary" href={url} target="_blank" rel="noreferrer">Open <OpenArrow /></a>}
+                <a className="button secondary" href={url} target="_blank" rel="noreferrer">Open <OpenArrow /></a>
               </div>}
             </li>;
           })}

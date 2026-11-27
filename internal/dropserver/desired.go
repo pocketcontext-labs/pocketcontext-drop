@@ -54,7 +54,7 @@ func buildDesired(app core.App, node *core.Record) (*dropapi.Desired, error) {
 		if record.GetBool("archived") {
 			continue
 		}
-		desired, ok, err := desiredApp(app, record, services)
+		desired, ok, err := desiredApp(app, record, services, versions[dropapi.CustomPublicIngress] == true)
 		if err != nil {
 			return nil, err
 		}
@@ -117,7 +117,7 @@ func buildDesired(app core.App, node *core.Record) (*dropapi.Desired, error) {
 }
 
 // desiredApp maps one placed app; ok is false when it has no current release.
-func desiredApp(app core.App, record *core.Record, services Services) (dropapi.DesiredApp, bool, error) {
+func desiredApp(app core.App, record *core.Record, services Services, publicCustom bool) (dropapi.DesiredApp, bool, error) {
 	releaseID := record.GetString("current_release")
 	if releaseID == "" {
 		return dropapi.DesiredApp{}, false, nil
@@ -191,12 +191,16 @@ func desiredApp(app core.App, record *core.Record, services Services) (dropapi.D
 		if !isDeveloper(owner) || owner.GetBool("suspended") {
 			a.DesiredState = appspec.StateStopped
 		}
+	}
+	host := appHostname(record, services.AppDomain)
+	if record.GetBool("developer_private") && !publicCustom {
+		// Already-placed apps keep their previous route until the node upgrades.
 		key, err := privateAppKey(app, record.Id)
 		if err != nil {
 			return a, false, err
 		}
-		a.PrivateRoute = &render.PrivateRoute{Hostname: appHostname(record, services.AppDomain), PublicKey: key.Public().(ed25519.PublicKey)}
-	} else if host := record.GetString("hostname"); host != "" {
+		a.PrivateRoute = &render.PrivateRoute{Hostname: host, PublicKey: key.Public().(ed25519.PublicKey)}
+	} else if host != "" {
 		a.Hostnames = append(a.Hostnames, render.Hostname{Hostname: host, Kind: "platform"})
 	}
 	secrets, err := secretRecords(app, record)

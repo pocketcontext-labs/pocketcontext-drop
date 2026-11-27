@@ -117,13 +117,16 @@ func serveReport(re *core.RequestEvent, state *agentState) error {
 				}
 				return nil
 			}
+			publicCustomBefore := jsonMap(fresh, "versions")[dropapi.CustomPublicIngress] == true
 			allocatableBefore := normalizedValue(fresh.Get("allocatable"))
 			nodeFields.apply(fresh, now)
 			if err := tx.Save(fresh); err != nil {
 				return err
 			}
-			// A new allocatable can change which apps pass the check.
-			if outcome.resizeFinished || string(allocatableBefore) != string(normalizedValue(fresh.Get("allocatable"))) {
+			// An upgraded agent can switch existing custom apps to the public
+			// route without changing their placement, volume or deployment ID.
+			publicCustomAfter := jsonMap(fresh, "versions")[dropapi.CustomPublicIngress] == true
+			if outcome.resizeFinished || publicCustomBefore != publicCustomAfter || string(allocatableBefore) != string(normalizedValue(fresh.Get("allocatable"))) {
 				_, err = syncNode(tx, fresh)
 			}
 			return err

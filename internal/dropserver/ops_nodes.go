@@ -328,8 +328,8 @@ func placementSet(c *Ctx, in *dropapi.PlacementSetInput) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if app.GetBool("developer_private") && jsonMap(node, "versions")["privateIngress"] != true {
-		return nil, Conflict(dropapi.CodeNodeUnavailable, "This node does not support private developer apps.")
+	if app.GetBool("developer_private") && jsonMap(node, "versions")[dropapi.CustomPublicIngress] != true {
+		return nil, Conflict(dropapi.CodeNodeUnavailable, "This node does not support public routes for custom apps.")
 	}
 	if node.GetString("state") != dropapi.NodeActive {
 		return nil, Conflict(dropapi.CodeNodeUnavailable, "Node "+node.GetString("name")+" is "+node.GetString("state")+": only an active node takes apps.")

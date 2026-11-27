@@ -524,11 +524,14 @@ func (a *Agent) report(ctx context.Context) error {
 		a.logf("%v", err)
 	}
 	body := buildReport(a.hostID, a.version, a.appliedSeq, a.intents, rep, a.writtenRevision, a.now())
-	if a.cfg.PrivateIngress && body.Nibrunner != nil {
+	if body.Nibrunner != nil {
 		if body.Nibrunner.Versions == nil {
 			body.Nibrunner.Versions = map[string]any{}
 		}
-		body.Nibrunner.Versions["privateIngress"] = true
+		body.Nibrunner.Versions[dropapi.CustomPublicIngress] = true
+		if a.cfg.PrivateIngress {
+			body.Nibrunner.Versions["privateIngress"] = true
+		}
 	}
 	body.Deleted = confirmedVolumeRemovals(a.deleted, rep, a.hostID, a.writtenRevision)
 	logs := filepath.Join(filepath.Dir(a.cfg.Reported), "logs")

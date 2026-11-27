@@ -240,7 +240,7 @@ func checkPrivateManifest(tx core.App, app, release *core.Record) error {
 		return Invalid("manifest", "The executable must implement --drop-manifest.")
 	}
 	if app.GetBool("private_tiered") && manifest.App != app.GetString("executable_name") {
-		return Invalid("manifest", "The manifest product must match this private app.")
+		return Invalid("manifest", "The manifest product must match this custom app.")
 	}
 	if manifest.Schema == "" {
 		app.Set("required_s3", false)
@@ -258,7 +258,7 @@ func checkPrivateManifest(tx core.App, app, release *core.Record) error {
 	}
 	if (app.GetString("crew_enrollment") == "" && slices.Contains(manifest.Requires, "s3_replica")) ||
 		((app.GetString("crew_owner_email") == "" || app.GetBool("private_owner_email")) && slices.Contains(manifest.Requires, "verified_owner_email")) {
-		return Invalid("kind", "Create a private app with managed owner services (kind crew) for this release.")
+		return Invalid("kind", "Create a custom app with managed owner services (kind crew) for this release.")
 	}
 	if slices.Contains(manifest.Requires, "sign_in_email") && !app.GetBool("sign_in_email_enabled") {
 		return Invalid("sign_in_email_enabled", "The release requires owner email sign-in.")

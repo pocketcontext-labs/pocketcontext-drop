@@ -20,6 +20,16 @@ import (
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/privateblob"
 )
 
+func appHostname(a *core.Record, domain string) string {
+	if host := a.GetString("hostname"); host != "" || !a.GetBool("developer_private") {
+		return host
+	}
+	if !ValidAppDomain(domain) {
+		return ""
+	}
+	return a.GetString("slug") + "." + domain
+}
+
 // App operations (M5a). Ownership: an app belongs to the account that created
 // it; reads also show admins any app, writes only its owner, and another
 // account's app is a 404 either way. Validation follows internal/appspec, the
@@ -73,7 +83,7 @@ func (c *Ctx) writableApp(ref string) (*core.Record, error) {
 		return nil, resizeBusy()
 	}
 	if app.GetBool("developer_private") && !isDeveloper(c.Auth) {
-		return nil, Forbidden("Developer access is required to change this private app.")
+		return nil, Forbidden("Developer access is required to change this custom app.")
 	}
 	if err := allowCreditDeployment(c.App, app.GetString("owner")); err != nil {
 		return nil, err
@@ -412,7 +422,7 @@ type runtimeFeatures struct {
 func appCreate(c *Ctx, in *dropapi.AppCreateInput) (any, error) {
 	if c.Spec.Name == "developer.create" && !strings.HasPrefix(in.Slug, "dev-") {
 		if !slugPattern.MatchString(in.Slug) {
-			return nil, Invalid("slug", "Choose a valid private app slug.")
+			return nil, Invalid("slug", "Choose a valid custom app slug.")
 		}
 		in.Slug = "dev-" + in.Slug
 	}
@@ -540,7 +550,7 @@ func createApp(c *Ctx, in *dropapi.AppCreateInput, features runtimeFeatures) (an
 	app.Set("slug", in.Slug)
 	app.Set("nib_app_id", nibAppID)
 	app.Set("volume_id", appspec.VolumeID(nibAppID))
-	if domain := servicesOf(c.App).AppDomain; domain != "" && !app.GetBool("developer_private") {
+	if domain := servicesOf(c.App).AppDomain; domain != "" {
 		app.Set("hostname", in.Slug+"."+domain)
 	}
 	s.apply(app)
@@ -780,7 +790,7 @@ func appRestore(c *Ctx, in *dropapi.AppRestoreInput) (any, error) {
 	}
 	if app.GetBool("developer_private") {
 		if !isDeveloper(c.Auth) {
-			return nil, Forbidden("Developer access is required to restore a private app.")
+			return nil, Forbidden("Developer access is required to restore a custom app.")
 		}
 		if err := checkInstalledPrivateManifest(c.App, app); err != nil {
 			return nil, err

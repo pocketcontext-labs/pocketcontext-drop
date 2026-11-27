@@ -115,7 +115,7 @@ func testPrivateBuild(t *testing.T, archive bool) {
 	_, _, node := h.Node("test-node", hostA)
 	ready := reportOf(hostA)
 	versions := ready["nibrunner"].(map[string]any)["versions"].(map[string]any)
-	versions["privateIngress"] = true
+	versions[dropapi.CustomPublicIngress] = true
 	versions["cpuQuarterQuota"] = true
 	if code, resp := report(t, h, node, ready); code != 200 {
 		t.Fatal(resp)

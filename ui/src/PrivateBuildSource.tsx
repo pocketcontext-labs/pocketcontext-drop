@@ -122,8 +122,7 @@ export default function PrivateBuildSource({
         </>
       )}
       <small className="quiet">
-        Choose a Linux executable or a .tar.gz archive containing one executable. The executable must support <code>--drop-manifest</code>. Private apps receive a <code>dev-</code>
-        hostname.
+        Choose a Linux executable or a .tar.gz archive containing one executable. The executable must support <code>--drop-manifest</code>. Your app opens at a public <code>dev-</code> hostname. The executable controls any app sign-in.
       </small>
       {busy && <span role="status">Checking build…</span>}
       {error && <span role="alert">{error}</span>}

@@ -164,13 +164,13 @@ sudo systemd-run --pipe --wait --collect -p EnvironmentFile=/etc/drop/agent.env 
 
 `internal/agent` unit tests drive the agent against a fake server (`fake_server_test.go`) and in-memory AWS: write, backup and staging; realtime events, reconnects and the ticker; server down, 401, 403, 429, 5xx and malformed documents leaving the file untouched; foreign entries refusing start and `check` without writing; host mismatch; staging, secret and server refusals keeping previous entries; tombstones; unchanged content skipping the write; the report mapping with `cron` stripped; no secret in `state.json`, reports or logs. `tests/drop_e2e.py` (`make e2e`, CI) runs the real binary on both sides with `--fake-aws` in a temporary folder.
 
-### Private developer releases
+### Custom app releases
 
-After installing and verifying the private HTTPS ingress on a node, set
-`DROP_AGENT_PRIVATE_INGRESS=true` in that node's agent environment and restart
-the agent. The default is off. The control plane only places private developer
-apps on eligible nodes reporting `versions.privateIngress: true`. Automatic
-placement also applies its normal node allowlist and capacity checks.
+Agents report `versions.customPublicIngress` when they can stage an encrypted
+custom executable and serve it at its public HTTPS root. New custom apps are
+placed on eligible nodes supporting this capability. An upgraded agent opens
+existing custom apps on its node at their current hostname. See
+[Opening custom apps](private-ingress.md) for the rolling upgrade behavior.
 
 The node's authenticated desired document includes an app-specific release key
 for its assigned encrypted executable. The key stays in agent memory. The

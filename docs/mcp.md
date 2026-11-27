@@ -35,19 +35,19 @@ A `what` whose operation is not registered yet stays listed, marked "(not availa
 The op enum and the op table in the tool description (name, role, input signature such as `{app, name?, env?: {set?, unset?}}` and summary) are generated from the registry in `internal/dropapi`: the operations whose `Spec` has `MCP: true`, filtered to the role and capabilities of the account. `TestMCPWriteTableMatchesRegistry` checks the enum and table against the registry, and `TestMCPWriteOpsFollowTicket` checks the set against decision 11's list:
 
 - users: manage their own published catalog workspaces with `workspace.create`, `workspace.resize` and `workspace.upgrade`;
-- developers: user operations plus private apps, including build inspection, private workspace creation and release submission;
+- developers: user operations plus custom apps, including build inspection, custom app creation and release submission;
 - admins: `invite.create`, `invite.revoke`, `user.set`, `node.create`, `node.rotate_secret`, `node.set_state`, `placement.set`, `placement.clear`.
 
 Every operation on these lists is registered (`node.create` and `node.rotate_secret` return a node's agent password once: it passes through the conversation, so the instructions ask admins to hand it only to whoever installs the agent). Reads sent to `drop_write` are refused (use `drop_read`), and so are operations not offered through MCP (`app.archive`, `app.restore`).
 
-### Test a private app
+### Test a custom app
 
 1. Call `drop_read` with `{"what":"me"}`. Check that the account role is `developer`.
 2. For a local executable or a tar.gz archive containing one Linux amd64 executable, call `developer.build_upload {}` and PUT the bytes to the one-time URL outside the conversation. For a public HTTPS download, call `developer.build_import {"url":"…"}`. Both paths inspect the executable inside the archive and return its digest for creation. The executable must implement `--drop-manifest`.
 3. Read the inspected product, version, recommended multiplier and SHA-256. Select a size from 1× through 8×. Drop obtains the runtime settings from the executable’s `--drop-manifest`.
-4. Call `developer.build_create {"sha256":"DIGEST","name":"Upgrade test","multiplier":4}` with a stable idempotency key. Read the returned app ID and hostname. The private instance has a generated `dev-` prefix. Use `drop_read` with `{"what":"status","app":"APP_ID"}` to follow deployment.
+4. Call `developer.build_create {"sha256":"DIGEST","name":"Upgrade test","multiplier":4}` with a stable idempotency key. Read the returned app ID and hostname. Custom instances receive a generated `dev-` prefix. Visit the HTTPS root of the returned hostname to open the app. Use `drop_read` with `{"what":"status","app":"APP_ID"}` to follow deployment.
 
-The private operations are also available when the official catalog is active. A private deployment creates no official catalog entry.
+Developer operations remain available when the catalog is active. Publishing a custom build to the catalog requires a separate admin review.
 
 ### Errors
 

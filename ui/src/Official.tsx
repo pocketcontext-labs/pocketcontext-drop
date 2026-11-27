@@ -1,4 +1,3 @@
-import { OpenPrivateApp } from "./PrivateApps";
 import PrivateBuildSource, {type Build} from "./PrivateBuildSource";
 import CopyButton from "./CopyButton";
 import "./releases.css";
@@ -120,7 +119,7 @@ export function CreateWorkspace({ catalog, loadError, releaseSelection = true, p
     <section className={privateBuild ? "wide official-page private-create" : "panel wide official-page"}>
       {privateBuild && <a className="private-back" href="#/apps">← Your apps</a>}
       <h2>
-        {privateBuild ? "Create private app" : product ? (`Create ${/^[aeiou]/i.test(product) ? "an" : "a"} ${productName(product)} app`) : "Catalog"}
+        {privateBuild ? "Create custom app" : product ? (`Create ${/^[aeiou]/i.test(product) ? "an" : "a"} ${productName(product)} app`) : "Catalog"}
       </h2>
       {catalog && !catalog.enabled ? (
         <p>The official catalog is awaiting activation.</p>
@@ -587,11 +586,9 @@ export function WorkspaceDetail({ app, reload, latest, loadError, children }: {
         <header className="status-header">
           <div className="status-identity"><h1>{app.name}</h1><RuntimeState key={app.id} id={app.id} />
             {app.developer_private && <span className="custom-app-label">Custom</span>}</div>
-          {app.developer_private ? <OpenPrivateApp app={app.id} hostname={app.hostname} primary
-            disabled={!app.current_release || app.archived || app.desired_state === "stopped"} />
-            : appURL(app.hostname) && <a className="button primary" href={appURL(app.hostname)} target="_blank" rel="noreferrer">Open app <OpenArrow /></a>}
+          {appURL(app.hostname) && <a className="button primary" href={appURL(app.hostname)} target="_blank" rel="noreferrer">Open app <OpenArrow /></a>}
         </header>
-        <AppAddress hostname={app.hostname} copyOnly={app.developer_private} />
+        <AppAddress hostname={app.hostname} />
         {app.desired_state === "on-request" && !app.archived && <p className="quiet">HTTP traffic wakes this app automatically. Compute charges pause while it sleeps. Stored data can still incur S3 charges.</p>}
       </section>
       <section className="panel official-page">

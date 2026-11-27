@@ -115,7 +115,8 @@ func testPrivateDeveloperRelease(t *testing.T, withManifest bool) {
 	wantError(t, h.Op(user, "developer.deploy", deploy), 409, "beta_no_capacity")
 	_, _, node := h.Node("new-node", hostB)
 	ready := reportOf(hostB)
-	ready["nibrunner"].(map[string]any)["versions"].(map[string]any)["privateIngress"] = true
+	versions := ready["nibrunner"].(map[string]any)["versions"].(map[string]any)
+	versions[dropapi.CustomPublicIngress] = true
 	if code, _ := report(t, h, node, ready); code != 200 {
 		t.Fatal(code)
 	}
@@ -125,17 +126,32 @@ func testPrivateDeveloperRelease(t *testing.T, withManifest bool) {
 		wantError(t, h.Op(user, "app.set", map[string]any{"app": id, "http_port": 9090}), 400, dropapi.CodeInvalidInput)
 	}
 	d, _ := desired(t, h, node)
-	if len(d.Apps) != 1 || d.Apps[0].PrivateRoute == nil || d.Apps[0].Release.PrivateKey == "" || len(d.Apps[0].Hostnames) != 0 {
-		t.Fatal("missing protected deployment")
+	wantHost := app["hostname"].(string)
+	if len(d.Apps) != 1 || d.Apps[0].PrivateRoute != nil || d.Apps[0].Release.PrivateKey == "" || len(d.Apps[0].Hostnames) != 1 || d.Apps[0].Hostnames[0].Hostname != wantHost || d.Apps[0].Hostnames[0].Kind != "platform" {
+		t.Fatal("missing public hostname or encrypted release")
 	}
-	// A migration rotates signing keys directly in the database. Nodes must
-	// receive the new key on their next pull even without a write operation.
-	if _, err := h.App.DB().NewQuery("UPDATE drop_private_keys SET seed=randomblob(32) WHERE app={:id}").Bind(dbx.Params{"id": id}).Execute(); err != nil {
+	// Recreate the persisted state of an app placed before public custom
+	// routing. The upgraded agent's first capability report must switch
+	// that same deployment and volume to the normal platform hostname.
+	if _, err := h.App.DB().NewQuery("UPDATE apps SET hostname='' WHERE id={:id}").Bind(dbx.Params{"id": id}).Execute(); err != nil {
 		t.Fatal(err)
 	}
+	delete(versions, dropapi.CustomPublicIngress)
+	versions["privateIngress"] = true
+	if code, resp := report(t, h, node, ready); code != 200 {
+		t.Fatal(resp)
+	}
+	before, _ := desired(t, h, node)
+	if len(before.Apps) != 1 || before.Apps[0].PrivateRoute == nil || before.Apps[0].PrivateRoute.Hostname != wantHost {
+		t.Fatal("legacy agent lost its placed route")
+	}
+	versions[dropapi.CustomPublicIngress] = true
+	if code, resp := report(t, h, node, ready); code != 200 {
+		t.Fatal(resp)
+	}
 	after, _ := desired(t, h, node)
-	if len(after.Apps) != 1 || after.Apps[0].PrivateRoute == nil || after.DesiredSeq <= d.DesiredSeq || bytes.Equal(after.Apps[0].PrivateRoute.PublicKey, d.Apps[0].PrivateRoute.PublicKey) {
-		t.Fatal("node failed to reconcile rotated private app key")
+	if len(after.Apps) != 1 || after.DesiredSeq <= before.DesiredSeq || after.Apps[0].PrivateRoute != nil || len(after.Apps[0].Hostnames) != 1 || after.Apps[0].Hostnames[0].Hostname != wantHost || after.Apps[0].DeploymentID != before.Apps[0].DeploymentID || after.Apps[0].Volume.VolumeID != before.Apps[0].Volume.VolumeID {
+		t.Fatal("placed custom app did not reconcile to its public route")
 	}
 	inactive, doc := desired(t, h, oldNode)
 	if len(inactive.Apps) != 0 || strings.Contains(doc, d.Apps[0].Release.PrivateKey) {

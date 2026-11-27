@@ -46,7 +46,7 @@ it("lists the apps and links each to its page", async () => {
   expect(screen.getByRole("link", { name: "Create app" })).toHaveAttribute("href", "#/catalog");
 });
 
-it("shows custom apps with their tier, product, copy action and owner-only open action", async () => {
+it("shows custom apps with their tier, product, copy action and direct app link", async () => {
   const custom = { ...app, developer_private: true, private_tiered: true, executable_name: "field-notes", current_release: "release1" };
   vi.spyOn(dropApi, "listApps").mockResolvedValue({ apps: [custom], quota: { used: 0, limit: 0, unlimited: true }, has_more: false });
   render(<App />);
@@ -54,8 +54,7 @@ it("shows custom apps with their tier, product, copy action and owner-only open 
   expect(screen.getByText("2×")).toBeVisible();
   expect(screen.getByText("Field Notes")).toBeVisible();
   expect(screen.getByRole("button", { name: "Copy app URL" })).toBeVisible();
-  expect(screen.getByRole("button", { name: "Open" })).toBeEnabled();
-  expect(screen.queryByRole("link", { name: "Open" })).toBeNull();
+  expect(screen.getByRole("link", { name: "Open" })).toHaveAttribute("href", "https://" + custom.hostname);
 });
 
 it("offers developers one create action leading to both destinations", async () => {
@@ -64,12 +63,12 @@ it("offers developers one create action leading to both destinations", async () 
   render(<App />);
   const create = await screen.findByRole("link", { name: "Create app" });
   expect(create).toHaveAttribute("href", "#/catalog");
-  expect(screen.queryByRole("link", { name: /private app/i })).toBeNull();
+  expect(screen.queryByRole("link", { name: /custom app/i })).toBeNull();
   const toggle = screen.getByRole("button", { name: "More app creation options" });
   fireEvent.click(toggle);
-  const privateApp = screen.getByRole("link", { name: "Create private app" });
-  expect(privateApp).toHaveAttribute("href", "#/private/new");
-  fireEvent.keyDown(privateApp, { key: "Escape" });
+  const customApp = screen.getByRole("link", { name: "Create custom app" });
+  expect(customApp).toHaveAttribute("href", "#/custom/new");
+  fireEvent.keyDown(customApp, { key: "Escape" });
   expect(toggle).toHaveFocus();
   expect(toggle).toHaveAttribute("aria-expanded", "false");
 });
@@ -341,7 +340,7 @@ it("can reopen a completed receipt after the original app is gone", async () => 
   expect(screen.getByText(app.slug)).toBeInTheDocument();
 });
 
-it("creates an owner-private app from the hosted developer route", async () => {
+it.each(["#/custom/new", "#/private/new"])("creates a custom app from the hosted developer route %s", async route => {
   const apiModule = await import("./dropApi");
   vi.spyOn(dropApi, "me").mockResolvedValue({ ...member, role: "developer", official_catalog: true });
   const digest = "c".repeat(64);
@@ -349,7 +348,7 @@ it("creates an owner-private app from the hosted developer route", async () => {
     if (name === "developer.build_import") return { product: "new-tool", version: "1.2", sha256: digest, minimum_multiplier: 5 };
     return { app };
   });
-  history.replaceState(null, "", "/#/private/new");
+  history.replaceState(null, "", "/" + route);
   render(<App />);
   fireEvent.change(await screen.findByLabelText("App name"), { target: { value: "My experiment" } });
   fireEvent.change(screen.getByLabelText("Source"), { target: { value: "url" } });
@@ -377,18 +376,18 @@ it("shows the workspace overview and resizes a custom app without opening its ru
   render(<App />);
   expect(await screen.findByRole("heading", { name: "App settings" })).toBeVisible();
   expect(screen.getByText(/Installed · Field Notes 1.3/)).toBeVisible();
-  expect(screen.getByRole("button", {name: "Open app"})).toBeEnabled();
+  expect(screen.getByRole("link", {name: "Open app"})).toHaveAttribute("href", "https://" + app.hostname);
   expect(screen.getByText("Custom")).toBeVisible();
   expect(screen.getByText("Developer tools").closest("details")).not.toHaveAttribute("open");
   expect(screen.getByRole("button", {name: "Copy app URL"})).toBeVisible();
-  expect(screen.queryByRole("link", {name: "https://" + app.hostname})).toBeNull();
+  expect(screen.getByRole("link", {name: "https://" + app.hostname})).toHaveAttribute("href", "https://" + app.hostname);
   expect(screen.queryByText("Testers")).toBeNull();
   const size = screen.getByLabelText("Resources");
   expect(size.querySelectorAll("option")).toHaveLength(8);
   fireEvent.change(size, {target: {value: "1"}});
   fireEvent.click(screen.getByRole("button", {name: "Save resources"}));
   await vi.waitFor(() => expect(call).toHaveBeenCalledWith("workspace.resize", {app: id, multiplier: 1}));
-  expect(call.mock.calls.some(([op]) => op === "private.access")).toBe(false);
+  expect(call).toHaveBeenCalledTimes(1);
 });
 
 it("uploads a private executable and deploys a selected release separately", async () => {

@@ -104,7 +104,7 @@ What the node needs to run a release (M7 and M9) is `sha256`, `s3_key` and `size
 
 `drop_catalog_submissions` stores one review request per private release. It records the immutable release ID, submitting account, product and version from the executable’s inspected manifest, plaintext SHA-256, submission time, the admin who authorized copying the verified executable into catalog storage, and acceptance status. The release and account are foreign keys with cascading deletion. Only the developer who owns the app can submit its currently deployed executable. Admins review pending requests through `catalog.submissions`; this table has no records endpoint or SQL reader entry.
 
-Submission keeps the artifact encrypted under the private app’s key. Accepting an exact digest verifies the decrypted bytes and stages a separately addressed official release. The official artifact survives deletion of the source app. The catalog makes it available to users after an admin records the required rehearsal and publishes it.
+Submission keeps the artifact encrypted under the custom app’s key. Accepting an exact digest verifies the decrypted bytes and stages a separately addressed official release. The official artifact survives deletion of the source app. The catalog makes it available to users after an admin records the required rehearsal and publishes it.
 
 ## Nodes
 
@@ -217,11 +217,11 @@ official workspace, `official_target` pins its desired binary, and
 target confirmed by the node. Hosted restore invalidates outstanding admin
 upload links alongside customer links.
 
-### Private developer release storage
+### Custom app release storage
 
 Migration `1820002680_developer_apps.js` adds the app's developer-private
 classification, a hidden 256-bit app master and the release's hidden, bounded
-inspection manifest. Private apps keep the legacy hostname field empty. Their slugs must be unused, and stay reserved after deletion so a stale public route cannot serve a private hostname. Uploads
+inspection manifest. Custom apps use their public hostname for direct HTTPS access. For older records with an empty hostname, Drop derives the address from the stored slug and configured app domain. Custom slugs stay reserved after deletion. Uploads
 use the isolated probe on their own bytes. A declared manifest is validated and
 stored on that app release; executables without a manifest use the developer's
 declared runtime settings. Placement checks declared ports, resource minima
@@ -233,7 +233,7 @@ app derives a separate content key for each executable digest with
 HMAC-SHA-256. AES-256-GCM protects 1 MiB chunks, with an increasing chunk
 index as nonce under that content-specific key. The assigned node receives
 the content key in its authenticated desired document. App deletion purges the
-object by stored key. Identical binaries uploaded to different private apps
+object by stored key. Identical binaries uploaded to different custom apps
 therefore have separate ciphertext, records, keys and deletion lifetimes.
 
 ### Migrating existing hosted roles
