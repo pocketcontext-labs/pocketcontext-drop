@@ -35,7 +35,7 @@ import (
 var (
 	ticketUserWrites  = []string{"workspace.create", "workspace.resize", "workspace.upgrade", "app.create", "app.set", "app.start", "app.stop", "release.upload_link", "release.deploy", "secret.set", "secret.delete"}
 	ticketAdminWrites = []string{"invite.create", "invite.revoke", "user.set", "node.create", "node.rotate_secret", "node.set_state", "placement.set", "placement.clear"}
-	ticketUserReads   = []string{"me", "apps", "app", "releases", "secrets", "status", "usage", "events", "catalog"} // usage: owner decision 6 of S3 metering (Phase 1)
+	ticketUserReads   = []string{"me", "apps", "app", "releases", "secrets", "status", "usage", "events", "catalog", "shared"} // usage: owner decision 6 of S3 metering (Phase 1)
 	ticketAdminReads  = []string{"users", "invites", "nodes"}
 )
 
@@ -182,7 +182,7 @@ func TestMCPToolsByRole(t *testing.T) {
 		if write.Annotations.ReadOnlyHint || write.Annotations.DestructiveHint == nil || !*write.Annotations.DestructiveHint {
 			t.Errorf("%s drop_write hints %+v", name, write.Annotations)
 		}
-		if write.Description != dropWriteDescription(role) || read.Description != dropReadDescription(role) {
+		if write.Description != dropWriteDescription(dropapi.MCPWriteNames(role)) || read.Description != dropReadDescription(role) {
 			t.Errorf("%s descriptions differ from the generated ones", name)
 		}
 		if !strings.Contains(write.Description, "passes through this conversation") || !strings.Contains(write.Description, "reader") {
@@ -226,7 +226,7 @@ func TestMCPWriteTableMatchesRegistry(t *testing.T) {
 		if got := dropapi.MCPWriteNames(role); !slices.Equal(got, want) || len(got) == 0 {
 			t.Fatalf("%s enum %v, want %v", role, got, want)
 		}
-		description := dropWriteDescription(role)
+		description := dropWriteDescription(dropapi.MCPWriteNames(role))
 		table := description[strings.Index(description, "\nOperations:\n")+len("\nOperations:\n"):]
 		var rows []string
 		for _, line := range strings.Split(table, "\n") {
@@ -747,4 +747,64 @@ func TestMCPSecretSentinel(t *testing.T) {
 		sources = append(sources, leakscan.Text(fmt.Sprintf("MCP answer %d", i), answer))
 	}
 	leakscan.Require(t, []leakscan.Sentinel{{Label: "secret value", Value: sentinel}}, sources...)
+}
+
+// The same OAuth grant must gain and lose private operations as the account
+// changes, including on catalog-only installations and for an administrator.
+func TestMCPDeveloperAccess(t *testing.T) {
+	h := hostedMCP(t)
+	admin := h.Token(h.Owner())
+	tester, testerSession := h.User("preview@sample.test", "user")
+	testerToken := h.OAuthToken(testerSession)
+	query := h.App.DB().NewQuery("UPDATE drop_official_config SET enabled = 1 WHERE id = 1")
+	if _, err := query.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	for _, role := range []string{"admin", "user"} {
+		account, session := h.User(role+"-developer@example.test", role)
+		token := h.OAuthToken(session)
+		input := map[string]any{"name": "Private build", "slug": role + "-build"}
+		write := map[string]any{"op": "developer.create", "input": input, "idempotency_key": "create-build"}
+		for _, enabled := range []bool{false, true, false} {
+			h.MustOp(admin, "user.set", map[string]any{"user": account.Id, "developer": enabled})
+			tools := listTools(t, h, token)
+			if len(tools) != 2 || !slices.Contains(tools[0].InputSchema.Properties["what"].Enum, "shared") {
+				t.Fatalf("%s unexpected tools: %+v", role, tools)
+			}
+			names := tools[1].InputSchema.Properties["op"].Enum
+			for _, name := range []string{"developer.create", "developer.upload_link", "developer.deploy", "private.grant", "private.revoke"} {
+				if slices.Contains(names, name) != enabled || strings.Contains(tools[1].Description, "- "+name+" ") != enabled {
+					t.Errorf("%s wrong exposure of %s (developer %t): %v", role, name, enabled, names)
+				}
+			}
+			if slices.Contains(names, "node.create") != (role == "admin") || slices.Contains(names, "workspace.create") != (role == "user") {
+				t.Errorf("%s lost its ordinary schema: %v", role, names)
+			}
+			if self := mustTool(t, h, token, "drop_read", map[string]any{"what": "me"}); self["developer"] != enabled {
+				t.Fatalf("me did not reflect the grant: %v", self)
+			}
+			if !enabled {
+				wantToolError(t, callTool(t, h, token, "drop_write", write), 403, "forbidden")
+				continue
+			}
+			result := mustTool(t, h, token, "drop_write", write)
+			app := result["result"].(map[string]any)["app"].(map[string]any)
+			if app["owner"] != account.Id || app["slug"] != role+"-build" {
+				t.Fatalf("%s created an unexpected app: %v", role, app)
+			}
+			upload := mustTool(t, h, token, "drop_write", map[string]any{"op": "developer.upload_link", "input": map[string]any{"app": app["id"]}})
+			if path, _ := dig(upload, "result", "path").(string); !strings.HasPrefix(path, dropapi.UploadRoutePrefix) {
+				t.Fatalf("missing one-time upload path for %s", role)
+			}
+			ref := map[string]any{"app": app["id"], "email": tester.Email()}
+			for _, op := range []string{"private.grant", "private.revoke"} {
+				mustTool(t, h, token, "drop_write", map[string]any{"op": op, "input": ref})
+				shared := mustTool(t, h, testerToken, "drop_read", map[string]any{"what": "shared"})["apps"].([]any)
+				if op == "private.grant" && (len(shared) != 1 || dig(shared[0], "id") != app["id"]) || op == "private.revoke" && len(shared) != 0 {
+					t.Fatalf("tester apps after %s: %v", op, shared)
+				}
+				wantToolError(t, callTool(t, h, testerToken, "drop_read", map[string]any{"what": "releases", "app": app["id"]}), 404, "not_found")
+			}
+		}
+	}
 }

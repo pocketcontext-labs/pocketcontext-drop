@@ -72,7 +72,7 @@ Accounts and nodes (admins; Drop is invite-only, and no invite email is sent):
   invite list [--state all|open]     invites, newest first, with their state
   invite revoke INVITE_ID            close an open invite
   user list                          accounts with role, quota and suspension
-  user set USER_ID|EMAIL [--role user|admin] [--quota N] [--suspend | --unsuspend]
+  user set USER_ID|EMAIL [--role user|admin] [--quota N] [--suspend | --unsuspend] [--developer | --no-developer]
                                      change an account
   node list                          nodes (hosts) with state, online and capacity
   node create NAME --host-id HOST_ID add a node; prints its agent password once

@@ -1,3 +1,5 @@
+import CopyButton from "./CopyButton";
+import "./releases.css";
 import HelpTip from "./HelpTip";
 import { useEffect, useState } from "react";
 import { op, type App } from "./dropApi";
@@ -9,6 +11,7 @@ import { DeleteApp } from "./AppDeletion";
 type Published = {
   minimum_multiplier: number;
   rehearsed?: boolean;
+  archived?: boolean;
   product: string;
   version: string;
   sha256: string;
@@ -41,13 +44,13 @@ function Size({
     </div>
   );
 }
-function useCatalog() {
+function useCatalog(allVersions = false) {
   const [catalog, setCatalog] = useState<Catalog>();
   const [version, refresh] = useState(0),
     [error, setError] = useState("");
   useEffect(() => {
     let active = true;
-    op<Catalog>("catalog.list")
+    op<Catalog>("catalog.list", allVersions ? { all_versions: true, include_archived: true } : {})
       .then((v) => {
         if (active) {
           setCatalog(v);
@@ -60,17 +63,28 @@ function useCatalog() {
     return () => {
       active = false;
     };
-  }, [version]);
+  }, [version, allVersions]);
   return { catalog, error, refresh: () => refresh((v) => v + 1) };
 }
-export function OfficialCatalog() {
-  const { catalog, error: loadError } = useCatalog();
+export function OfficialCatalog({ releaseSelection = true }: { releaseSelection?: boolean }) {
+  const { catalog, error: loadError } = useCatalog(releaseSelection);
   const [product, setProduct] = useState(""),
     [name, setName] = useState(""),
     [size, setSize] = useState(4),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const [key, setKey] = useState(() => crypto.randomUUID());
+  const [showArchived, setShowArchived] = useState(false);
+  const [digest, setDigest] = useState("");
+  const published = (catalog?.releases ?? []).filter(r => r.published > 0)
+    .sort((a, b) => b.published - a.published);
+  const versions = published.filter(r => r.product === product);
+  const choices = versions.filter(r => showArchived || !r.archived);
+  const selected = choices.find(r => r.sha256 === digest);
+  const minimum = selected?.minimum_multiplier || 1;
+  const products = Object.keys(names).map(id =>
+    published.find(r => r.product === id && !r.archived) ?? published.find(r => r.product === id)
+  ).filter((r): r is Published => !!r);
   function resetKey() {
     setKey(crypto.randomUUID());
   }
@@ -84,13 +98,13 @@ export function OfficialCatalog() {
           className="stack"
           onSubmit={async (e) => {
             e.preventDefault();
-            if (busy) return;
+            if (busy || !selected) return;
             setBusy(true);
             setError("");
             try {
               const r = await op<{ app: App }>(
                 "workspace.create",
-                { product, name, multiplier: size },
+                { product, name, multiplier: Math.max(size, minimum), ...(releaseSelection && { sha256: selected.sha256 }), ...(selected.archived && { allow_archived: true }) },
                 key,
               );
               location.hash = appHash(r.app.id);
@@ -113,19 +127,36 @@ export function OfficialCatalog() {
               }}
             />
           </label>
+          <label>
+            Release
+            <select required value={selected?.sha256 ?? ""} onChange={e => {
+              setDigest(e.target.value);
+              resetKey();
+            }}>
+              {!selected && <option value="" disabled>Choose a release</option>}
+              {choices.map(r => <option key={r.sha256} value={r.sha256}>
+                {r.version}{r.archived ? " (archived)" : ""}
+              </option>)}
+            </select>
+          </label>
+          {versions.some(r => r.archived) && <label className="release-opt-in">
+            <input type="checkbox" checked={showArchived} onChange={e => {
+              setShowArchived(e.target.checked);
+              if (!e.target.checked && selected?.archived) setDigest(versions.find(r => !r.archived)?.sha256 ?? "");
+              resetKey();
+            }} />
+            Include archived releases
+          </label>}
           <Size
-            value={size}
-            minimum={
-              catalog?.releases.find((r) => r.product === product)
-                ?.minimum_multiplier
-            }
+            value={Math.max(size, minimum)}
+            minimum={minimum}
             onChange={(n) => {
               setSize(n);
               resetKey();
             }}
           />
           <div className="row">
-            <button className="primary" disabled={busy}>
+            <button className="primary" disabled={busy || !selected}>
               Create app
             </button>
             <button
@@ -140,7 +171,7 @@ export function OfficialCatalog() {
         </form>
       ) : (
         <ul className="catalog-grid">
-          {catalog?.releases.slice().sort((a, b) => Number(b.product === "crew") - Number(a.product === "crew")).map((r) => (
+          {products.map((r) => (
             <li key={r.product}>
               <h3>PocketContext {names[r.product]}</h3>
               <p>
@@ -148,11 +179,13 @@ export function OfficialCatalog() {
                   ? "Notes, tasks and human review."
                   : "Your knowledge base and project files."}
               </p>
-              <small>Version {r.version}</small>
+              <small>{r.archived ? "Archived releases available" : "Version " + r.version}</small>
               <button
                 className="primary"
                 onClick={() => {
                   setProduct(r.product);
+                  setShowArchived(false);
+                  setDigest(r.archived ? "" : r.sha256);
                   setName("My " + names[r.product]);
                   setSize(Math.max(4, r.minimum_multiplier || 1));
                   resetKey();
@@ -168,7 +201,11 @@ export function OfficialCatalog() {
     </section>
   );
 }
-export function OfficialReleases({ onActivated }: { onActivated?: () => void }) {
+export function OfficialReleases({
+  onActivated,
+}: {
+  onActivated?: () => void;
+}) {
   const { catalog, error: loadError, refresh } = useCatalog();
   const [product, setProduct] = useState("crew"),
     [version, setVersion] = useState(""),
@@ -191,10 +228,10 @@ export function OfficialReleases({ onActivated }: { onActivated?: () => void }) 
     }
   }
   return (
-    <section className="panel wide official-page">
+    <section className="release-page">
       <h2>Releases</h2>
       <form
-        className="directory-filters"
+        className="release-upload"
         onSubmit={(e) => {
           e.preventDefault();
           if (!file) return;
@@ -217,6 +254,7 @@ export function OfficialReleases({ onActivated }: { onActivated?: () => void }) 
           });
         }}
       >
+        <h3>Upload a release</h3>
         <label>
           App
           <select value={product} onChange={(e) => setProduct(e.target.value)}>
@@ -228,6 +266,7 @@ export function OfficialReleases({ onActivated }: { onActivated?: () => void }) 
           Version
           <input
             required
+            placeholder="e.g. 0.45.5-drop.1"
             value={version}
             onChange={(e) => setVersion(e.target.value)}
             maxLength={80}
@@ -235,11 +274,24 @@ export function OfficialReleases({ onActivated }: { onActivated?: () => void }) 
         </label>
         <label>
           Linux executable
-          <input
-            type="file"
-            required
-            onChange={(e) => setFile(e.target.files?.[0])}
-          />
+          <span className="release-file">
+            <span className="release-file-button" aria-hidden="true">
+              Choose file
+            </span>
+            <span
+              className="release-file-name"
+              aria-hidden="true"
+              title={file?.name}
+            >
+              {file?.name || "No file selected"}
+            </span>
+            <input
+              aria-label="Linux executable"
+              type="file"
+              required
+              onChange={(e) => setFile(e.target.files?.[0])}
+            />
+          </span>
         </label>
         <button className="primary" disabled={busy}>
           Upload and check
@@ -247,63 +299,107 @@ export function OfficialReleases({ onActivated }: { onActivated?: () => void }) 
       </form>
       {(error || loadError) && <p role="alert">{error || loadError}</p>}
       {status && <p role="status">{status}</p>}
-      <ul className="apps">
+      <ul className="release-list">
         {catalog?.releases.map((r) => (
-          <li key={r.sha256}>
-            <h3>
-              {names[r.product]} {r.version}
-            </h3>
-            <p className="quiet">
-              {r.published
-                ? "Published"
-                : r.rehearsed
-                  ? "Rehearsal recorded"
-                  : "Manifest checked"}{" "}
-              · {(r.size_bytes / 1048576).toFixed(1)} MiB
-            </p>
-            <code>{r.sha256}</code>
-            <label>
-              Data rehearsal receipt (JSON)
-              <input
-                type="file"
-                accept="application/json,.json"
-                disabled={busy}
-                onChange={(e) => {
-                  const receipt = e.target.files?.[0];
-                  e.target.value = "";
-                  if (!receipt) return;
-                  void act(async () => {
-                    if (receipt.size > 16000)
-                      throw new Error(
-                        "Choose a rehearsal receipt under 16 KB.",
-                      );
-                    const report = JSON.parse(await receipt.text());
-                    if (report.sha256 !== r.sha256)
-                      throw new Error(
-                        "This receipt belongs to another executable.",
-                      );
-                    await op("catalog.rehearse", report);
-                    return "Rehearsal evidence recorded.";
-                  });
-                }}
-              />
-            </label>
-            {!r.published && (
-              <p>
-                <button
-                  className="primary"
-                  disabled={busy || !r.rehearsed}
-                  onClick={() =>
-                    void act(async () => {
-                      await op("catalog.publish", { sha256: r.sha256 });
-                      return "Release published. Existing apps keep their installed versions.";
-                    })
+          <li key={r.sha256} className="release-card">
+            <div className="release-info">
+              <h3>
+                {names[r.product]} {r.version}
+              </h3>
+              <p className="release-meta">
+                <span
+                  className={
+                    r.published && !r.archived
+                      ? "release-state published"
+                      : "release-state"
                   }
                 >
-                  Publish release
-                </button>
+                  {r.archived
+                    ? "Archived"
+                    : r.published
+                      ? "Published"
+                      : r.rehearsed
+                        ? "Rehearsal recorded"
+                        : "Manifest checked"}
+                </span>
+                {(r.size_bytes / 1048576).toFixed(1)} MiB
               </p>
-            )}
+              <div className="release-digest">
+                <code title={r.sha256}>
+                  sha256: {r.sha256.slice(0, 8)}…{r.sha256.slice(-7)}
+                </code>
+                <CopyButton
+                  text={r.sha256}
+                  icon
+                  label={`Copy SHA-256 for ${names[r.product]} ${r.version}`}
+                />
+              </div>
+            </div>
+            <div className="release-actions">
+              {!r.published && (
+                <label>
+                  Data rehearsal receipt (JSON)
+                  <input
+                    type="file"
+                    accept="application/json,.json"
+                    disabled={busy}
+                    onChange={(e) => {
+                      const receipt = e.target.files?.[0];
+                      e.target.value = "";
+                      if (!receipt) return;
+                      void act(async () => {
+                        if (receipt.size > 16000)
+                          throw new Error(
+                            "Choose a rehearsal receipt under 16 KB.",
+                          );
+                        const report = JSON.parse(await receipt.text());
+                        if (report.sha256 !== r.sha256)
+                          throw new Error(
+                            "This receipt belongs to another executable.",
+                          );
+                        await op("catalog.rehearse", report);
+                        return "Rehearsal evidence recorded.";
+                      });
+                    }}
+                  />
+                </label>
+              )}
+              {!!r.published && !r.archived && (
+                <button
+                  className="secondary release-archive"
+                  disabled={busy}
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        `Archive ${names[r.product]} ${r.version}? Existing apps keep their installed version.`,
+                      )
+                    )
+                      void act(async () => {
+                        await op("catalog.archive", { sha256: r.sha256 });
+                        return "Release archived.";
+                      });
+                  }}
+                >
+                  Archive release
+                </button>
+              )}
+              {!r.published && (
+                <p>
+                  <button
+                    className="primary"
+                    disabled={busy || !r.rehearsed}
+                    onClick={() =>
+                      void act(async () => {
+                        await op("catalog.publish", { sha256: r.sha256 });
+                        return "Release published. Existing apps keep their installed versions.";
+                      })
+                    }
+                  >
+                    Publish release
+                  </button>
+                </p>
+              )}
+            </div>
           </li>
         ))}
       </ul>
@@ -314,7 +410,7 @@ export function OfficialReleases({ onActivated }: { onActivated?: () => void }) 
             busy ||
             !["crew", "atlas"].every((product) =>
               catalog.releases.some(
-                (r) => r.product === product && r.published,
+                (r) => r.product === product && !r.archived && r.published,
               ),
             )
           }

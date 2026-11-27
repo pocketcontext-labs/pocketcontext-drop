@@ -180,7 +180,11 @@ func betaPlacement(c *Ctx, a *core.Record) error {
 		if p != nil && p.GetString("node") != node.Id {
 			continue
 		}
-		if betaFractionalQuota(a) != 0 && jsonMap(node, "versions")["cpuQuarterQuota"] != true {
+		versions := jsonMap(node, "versions")
+		if a.GetBool("developer_private") && versions["privateIngress"] != true {
+			continue
+		}
+		if betaFractionalQuota(a) != 0 && versions["cpuQuarterQuota"] != true {
 			continue
 		}
 		cpu, mem := allocatable(node)

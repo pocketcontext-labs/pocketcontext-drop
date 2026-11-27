@@ -96,6 +96,8 @@ type Config struct {
 	// HostServices gives managed Crew apps the node's S3 proxy instead of a
 	// workload identity token (DROP_AGENT_HOST_SERVICES=s3, hostservices.go).
 	HostServices bool
+	// PrivateIngress is enabled only after the node's private ingress path is installed.
+	PrivateIngress bool
 }
 
 // StatePath is the full path of state.json.
@@ -155,6 +157,11 @@ func LoadConfig(getenv func(string) string, o Overrides, needServer bool) (Confi
 		c.identity.sourceDir = filepath.Join(c.FakeAWS, "guest-identity", "sources")
 	}
 	var err error
+	if value := getenv("DROP_AGENT_PRIVATE_INGRESS"); value != "" {
+		if c.PrivateIngress, err = strconv.ParseBool(value); err != nil {
+			return c, fmt.Errorf("DROP_AGENT_PRIVATE_INGRESS must be true or false")
+		}
+	}
 	if c.HostServices, err = hostServicesEnabled(getenv); err != nil {
 		return c, err
 	}

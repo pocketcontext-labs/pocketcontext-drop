@@ -80,10 +80,29 @@ func creditsGet(c *Ctx, in *dropapi.CreditViewInput) (any, error) {
 		return nil, err
 	}
 	entries := []creditEntry{}
-	params := dbx.Params{"o": owner, "before": in.Before}
-	err = c.App.DB().NewQuery("SELECT id,kind,delta,app,created FROM drop_credit_ledger WHERE owner={:o} AND ({:before}=0 OR id<{:before}) ORDER BY id DESC LIMIT 100").Bind(params).All(&entries)
+	limit := in.Limit
+	if limit == 0 {
+		limit = 100
+	}
+	if limit < 1 || limit > 100 {
+		return nil, Invalid("limit", "Choose between 1 and 100 entries.")
+	}
+	params := dbx.Params{"o": owner, "before": in.Before, "self": owner == c.Auth.Id,
+		"kind": in.Kind, "q": strings.TrimSpace(strings.ToLower(in.Query)), "limit": limit + 1}
+	err = c.App.DB().NewQuery(`WITH visible AS (SELECT id,kind,delta,
+ CASE WHEN {:self} OR (NOT EXISTS(SELECT 1 FROM apps a WHERE a.id=l.app AND a.developer_private=1)
+ AND NOT EXISTS(SELECT 1 FROM drop_app_deletions d WHERE d.app=l.app AND d.developer_private=1)) THEN l.app ELSE '' END AS app,
+ created FROM drop_credit_ledger l WHERE owner={:o} AND ({:before}=0 OR id<{:before}) AND ({:kind}='' OR kind={:kind}))
+ SELECT v.* FROM visible v LEFT JOIN apps a ON a.id=v.app
+ WHERE {:q}='' OR instr(lower(v.app),{:q})>0 OR instr(lower(a.name),{:q})>0 OR instr(lower(v.kind),{:q})>0
+ OR instr(CASE v.kind WHEN 's3' THEN 'storage' WHEN 'compute' THEN 'app runtime' ELSE '' END,{:q})>0
+ ORDER BY v.id DESC LIMIT {:limit}`).Bind(params).All(&entries)
 	if err != nil {
 		return nil, err
+	}
+	hasMore := len(entries) > limit
+	if hasMore {
+		entries = entries[:limit]
 	}
 	apps := []creditApp{}
 	err = c.App.DB().NewQuery(`SELECT a.id,a.name,
@@ -91,11 +110,11 @@ func creditsGet(c *Ctx, in *dropapi.CreditViewInput) (any, error) {
  COALESCE(-SUM(CASE WHEN l.kind='compute' THEN l.delta END),0) AS compute,
  COALESCE(-SUM(CASE WHEN l.kind='s3' THEN l.delta END),0) AS s3
  FROM apps a LEFT JOIN placements p ON p.app=a.id LEFT JOIN drop_credit_meter m ON m.app=a.id AND m.node=p.node AND m.deployment=a.nib_app_id||'-dep-'||CAST(a.deployment_seq AS INTEGER) LEFT JOIN drop_credit_ledger l ON l.app=a.id AND l.owner=a.owner
- WHERE a.owner={:o} GROUP BY a.id ORDER BY a.name,a.id`).Bind(dbx.Params{"o": owner}).All(&apps)
+ WHERE a.owner={:o} AND ({:self} OR a.developer_private=0) GROUP BY a.id ORDER BY a.name,a.id`).Bind(dbx.Params{"o": owner, "self": owner == c.Auth.Id}).All(&apps)
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"account": owner, "state": state, "settings": s, "entries": entries, "apps": apps}, nil
+	return map[string]any{"account": owner, "state": state, "settings": s, "entries": entries, "apps": apps, "has_more": hasMore}, nil
 }
 func creditsConfigure(c *Ctx, s *dropapi.CreditSettings) (any, error) {
 	if s.Pack < 1 || s.Pack > s.Cap || s.Cap > 1_000_000 || s.Starting < 0 || s.Starting > s.Cap || s.EuroMicrosPerCredit < 1 || s.EuroMicrosPerCredit > 1_000_000 || s.MarkupPPM < 1 || s.MarkupPPM > 10_000_000 || s.EURPerUSDPPM < 1 || s.EURPerUSDPPM > 10_000_000 {
@@ -119,7 +138,18 @@ func creditsAdjust(c *Ctx, in *dropapi.CreditAdjustment) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return creditChange(c, in.Account, "adjustment", in.Microcredits, s.Cap*microcredits)
+	delta := in.Microcredits
+	if target := in.TargetMicrocredits; target != nil {
+		if delta != 0 || *target < 0 || *target > s.Cap*microcredits {
+			return nil, Invalid("target_microcredits", "Choose a balance between zero and the credit cap.")
+		}
+		state, err := balanceOf(c.App, in.Account)
+		if err != nil {
+			return nil, err
+		}
+		delta = *target - state.Balance
+	}
+	return creditChange(c, in.Account, "adjustment", delta, s.Cap*microcredits)
 }
 func creditChange(c *Ctx, owner, kind string, delta, cap int64) (any, error) {
 	if c.creditKey == "" {

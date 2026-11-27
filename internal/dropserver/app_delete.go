@@ -30,7 +30,7 @@ func appDeletions(c *Ctx, in *dropapi.AppDeletionsInput) (any, error) {
 	receipts := []dropapi.DeletionReceipt{}
 	err = c.App.DB().NewQuery(`SELECT d.app, d.slug, d.completed,
  (SELECT COUNT(*) FROM drop_volume_deletions v WHERE v.nib=d.nib) AS waiting_nodes
- FROM drop_app_deletions d WHERE (d.owner={:owner} OR ({:admin} AND {:app}!=''))
+ FROM drop_app_deletions d WHERE (d.owner={:owner} OR ({:admin} AND d.developer_private=0 AND {:app}!=''))
  AND ({:app}='' OR d.app={:app}) ORDER BY d.rowid DESC LIMIT {:limit} OFFSET {:offset}`).Bind(params).All(&receipts)
 	if err != nil {
 		return nil, err
@@ -55,7 +55,7 @@ func deleteApp(c *Ctx, in *dropapi.AppDeleteInput) (any, error) {
 	}
 	params := dbx.Params{"app": in.App, "slug": in.ConfirmSlug, "owner": c.Auth.Id, "admin": c.Admin}
 	var replay bool
-	if err := c.App.DB().NewQuery("SELECT EXISTS(SELECT 1 FROM drop_app_deletions WHERE app={:app} AND slug={:slug} AND (owner={:owner} OR {:admin}))").Bind(params).Row(&replay); err != nil {
+	if err := c.App.DB().NewQuery("SELECT EXISTS(SELECT 1 FROM drop_app_deletions WHERE app={:app} AND slug={:slug} AND (owner={:owner} OR ({:admin} AND developer_private=0)))").Bind(params).Row(&replay); err != nil {
 		return nil, err
 	}
 	if replay {
@@ -68,8 +68,8 @@ func deleteApp(c *Ctx, in *dropapi.AppDeleteInput) (any, error) {
 	if in.ConfirmSlug != a.GetString("slug") {
 		return nil, Invalid("confirm_slug", "Type the app slug exactly.")
 	}
-	params = dbx.Params{"app": a.Id, "owner": a.GetString("owner"), "slug": in.ConfirmSlug, "nib": a.GetString("nib_app_id")}
-	if err := waitExec(c.App, "INSERT INTO drop_app_deletions(app,owner,slug,nib) VALUES ({:app},{:owner},{:slug},{:nib})", params); err != nil {
+	params = dbx.Params{"app": a.Id, "owner": a.GetString("owner"), "slug": in.ConfirmSlug, "nib": a.GetString("nib_app_id"), "private": a.GetBool("developer_private")}
+	if err := waitExec(c.App, "INSERT INTO drop_app_deletions(app,owner,slug,nib,developer_private) VALUES ({:app},{:owner},{:slug},{:nib},{:private})", params); err != nil {
 		return nil, err
 	}
 	// Include historical nodes. Moving or archiving a volume preserves it.
@@ -156,9 +156,9 @@ func finishAppDeletion(ctx context.Context, app core.App, id string) error {
 			}
 		}
 		var hashes []string
-		if err := tx.DB().NewQuery(`SELECT DISTINCT sha256 FROM releases r WHERE app={:app}
-   AND NOT EXISTS(SELECT 1 FROM drop_official_releases catalog WHERE catalog.digest=r.sha256)
-   AND NOT EXISTS(SELECT 1 FROM releases other WHERE other.sha256=r.sha256 AND other.app!=r.app)`).Bind(p).Column(&hashes); err != nil {
+		if err := tx.DB().NewQuery(`SELECT DISTINCT substr(s3_key,10) FROM releases r WHERE app={:app}
+   AND NOT EXISTS(SELECT 1 FROM drop_official_releases catalog WHERE r.s3_key='releases/'||catalog.digest)
+   AND NOT EXISTS(SELECT 1 FROM releases other WHERE other.s3_key=r.s3_key AND other.app!=r.app)`).Bind(p).Column(&hashes); err != nil {
 			return err
 		}
 		for _, digest := range hashes {

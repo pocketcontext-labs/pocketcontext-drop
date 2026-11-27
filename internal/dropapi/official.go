@@ -4,10 +4,16 @@ type OfficialUpload struct {
 	Product string `json:"product"`
 	Version string `json:"version"`
 }
+type CatalogListInput struct {
+	AllVersions     bool `json:"all_versions,omitempty"`
+	IncludeArchived bool `json:"include_archived,omitempty"`
+}
 type WorkspaceCreate struct {
-	Product    string `json:"product"`
-	Name       string `json:"name"`
-	Multiplier int    `json:"multiplier"`
+	SHA256        string `json:"sha256,omitempty"`
+	AllowArchived bool   `json:"allow_archived,omitempty"`
+	Product       string `json:"product"`
+	Name          string `json:"name"`
+	Multiplier    int    `json:"multiplier"`
 }
 type WorkspaceResize struct {
 	App        string `json:"app"`

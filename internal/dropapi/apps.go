@@ -33,6 +33,7 @@ const (
 // the instance configuration changes (see docs/ops.md). Env holds plain values
 // only: secrets are listed by name with secret.list and never returned.
 type App struct {
+	DeveloperPrivate    bool   `json:"developer_private,omitempty"`
 	MinimumMultiplier   int    `json:"minimum_multiplier,omitempty"`
 	InstalledVersion    string `json:"installed_version,omitempty"`
 	OfficialProduct     string `json:"official_product,omitempty"`

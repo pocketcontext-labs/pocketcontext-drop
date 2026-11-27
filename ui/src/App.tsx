@@ -6,11 +6,13 @@ import AdminNodes from "./AdminNodes";
 import AdminUsers from "./AdminUsers";
 import AdminWaitlist from "./AdminWaitlist";
 import Waitlist, {isWaitlistLeave, waitlistHash} from "./Waitlist";
+import { SharedApps } from "./PrivateApps";
 import AppNew from "./AppNew";
 import AppPage from "./AppPage";
 import Apps from "./Apps";
 import AppCatalog from "./AppCatalog";
 import { readDeployLink, type DeployRecipe } from "./deployRecipes";
+import AccountMenu from "./AccountMenu";
 import Brand from "./Brand";
 import BetaDeploy, { BetaLanding } from "./BetaDeploy";
 import Credits from "./Credits";
@@ -167,7 +169,7 @@ function Workspace({
     };
   }, [fromSignIn]);
   useEffect(() => {
-    if (!me?.hosted || me.admin) return;
+    if (!me?.hosted) return;
     let active = true;
     const update = () => { void dropApi.me().then(next => { if (active) setMe(next); }).catch(() => {}); };
     const timer = window.setInterval(update, 30_000);
@@ -179,10 +181,14 @@ function Workspace({
   const defaultPage = ["", "#/", "#/login", "#/account"].includes(hash) || hash.startsWith("#/invite?");
   const administration = view === "admin-waitlist" || view === "admin-users" || view === "admin-nodes";
   let page;
+  const developer = me.hosted === true && me.developer === true;
   const app = view === "app" ? appRouteFromHash(hash) : null;
   if(hostedAdmin&&view==="admin-releases")page=<OfficialReleases onActivated={()=>setMe({...me,official_catalog:true})}/>;
   else if(hostedAdmin&&me.official_catalog&&(defaultPage||view==="admin-waitlist"||view==="admin-users"))page=<UserDirectory me={me} waiting={view==="admin-waitlist"}/>;
   else if(view==="admin-releases")page=<NotFound/>;
+  else if (view === "private-new") page = developer ? <AppNew hosted privateApp /> : <NotFound />;
+  else if (hostedAdmin && developer && view === "apps" && !defaultPage) page = <Apps developer admin />;
+  else if (hostedAdmin && developer && app) page = <AppPage key={app.id} id={app.id} tab={app.tab} privateOnly />;
   else if (view === "credits") page = <Credits admin={me.admin} />;
   else if (hostedAdmin && (defaultPage || view === "admin-waitlist"))
     page = <AdminWaitlist account={me.id} />;
@@ -191,22 +197,22 @@ function Workspace({
     if (!me.admin || view === "admin-waitlist") page = <NotFound />;
     else page = view === "admin-users" ? <AdminUsers me={me} /> : <AdminNodes />;
   } else if (view === "connect") page = <Connect />;
-  else if(me.official_catalog&&["catalog","deploy","app-new"].includes(view))page=<OfficialCatalog/>;
+  else if(me.official_catalog&&["catalog","deploy","app-new"].includes(view))page=<OfficialCatalog releaseSelection={me.release_selection === true}/>;
   else if (view === "catalog") page = me.hosted ? <AppCatalog /> : <NotFound />;
   else if (view === "deploy" || (view === "app-new" && me.hosted))
     page = <BetaDeploy key={recipe ? hash : "generic"} recipe={recipe} initialFile={recipe ? null : file} account={me.id} />;
   else if (view === "app-new") page = <AppNew hosted={false} />;
   else if (app) page = <AppPage key={app.id} id={app.id} tab={app.tab} official={me.official_catalog} />;
-  else page = <Apps beta={me.hosted === true} official={me.official_catalog} />;
+  else page = <Apps developer={developer} beta={me.hosted === true} official={me.official_catalog} />;
   return (
     <div className="app">
       <header className="navbar-surface"><div className="topbar">
         <Brand />
         <nav className="nav" aria-label="Pages">
-          {!hostedAdmin && <a
+          {(!hostedAdmin || developer) && <a
             href={viewHashes.apps}
             aria-current={
-              view === "apps" || view === "app" || view === "app-new"
+              view === "apps" || view === "app" || (view === "app-new" || view === "private-new")
                 ? "page"
                 : undefined
             }
@@ -267,10 +273,7 @@ function Workspace({
             {email && <p>{email}</p>}
           </dialog>
         ) : (
-          <div className="account">
-            {email && <span title={email}>{email}</span>}
-            <button type="button" className="secondary" onClick={() => api.logout()}>Sign out</button>
-          </div>
+          <AccountMenu email={email || me.email || ""} />
         )}
       </div></header>
       <main className="content">
@@ -278,6 +281,8 @@ function Workspace({
           {Math.ceil(me.trial_remaining_seconds / 60)} shared awake minutes left. Apps run locally until the buffer runs out, then stop with their data retained. A top-up resets the buffer to 60 minutes. <a href={viewHashes.credits}>Manage credits</a>
         </p>}
         {page}
+        {me.hosted && ((view === "apps" && (!hostedAdmin || (developer && !defaultPage))) ||
+          (hostedAdmin && (defaultPage || view === "admin-users"))) && <SharedApps />}
       </main>
     </div>
   );

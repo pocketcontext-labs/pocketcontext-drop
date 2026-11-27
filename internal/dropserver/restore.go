@@ -16,6 +16,12 @@ import (
 // node.rotate_secret.
 func InvalidateNodeTokens(app core.App) error {
 	return app.RunInTransaction(func(tx core.App) error {
+		if err := waitExec(tx, "UPDATE drop_private_keys SET seed=randomblob(32)", nil); err != nil {
+			return err
+		}
+		if err := waitExec(tx, "DELETE FROM drop_private_testers", nil); err != nil {
+			return err
+		}
 		nodes, err := tx.FindAllRecords(dropapi.NodeCollection)
 		if err != nil {
 			return err

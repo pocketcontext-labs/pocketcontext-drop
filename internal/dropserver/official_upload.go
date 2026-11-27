@@ -87,7 +87,7 @@ func (u *uploader) candidateOrProbe(re *core.RequestEvent, hash string) error {
 		}
 		var collision bool
 		p := dbx.Params{"product": link.Product, "version": link.Version, "digest": digest, "size": size, "minimum": minimum}
-		if err := tx.DB().NewQuery("SELECT EXISTS(SELECT 1 FROM drop_official_releases WHERE product={:product} AND version={:version} AND digest!={:digest})").Bind(p).Row(&collision); err != nil {
+		if err := tx.DB().NewQuery("SELECT EXISTS(SELECT 1 FROM drop_official_releases WHERE (product={:product} AND version={:version} AND digest!={:digest}) OR (digest={:digest} AND (published>0 OR product!={:product} OR version!={:version})))").Bind(p).Row(&collision); err != nil {
 			return err
 		}
 		if collision {

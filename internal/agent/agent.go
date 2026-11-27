@@ -398,6 +398,10 @@ func (a *Agent) reconcile(ctx context.Context) (wrote bool, err error) {
 	for _, app := range d.Apps {
 		id := app.AppID
 		revokedS3[id] = app.LocalOnly || app.DesiredState == "stopped"
+		if app.PrivateRoute != nil && !a.cfg.PrivateIngress {
+			fail(id, app.DeploymentID, "failed", "Private app ingress is disabled on this node.")
+			continue
+		}
 		if !app.Limits.Valid() {
 			fail(id, app.DeploymentID, "failed", "refused on the node: invalid host services limits")
 			continue
@@ -509,6 +513,12 @@ func (a *Agent) report(ctx context.Context) error {
 		a.logf("%v", err)
 	}
 	body := buildReport(a.hostID, a.version, a.appliedSeq, a.intents, rep, a.writtenRevision, a.now())
+	if a.cfg.PrivateIngress && body.Nibrunner != nil {
+		if body.Nibrunner.Versions == nil {
+			body.Nibrunner.Versions = map[string]any{}
+		}
+		body.Nibrunner.Versions["privateIngress"] = true
+	}
 	body.Deleted = confirmedVolumeRemovals(a.deleted, rep, a.hostID, a.writtenRevision)
 	logs := filepath.Join(filepath.Dir(a.cfg.Reported), "logs")
 	for _, intent := range a.intents {

@@ -48,7 +48,9 @@ func online(state *agentState, node *core.Record, now time.Time) bool {
 }
 
 func (c *Ctx) nodeOut(r *core.Record) (dropapi.Node, error) {
-	placed, err := c.App.CountRecords("placements", dbx.HashExp{"node": r.Id})
+	var placed int
+	err := c.App.DB().NewQuery(`SELECT COUNT(*) FROM placements p JOIN apps a ON a.id=p.app
+ WHERE p.node={:node} AND (a.developer_private=0 OR a.owner={:viewer})`).Bind(dbx.Params{"node": r.Id, "viewer": c.Auth.Id}).Row(&placed)
 	if err != nil {
 		return dropapi.Node{}, err
 	}
@@ -66,7 +68,7 @@ func (c *Ctx) nodeOut(r *core.Record) (dropapi.Node, error) {
 		HostState: r.GetString("host_state"), AgentVersion: r.GetString("agent_version"),
 		AcceptedRevision: r.GetString("accepted_revision"),
 		Capacity:         jsonMap(r, "capacity"), Allocatable: jsonMap(r, "allocatable"), Versions: jsonMap(r, "versions"),
-		Apps: int(placed), Created: dateString(r, "created"),
+		Apps: placed, Created: dateString(r, "created"),
 	}, nil
 }
 
@@ -84,22 +86,6 @@ func (c *Ctx) findNode(ref string) (*core.Record, error) {
 		}
 	}
 	return nil, NotFound("Node")
-}
-
-// anyApp loads any account's app by id or slug (admin operations).
-func (c *Ctx) anyApp(ref string) (*core.Record, error) {
-	ref = strings.TrimSpace(ref)
-	if recordID.MatchString(ref) {
-		if r, err := c.App.FindRecordById("apps", ref); err == nil {
-			return r, nil
-		}
-	}
-	if slugPattern.MatchString(ref) {
-		if r, err := c.App.FindFirstRecordByData("apps", "slug", ref); err == nil {
-			return r, nil
-		}
-	}
-	return nil, NotFound("App")
 }
 
 func nodeList(c *Ctx, in *dropapi.NodeListInput) (any, error) {
@@ -295,7 +281,7 @@ func checkNodeRoom(app core.App, node, placed *core.Record) error {
 }
 
 func placementSet(c *Ctx, in *dropapi.PlacementSetInput) (any, error) {
-	app, err := c.anyApp(in.App)
+	app, err := c.findApp(in.App, false)
 	if err != nil {
 		return nil, err
 	}
@@ -304,7 +290,7 @@ func placementSet(c *Ctx, in *dropapi.PlacementSetInput) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		if hostedAdmin(c.App, owner) {
+		if hostedAdmin(c.App, owner) && !(app.GetBool("developer_private") && owner.GetBool("developer")) {
 			return nil, Forbidden("Only user-owned apps can be placed.")
 		}
 	}
@@ -314,6 +300,9 @@ func placementSet(c *Ctx, in *dropapi.PlacementSetInput) (any, error) {
 	node, err := c.findNode(in.Node)
 	if err != nil {
 		return nil, err
+	}
+	if app.GetBool("developer_private") && jsonMap(node, "versions")["privateIngress"] != true {
+		return nil, Conflict(dropapi.CodeNodeUnavailable, "This node does not support private developer apps.")
 	}
 	if node.GetString("state") != dropapi.NodeActive {
 		return nil, Conflict(dropapi.CodeNodeUnavailable, "Node "+node.GetString("name")+" is "+node.GetString("state")+": only an active node takes apps.")
@@ -368,7 +357,7 @@ func placementSet(c *Ctx, in *dropapi.PlacementSetInput) (any, error) {
 }
 
 func placementClear(c *Ctx, in *dropapi.PlacementClearInput) (any, error) {
-	app, err := c.anyApp(in.App)
+	app, err := c.findApp(in.App, false)
 	if err != nil {
 		return nil, err
 	}
@@ -401,7 +390,7 @@ func appStatus(c *Ctx, in *dropapi.StatusInput) (any, error) {
 	}
 	out := dropapi.Status{
 		App: app.Id, DesiredState: app.GetString("desired_state"), DeploymentID: deploymentID(app),
-		Hostname: app.GetString("hostname"),
+		Hostname: appHostname(app, servicesOf(c.App).AppDomain),
 	}
 	placement, err := placementOf(c.App, app.Id)
 	if err != nil {

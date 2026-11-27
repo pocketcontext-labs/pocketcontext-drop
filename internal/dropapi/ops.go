@@ -57,9 +57,11 @@ var IdempotencyKeyPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,128}$`)
 // Spec describes one operation. Input is a pointer to the zero value of its
 // input type (the server decodes into a fresh copy; MCP derives its schema).
 type Spec struct {
-	Name    string
-	Role    Role
-	Summary string
+	// Developer requires an explicit developer grant in addition to account access.
+	Developer bool
+	Name      string
+	Role      Role
+	Summary   string
 	// Read operations change nothing: they run outside a transaction and
 	// write no event; an idempotency key is ignored.
 	Read  bool
@@ -90,9 +92,14 @@ var opName = regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`)
 // Later milestones add their operations here (and their handlers in
 // internal/dropserver); a test checks that both sides agree.
 var specs = []Spec{
-	{Name: "catalog.list", Role: RoleUser, Input: &MeInput{}, Read: true, Summary: "List current official workspace releases."},
+	{Name: "private.grant", Role: RoleUser, Developer: true, MCP: true, Input: &PrivateTesterInput{}, Summary: "Give an existing account runtime-only access to your private app."},
+	{Name: "private.revoke", Role: RoleUser, Developer: true, MCP: true, Input: &PrivateTesterInput{}, Summary: "Remove an account's runtime access to your private app."},
+	{Name: "private.access", Role: RoleUser, OnceResult: true, Input: &PrivateAccessInput{}, Summary: "Issue short-lived runtime access to a private app you own or may test."},
+	{Name: "private.shared", Role: RoleUser, Read: true, Input: &MeInput{}, Summary: "List private apps you have been invited to test."},
+	{Name: "catalog.list", Role: RoleUser, Input: &CatalogListInput{}, Read: true, Summary: "List current official workspace releases."},
 	{Name: "catalog.upload", Role: RoleAdmin, Input: &OfficialUpload{}, OnceResult: true, Summary: "Upload a candidate for product and version checks."},
 	{Name: "catalog.rehearse", Role: RoleAdmin, Input: &OfficialRehearsal{}, Summary: "Record fixture evidence for an exact candidate and baseline."},
+	{Name: "catalog.archive", Role: RoleAdmin, Input: &BetaDigest{}, Summary: "Archive a published release and retain installed copies."},
 	{Name: "catalog.publish", Role: RoleAdmin, Input: &BetaDigest{}, Summary: "Publish a checked candidate for new workspaces."},
 	{Name: "catalog.activate", Role: RoleAdmin, Input: &MeInput{}, Summary: "Switch hosted customer deployment to the official catalog."},
 	{Name: "workspace.create", Role: RoleUser, Input: &WorkspaceCreate{}, MCP: true, Summary: "Provision an official workspace at a selected size."},
@@ -102,17 +109,20 @@ var specs = []Spec{
 
 	{Name: "credits.accounts", Role: RoleAdmin, Read: true, Input: &CreditAccountListInput{}, Summary: "List account balances and simulated purchases for the administrator."},
 	{Name: "credits.get", Role: RoleUser, Read: true, Input: &CreditViewInput{}, Summary: "Read your balance and ledger. Administrators can select an account."},
+	{Name: "developer.create", Developer: true, Role: RoleUser, MCP: true, Input: &AppCreateInput{}, Summary: "Create your own private app. Supply its name, unique slug and runtime settings; kind crew enables owner sign-in and recovery services."},
+	{Name: "developer.upload_link", Developer: true, Role: RoleUser, MCP: true, OnceResult: true, Input: &ReleaseUploadLinkInput{}, Summary: "Create a one-time PUT URL for a private app you own. Upload your Linux executable directly, then use developer.deploy."},
+	{Name: "developer.deploy", Developer: true, Role: RoleUser, MCP: true, Input: &ReleaseDeployInput{}, Summary: "Place your private app and deploy one of its uploaded releases by immutable release ID."},
 	{Name: "credits.buy", Role: RoleUser, Input: &MeInput{}, Summary: "Buy one simulated credit pack."},
 	{Name: "credits.adjust", Role: RoleAdmin, Input: &CreditAdjustment{}, Summary: "Record a signed adjustment to an account balance."},
 	{Name: "credits.configure", Role: RoleAdmin, Input: &CreditSettings{}, Summary: "Set the simulated pack, cap, credit value, starting grant and S3 pricing conversions."},
 	{Name: "me", Role: RoleUser, Read: true, Input: &MeInput{},
-		Summary: "The signed-in account: id, email, role, app quota and whether it is the owner."},
+		Summary: "The signed-in account: id, email, role, developer access, app quota and whether it is the owner."},
 	{Name: "event.list", Role: RoleUser, Read: true, Input: &EventListInput{},
 		Summary: "Events (who changed what, newest first) of your apps, or of one app; all:true (admins) lists every event. Details never hold secret values."},
 	{Name: "user.list", Role: RoleAdmin, Read: true, Input: &UserListInput{},
-		Summary: "Every account, newest first, with role, quota, suspension and whether it has signed in."},
+		Summary: "Every account, newest first, with role, developer access, quota, suspension and whether it has signed in."},
 	{Name: "user.set", Role: RoleAdmin, MCP: true, Input: &UserSetInput{},
-		Summary: "Change an account's role, app quota or suspension. Nobody changes their own role or suspension, or the owner's."},
+		Summary: "Change an account's role, developer access, app quota or suspension. Nobody changes their own role or suspension, or the owner's."},
 	{Name: "waitlist.list", Role: RoleAdmin, Read: true, Input: &WaitlistListInput{}, Summary: "List verified waitlist entries, oldest first."},
 	{Name: "waitlist.invite", Role: RoleAdmin, Input: &WaitlistID{}, Summary: "Invite a verified waitlist member and queue a welcome email."},
 	{Name: "waitlist.resend", Role: RoleAdmin, Input: &WaitlistID{}, Summary: "Resend an open waitlist invitation."},
@@ -209,18 +219,43 @@ func Lookup(name string) (Spec, bool) {
 
 // Allows reports whether a hosted account may call this operation.
 func (s Spec) Allows(role Role) bool {
-	if (s.Read || s.Name == "app.delete") && s.Role == RoleUser {
+	return s.AllowsAccount(role, false)
+}
+
+func (s Spec) AllowsAccount(role Role, developer bool) bool {
+	if s.Developer {
+		return developer && (role == RoleUser || role == RoleAdmin)
+	}
+	if role == RoleAdmin && developer && s.PrivateOwnerWrite() {
+		return true
+	}
+	if (s.Read || s.Name == "app.delete" || s.Name == "private.access") && s.Role == RoleUser {
 		return role == RoleAdmin || role == RoleUser
 	}
 	return role == s.Role
 }
 
+// PrivateOwnerWrite identifies shared lifecycle handlers available to a
+// developer-admin, restricted by writableApp to their own private apps.
+func (s Spec) PrivateOwnerWrite() bool {
+	switch s.Name {
+	case "app.set", "app.start", "app.stop", "secret.set", "secret.delete":
+		return true
+	default:
+		return false
+	}
+}
+
 // MCPWriteNames returns the operations drop_write offers a role, in registry
 // order: those with MCP set that the role may call.
 func MCPWriteNames(role Role) []string {
+	return MCPWriteNamesFor(role, false)
+}
+
+func MCPWriteNamesFor(role Role, developer bool) []string {
 	var names []string
 	for _, s := range specs {
-		if s.MCP && s.Allows(role) {
+		if s.MCP && s.AllowsAccount(role, developer) {
 			names = append(names, s.Name)
 		}
 	}

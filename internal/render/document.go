@@ -123,8 +123,17 @@ type hostname struct {
 	Kind     string `json:"kind"`
 }
 
+type tokenSource struct {
+	Header string `json:"header"`
+	Format string `json:"format"`
+}
+
 type access struct {
-	Kind string `json:"kind"`
+	Issuer     string       `json:"issuer,omitempty"`
+	Audiences  []string     `json:"audiences,omitempty"`
+	PublicKeys []string     `json:"publicKeys,omitempty"`
+	Token      *tokenSource `json:"token,omitempty"`
+	Kind       string       `json:"kind"`
 }
 
 // previous is the parsed current document, keyed by appId.

@@ -168,7 +168,7 @@ function Users({
   const [error, setError] = useState("");
   const change = async (
     user: User,
-    update: { role?: Role; app_quota?: number; suspended?: boolean },
+    update: { role?: Role; app_quota?: number; suspended?: boolean; developer?: boolean },
   ) => {
     setBusy(user.id);
     setError("");
@@ -215,6 +215,11 @@ function Users({
                   <option value="user">User</option>
                   <option value="admin">Admin</option>
                 </select>
+              </label>
+              <label className="check">
+                <input type="checkbox" checked={!!user.developer} disabled={busy === user.id}
+                  onChange={e => void change(user, { developer: e.target.checked })} />
+                Developer access
               </label>
               <button
                 type="button"

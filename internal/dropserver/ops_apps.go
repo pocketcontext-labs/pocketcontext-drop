@@ -17,6 +17,7 @@ import (
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/appspec"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/droppolicy"
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/privateblob"
 )
 
 // App operations (M5a). Ownership: an app belongs to the account that created
@@ -29,6 +30,7 @@ func init() {
 	register("app.list", appList)
 	register("app.get", appGet)
 	register("app.create", appCreate)
+	register("developer.create", appCreate)
 	register("app.set", appSet)
 	register("app.start", appStart)
 	register("app.stop", appStop)
@@ -43,7 +45,7 @@ var slugPattern = regexp.MustCompile(dropapi.SlugPattern)
 func (c *Ctx) findApp(ref string, write bool) (*core.Record, error) {
 	ref = strings.TrimSpace(ref)
 	visible := func(r *core.Record) bool {
-		return !r.GetBool("deleting") && (r.GetString("owner") == c.Auth.Id || (!write && c.Admin))
+		return !r.GetBool("deleting") && (r.GetString("owner") == c.Auth.Id || (!write && c.Admin && !r.GetBool("developer_private")))
 	}
 	if recordID.MatchString(ref) {
 		if r, err := c.App.FindRecordById("apps", ref); err == nil && visible(r) {
@@ -63,6 +65,12 @@ func (c *Ctx) writableApp(ref string) (*core.Record, error) {
 	app, err := c.findApp(ref, true)
 	if err != nil {
 		return nil, err
+	}
+	if c.Admin && accountsOf(c.App).hosted && c.Spec.PrivateOwnerWrite() && !app.GetBool("developer_private") {
+		return nil, Forbidden("Developer changes are restricted to your private apps.")
+	}
+	if app.GetBool("developer_private") && !c.Auth.GetBool("developer") {
+		return nil, Forbidden("Developer access is required to change this private app.")
 	}
 	if err := allowCreditDeployment(c.App, app.GetString("owner")); err != nil {
 		return nil, err
@@ -128,6 +136,7 @@ func (c *Ctx) appOut(r *core.Record, emails map[string]string) dropapi.App {
 		digest = official
 	}
 	return dropapi.App{
+		DeveloperPrivate:  r.GetBool("developer_private"),
 		MinimumMultiplier: r.GetInt("official_minimum"), InstalledVersion: r.GetString("official_version"), OfficialProduct: r.GetString("official_product"),
 		BetaSHA256:          digest,
 		BetaManaged:         r.GetString("beta_digest") != "",
@@ -135,7 +144,7 @@ func (c *Ctx) appOut(r *core.Record, emails map[string]string) dropapi.App {
 		CrewFreshEnrollment: r.GetString("crew_enrollment") == "fresh", Kind: kind, CrewOwnerEmail: crewOwnerEmail, SignInEmailEnabled: r.GetBool("sign_in_email_enabled"),
 		ReplicaSyncInterval: syncInterval,
 		ID:                  r.Id, Name: r.GetString("name"), Slug: r.GetString("slug"), Owner: owner, OwnerEmail: email,
-		NibAppID: r.GetString("nib_app_id"), VolumeID: r.GetString("volume_id"), Hostname: r.GetString("hostname"),
+		NibAppID: r.GetString("nib_app_id"), VolumeID: r.GetString("volume_id"), Hostname: appHostname(r, servicesOf(c.App).AppDomain),
 		DesiredState: r.GetString("desired_state"), IdleTimeoutMs: r.GetInt("idle_timeout_ms"),
 		VCPU: r.GetInt("vcpu"), MemoryMiB: r.GetInt("memory_mib"), DiskMiB: r.GetInt("disk_mib"),
 		HookPort: r.GetInt("hook_port"), HTTPPort: r.GetInt("http_port"), ExecutableName: r.GetString("executable_name"),
@@ -180,9 +189,11 @@ func appList(c *Ctx, in *dropapi.AppListInput) (any, error) {
 		filter += " && archived = {:archived}"
 		params["archived"] = in.Archived
 	}
-	if !in.All {
+	params["owner"] = c.Auth.Id
+	if in.All {
+		filter += " && (developer_private = false || owner = {:owner})"
+	} else {
 		filter += " && owner = {:owner}"
-		params["owner"] = c.Auth.Id
 	}
 	records, err := c.App.FindRecordsByFilter("apps", filter, "-created,-id", limit+1, offset, params)
 	if err != nil {
@@ -396,7 +407,15 @@ func createApp(c *Ctx, in *dropapi.AppCreateInput, features runtimeFeatures) (an
 		return nil, Invalid("slug", "The slug "+in.Slug+" is reserved.")
 	}
 
-	if _, err := c.App.FindFirstRecordByData("apps", "slug", in.Slug); err == nil {
+	var taken bool
+	err = c.App.DB().NewQuery(`SELECT EXISTS (SELECT 1 FROM apps WHERE slug={:slug}
+		UNION ALL SELECT 1 FROM drop_private_slugs WHERE slug={:slug}
+		UNION ALL SELECT 1 FROM drop_app_deletions WHERE slug={:slug} AND {:private}=1)`).
+		Bind(dbx.Params{"slug": in.Slug, "private": c.Spec.Name == "developer.create"}).Row(&taken)
+	if err != nil {
+		return nil, err
+	}
+	if taken {
 		return nil, Conflict(dropapi.CodeSlugTaken, "The slug "+in.Slug+" is taken. Choose another.")
 	}
 	orInt := func(v *int, fallback int) int {
@@ -473,12 +492,16 @@ func createApp(c *Ctx, in *dropapi.AppCreateInput, features runtimeFeatures) (an
 	default:
 		return nil, Invalid("kind", "App kind must be ordinary or crew.")
 	}
+	if c.Spec.Name == "developer.create" {
+		app.Set("developer_private", true)
+		app.Set("private_release_master", privateblob.NewMaster())
+	}
 	app.Set("owner", c.Auth.Id)
 	app.Set("name", name)
 	app.Set("slug", in.Slug)
 	app.Set("nib_app_id", nibAppID)
 	app.Set("volume_id", appspec.VolumeID(nibAppID))
-	if domain := servicesOf(c.App).AppDomain; domain != "" {
+	if domain := servicesOf(c.App).AppDomain; domain != "" && !app.GetBool("developer_private") {
 		app.Set("hostname", in.Slug+"."+domain)
 	}
 	s.apply(app)
@@ -627,6 +650,9 @@ func appSet(c *Ctx, in *dropapi.AppSetInput) (any, error) {
 	}
 	grows := s.vcpu > app.GetInt("vcpu") || s.memoryMiB > app.GetInt("memory_mib")
 	s.apply(app)
+	if err := checkInstalledPrivateManifest(c.App, app); err != nil {
+		return nil, err
+	}
 	if grows {
 		if err := checkPlacedAppRoom(c.App, app); err != nil {
 			return nil, err
@@ -657,6 +683,9 @@ func setState(c *Ctx, ref string, start bool) (any, error) {
 	}
 	state := appspec.StateStopped
 	if start {
+		if err := checkInstalledPrivateManifest(c.App, app); err != nil {
+			return nil, err
+		}
 		digest := app.GetString("beta_digest")
 		if desired := app.GetString("official_target"); desired != "" {
 			digest = desired
@@ -709,6 +738,14 @@ func appRestore(c *Ctx, in *dropapi.AppRestoreInput) (any, error) {
 	app, err := c.findApp(in.App, true)
 	if err != nil {
 		return nil, err
+	}
+	if app.GetBool("developer_private") {
+		if !c.Auth.GetBool("developer") {
+			return nil, Forbidden("Developer access is required to restore a private app.")
+		}
+		if err := checkInstalledPrivateManifest(c.App, app); err != nil {
+			return nil, err
+		}
 	}
 	if deleting, err := deletionPending(c.App, app.Id); err != nil || deleting {
 		if err != nil {

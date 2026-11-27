@@ -12,6 +12,7 @@ import (
 
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/appspec"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/awsx"
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/privateblob"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/render"
 )
 
@@ -39,13 +40,20 @@ func checkRelease(rel render.Release) error {
 	if !awsx.ValidSHA256(rel.SHA256) {
 		return errors.New("release sha256 is not 64 lower-case hex characters")
 	}
-	if key, _ := awsx.ReleaseKey(rel.SHA256); rel.S3Key != key {
-		return errors.New("release s3Key is not releases/<sha256>")
+	if err := rel.ValidateObject(); err != nil {
+		return err
 	}
 	if rel.SizeBytes <= 0 || rel.SizeBytes > maxReleaseBytes {
 		return fmt.Errorf("release size %d is out of range", rel.SizeBytes)
 	}
 	return nil
+}
+
+func storedReleaseSize(rel render.Release) int64 {
+	if rel.PrivateKey != "" {
+		return privateblob.StoredSize(rel.SizeBytes)
+	}
+	return rel.SizeBytes
 }
 
 // Stage makes <Dir>/<sha256> hold exactly the release's bytes. It downloads
@@ -70,8 +78,8 @@ func (s *Stager) Stage(ctx context.Context, rel render.Release) error {
 		return fmt.Errorf("download %s: %w", rel.S3Key, err)
 	}
 	defer body.Close()
-	if info.Size != 0 && info.Size != rel.SizeBytes {
-		return fmt.Errorf("release %s has %d bytes in the store, expected %d", rel.S3Key, info.Size, rel.SizeBytes)
+	if info.Size != 0 && info.Size != storedReleaseSize(rel) {
+		return fmt.Errorf("release %s has %d bytes in the store, expected %d", rel.S3Key, info.Size, storedReleaseSize(rel))
 	}
 	tmp, err := os.CreateTemp(s.Dir, ".dl-*")
 	if err != nil {
@@ -84,8 +92,17 @@ func (s *Stager) Stage(ctx context.Context, rel render.Release) error {
 		return err
 	}
 	hash := sha256.New()
-	n, err := io.Copy(io.MultiWriter(tmp, hash), io.LimitReader(body, rel.SizeBytes+1))
-	if err == nil && (n != rel.SizeBytes || hex.EncodeToString(hash.Sum(nil)) != rel.SHA256) {
+	out := io.MultiWriter(tmp, hash)
+	if rel.PrivateKey != "" {
+		err = privateblob.Open(out, body, rel.PrivateKey, rel.SizeBytes)
+	} else {
+		var n int64
+		n, err = io.Copy(out, io.LimitReader(body, rel.SizeBytes+1))
+		if err == nil && n != rel.SizeBytes {
+			err = errors.New("release has incorrect length")
+		}
+	}
+	if err == nil && hex.EncodeToString(hash.Sum(nil)) != rel.SHA256 {
 		err = fmt.Errorf("release %s does not match its size or sha256; refused", rel.S3Key)
 	}
 	if err == nil {

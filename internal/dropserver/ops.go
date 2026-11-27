@@ -162,12 +162,15 @@ func (c *Ctx) checkRole(spec dropapi.Spec) error {
 	}
 	role := dropapi.RoleUser
 	if c.Admin {
-		if !accountsOf(c.App).hosted {
+		if !accountsOf(c.App).hosted && !spec.Developer {
 			return nil
 		}
 		role = dropapi.RoleAdmin
 	}
-	if !spec.Allows(role) {
+	if spec.Developer && !c.Auth.GetBool("developer") {
+		return Forbidden("This operation requires developer access.")
+	}
+	if !spec.AllowsAccount(role, c.Auth.GetBool("developer")) {
 		return Forbidden("This operation needs a " + string(spec.Role) + " account.")
 	}
 	return nil

@@ -4,6 +4,7 @@ import { message } from "./errors";
 import { formatDate } from "./Apps";
 
 type DirectoryUser = {
+  developer: boolean;
   owner: boolean;
   account: string;
   entry: string;
@@ -31,6 +32,36 @@ const statuses = [
   "revoked",
   "expired",
 ];
+function CreditCell({ user, refresh }: { user: DirectoryUser; refresh: () => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [key, setKey] = useState("");
+  const balance = user.microcredits / 1e6;
+  if (!user.account) return <>—</>;
+  if (draft === null) return <button className="link" aria-label={`Edit credits for ${user.email}: ${balance}`}
+    onClick={() => { setDraft(String(balance)); setError(""); setKey(crypto.randomUUID()); }}>
+    {balance.toLocaleString(undefined, { maximumFractionDigits: 2 })} <span aria-hidden="true">✎</span>
+  </button>;
+  return <form onSubmit={async event => {
+    event.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    try {
+      await op("credits.adjust", { account: user.account, target_microcredits: Math.round(Number(draft) * 1e6) }, key);
+      setDraft(null);
+      refresh();
+    } catch (e) { setError(message(e)); } finally { setBusy(false); }
+  }}>
+    <input type="number" min="0" step="0.000001" required autoFocus disabled={busy}
+      aria-label={`Credit balance for ${user.email}`} value={draft}
+      onChange={event => { setDraft(event.target.value); setKey(crypto.randomUUID()); setError(""); }} />
+    <button className="secondary" disabled={busy || Number(draft) === balance}>Save</button>
+    <button type="button" className="secondary" disabled={busy} onClick={() => setDraft(null)}>Cancel</button>
+    {error && <p role="alert">{error}</p>}
+  </form>;
+}
+
 export default function UserDirectory({
   me,
   waiting = false,
@@ -257,6 +288,16 @@ export default function UserDirectory({
               Revoke invitation
             </button>
           )}
+          {detail.account && (
+            <label className="check">
+              <input type="checkbox" checked={detail.developer} disabled={busy}
+                onChange={e => {
+                  const developer = e.target.checked;
+                  void change(() => dropApi.setUser(detail.account, { developer }));
+                }} />
+              Developer access
+            </label>
+          )}
           {canManage && (
             <>
               <label>
@@ -362,12 +403,10 @@ export default function UserDirectory({
                           {r.status}
                         </span>
                       </td>
-                      <td>{r.role}</td>
+                      <td>{r.role}{r.developer && " · Developer"}</td>
                       <td>{r.workspaces}</td>
                       <td>
-                        {(r.microcredits / 1e6).toLocaleString(undefined, {
-                          maximumFractionDigits: 2,
-                        })}
+                        <CreditCell user={r} refresh={() => setRevision(n => n + 1)} />
                       </td>
                       <td>{formatDate(r.joined)}</td>
                     </tr>

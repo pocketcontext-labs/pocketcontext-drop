@@ -1,0 +1,21 @@
+[Unit]
+Description=Drop private app browser gateway
+After=network.target
+Before=cloudflared.service
+
+[Service]
+Type=simple
+DynamicUser=yes
+EnvironmentFile=/etc/drop/private-ingress.env
+ExecStart=/usr/local/bin/drop private-ingress --listen ${DROP_PRIVATE_LISTEN} --upstream ${DROP_PRIVATE_UPSTREAM} --app-domain ${DROP_APP_DOMAIN} --control-origin ${DROP_CONTROL_ORIGIN}
+Restart=on-failure
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

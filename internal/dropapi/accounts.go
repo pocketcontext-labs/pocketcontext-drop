@@ -24,6 +24,8 @@ type MeInput struct{}
 
 // Me is the signed-in account. Admin is true for role admin.
 type Me struct {
+	Developer             bool   `json:"developer"`
+	ReleaseSelection      bool   `json:"release_selection,omitempty"`
 	OfficialCatalog       bool   `json:"official_catalog,omitempty"`
 	TrialRemainingSeconds *int64 `json:"trial_remaining_seconds,omitempty"`
 	Hosted                bool   `json:"hosted"`
@@ -44,6 +46,7 @@ type UserListInput struct {
 // User is an account as admins see it. SignedIn is false until the first
 // sign-in (core prunes such accounts after 15 minutes).
 type User struct {
+	Developer bool   `json:"developer"`
 	ID        string `json:"id"`
 	Email     string `json:"email"`
 	Role      Role   `json:"role"`
@@ -63,6 +66,7 @@ type UserList struct {
 
 // UserSetInput changes one account, named by id or email. Absent fields stay.
 type UserSetInput struct {
+	Developer *bool  `json:"developer,omitempty"`
 	User      string `json:"user"`
 	Role      *Role  `json:"role,omitempty"`
 	AppQuota  *int   `json:"app_quota,omitempty"`

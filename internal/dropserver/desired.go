@@ -1,6 +1,7 @@
 package dropserver
 
 import (
+	"crypto/ed25519"
 	"errors"
 	"slices"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/appspec"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/awsx"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/privateblob"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/render"
 )
 
@@ -135,6 +137,12 @@ func desiredApp(app core.App, record *core.Record, services Services) (dropapi.D
 		Hostnames:      []render.Hostname{},
 		Env:            appEnv(record),
 	}, Secrets: []dropapi.DesiredSecret{}}
+	if record.GetBool("developer_private") {
+		a.Release.PrivateKey, err = privateblob.Key(record.GetString("private_release_master"), a.Release.SHA256)
+		if err != nil {
+			return a, false, err
+		}
+	}
 	for name := range a.Env {
 		if appspec.PlatformIdentityEnv(name) {
 			delete(a.Env, name)
@@ -161,7 +169,20 @@ func desiredApp(app core.App, record *core.Record, services Services) (dropapi.D
 	if a.HealthCheck.Kind != appspec.HealthHTTP {
 		a.HealthCheck.Path = ""
 	}
-	if host := record.GetString("hostname"); host != "" {
+	if record.GetBool("developer_private") {
+		owner, err := app.FindRecordById("users", record.GetString("owner"))
+		if err != nil {
+			return a, false, err
+		}
+		if !owner.GetBool("developer") || owner.GetBool("suspended") {
+			a.DesiredState = appspec.StateStopped
+		}
+		key, err := privateAppKey(app, record.Id)
+		if err != nil {
+			return a, false, err
+		}
+		a.PrivateRoute = &render.PrivateRoute{Hostname: appHostname(record, services.AppDomain), PublicKey: key.Public().(ed25519.PublicKey)}
+	} else if host := record.GetString("hostname"); host != "" {
 		a.Hostnames = append(a.Hostnames, render.Hostname{Hostname: host, Kind: "platform"})
 	}
 	secrets, err := secretRecords(app, record)

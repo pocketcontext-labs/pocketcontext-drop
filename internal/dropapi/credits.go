@@ -3,11 +3,15 @@ package dropapi
 type CreditViewInput struct {
 	Account string `json:"account,omitempty"`
 	Before  int64  `json:"before,omitempty"`
+	Limit   int    `json:"limit,omitempty"`
+	Kind    string `json:"kind,omitempty"`
+	Query   string `json:"query,omitempty"`
 }
 
 type CreditAdjustment struct {
-	Account      string `json:"account"`
-	Microcredits int64  `json:"microcredits"`
+	TargetMicrocredits *int64 `json:"target_microcredits,omitempty"`
+	Account            string `json:"account"`
+	Microcredits       int64  `json:"microcredits"`
 }
 
 type CreditSettings struct {

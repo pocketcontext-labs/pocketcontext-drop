@@ -5,9 +5,14 @@ import { pb } from "./api";
 // input. OPS lists every operation name in the server's registry, in its
 // order: internal/dropapi's TestReaderKnowsEveryOperation compares them.
 export const OPS = [
+  "private.grant",
+  "private.revoke",
+  "private.access",
+  "private.shared",
   "catalog.list",
   "catalog.upload",
   "catalog.rehearse",
+  "catalog.archive",
   "catalog.publish",
   "catalog.activate",
   "workspace.create",
@@ -17,6 +22,9 @@ export const OPS = [
 
   "credits.accounts",
   "credits.get",
+  "developer.create",
+  "developer.upload_link",
+  "developer.deploy",
   "credits.buy",
   "credits.adjust",
   "credits.configure",
@@ -71,7 +79,9 @@ export type Op = (typeof OPS)[number];
 
 export type Role = "admin" | "user";
 export interface Me {
+  developer?: boolean;
   official_catalog?: boolean;
+  release_selection?: boolean;
   trial_remaining_seconds?: number;
   hosted?: boolean;
   id: string;
@@ -82,6 +92,7 @@ export interface Me {
   app_quota: number;
 }
 export interface User {
+  developer?: boolean;
   id: string;
   email: string;
   role: Role;
@@ -112,6 +123,7 @@ export type DesiredState = "running" | "on-request" | "stopped";
 export type HealthKind = "tcp" | "http";
 /** An app (internal/dropapi App). Env holds plain values only. */
 export interface App {
+  developer_private?: boolean;
   minimum_multiplier?:number;
   installed_version?:string;
   official_product?: string;
@@ -362,7 +374,7 @@ async function listUsers(): Promise<User[]> {
 }
 async function setUser(
   user: string,
-  change: { role?: Role; app_quota?: number; suspended?: boolean },
+  change: { role?: Role; app_quota?: number; suspended?: boolean; developer?: boolean },
 ): Promise<User> {
   return (await op<{ user: User }>("user.set", { user, ...change })).user;
 }

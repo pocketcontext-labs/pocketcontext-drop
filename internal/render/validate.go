@@ -1,6 +1,8 @@
 package render
 
 import (
+	"crypto/ed25519"
+	"errors"
 	"fmt"
 	"maps"
 	"regexp"
@@ -110,6 +112,17 @@ func validateApp(app App, lim Limits) *AppError {
 	if !deploymentIDOK(app.AppID, app.DeploymentID) {
 		return fail("deploymentId", "must be <appId>-dep-<1 to 9 digits>")
 	}
+	if app.Release.PrivateKey != "" && app.PrivateRoute == nil {
+		return fail("privateRoute", "encrypted releases require authenticated ingress")
+	}
+	if route := app.PrivateRoute; route != nil {
+		if len(route.PublicKey) != ed25519.PublicKeySize || len(app.Hostnames) != 0 {
+			return fail("privateRoute", "requires an Ed25519 public key and no public hostnames")
+		}
+		if !strings.HasSuffix(route.Hostname, lim.AllowedHostSuffix) || len(route.Hostname) > 253 || !reHostname.MatchString(route.Hostname) {
+			return fail("privateRoute.hostname", "requires an allowed hostname")
+		}
+	}
 	if app.GenericBeta && (app.ManagedCrew || app.CrewOwnerEmail != "" || app.SignInEmailEnabled || app.HostS3 || app.HookPort != 0 || len(app.Secrets) > 0 || len(app.Args) > 0 || len(app.Env) != 1 || app.Env["PORT"] != fmt.Sprint(app.HTTPPort)) {
 		return fail("genericBeta", "generic apps accept only the selected HTTP port")
 	}
@@ -134,8 +147,8 @@ func validateApp(app App, lim Limits) *AppError {
 	if !reSHA256.MatchString(app.Release.SHA256) {
 		return fail("release.sha256", "must be 64 lowercase hex")
 	}
-	if app.Release.S3Key != "releases/"+app.Release.SHA256 {
-		return fail("release.s3Key", "must be releases/<sha256>")
+	if err := app.Release.ValidateObject(); err != nil {
+		return fail("release.s3Key", "%s", err)
 	}
 	if app.Release.SizeBytes < 1 || app.Release.SizeBytes > maxReleaseBytes {
 		return fail("release.sizeBytes", "must be 1–%d", maxReleaseBytes)
@@ -149,7 +162,7 @@ func validateApp(app App, lim Limits) *AppError {
 	if !appspec.ValidHookPort(app.HookPort, app.HTTPPort) {
 		return fail("hookPort", "must be zero or a guest port different from httpPort")
 	}
-	if app.ManagedCrew && (app.CrewOwnerEmail == "" || len(app.Hostnames) != 1 || app.Hostnames[0].Kind != "platform") {
+	if app.ManagedCrew && (app.CrewOwnerEmail == "" || app.platformHostname() == "") {
 		return fail("managedCrew", "requires the verified owner and one platform hostname")
 	}
 	if app.ManagedCrew && !app.LocalOnly && (!crewBucket.MatchString(app.CrewReplicaBucket) || strings.Contains(app.CrewReplicaBucket, "..")) {
@@ -244,6 +257,22 @@ func checkEnvEntry(app App, field, name, value string) *AppError {
 	}
 	if reason := appspec.CheckEnvValue(name, value); reason != "" {
 		return fail(reason)
+	}
+	return nil
+}
+
+// ValidateObject requires a content-addressed object and rejects malformed
+// encryption metadata before a node uses its store credentials.
+func (r Release) ValidateObject() error {
+	if r.PrivateKey == "" {
+		if r.S3Key != "releases/"+r.SHA256 {
+			return errors.New("release s3Key must be releases/<sha256>")
+		}
+		return nil
+	}
+	digest, ok := strings.CutPrefix(r.S3Key, "releases/")
+	if !ok || !reSHA256.MatchString(digest) || !reSHA256.MatchString(r.PrivateKey) || digest == r.SHA256 {
+		return errors.New("invalid encrypted release reference")
 	}
 	return nil
 }

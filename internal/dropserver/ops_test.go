@@ -223,3 +223,30 @@ func TestPromotionEndsTenantWrites(t *testing.T) {
 		t.Fatal("promotion changed app ownership or deployment")
 	}
 }
+
+func TestDeveloperCapabilityAssignedSeparatelyFromRole(t *testing.T) {
+	h := droptest.NewHosted(t, droptest.Options{})
+	admin := h.Token(h.Owner())
+	member, user := h.User("developer@example.test", "user")
+	if self := h.MustOp(user, "me", nil); self["developer"] != false {
+		t.Fatalf("new account has developer access: %v", self)
+	}
+	for _, enabled := range []bool{true, false} {
+		target := map[string]any{"user": member.Id, "developer": enabled}
+		wantError(t, h.Op(user, "user.set", target), 403, "forbidden")
+		set := h.MustOp(admin, "user.set", target)["user"].(map[string]any)
+		self := h.MustOp(user, "me", nil)
+		if set["developer"] != enabled || self["developer"] != enabled || self["role"] != "user" || self["admin"] != false {
+			t.Fatalf("developer toggle changed unrelated access or was stale: %v %v", set, self)
+		}
+		directory := h.MustOp(admin, "user.directory", map[string]any{"search": member.Id})["users"].([]any)
+		if len(directory) != 1 || directory[0].(map[string]any)["developer"] != enabled {
+			t.Fatalf("directory: %v", directory)
+		}
+		wantError(t, h.Op(user, "node.list", nil), 403, "forbidden")
+	}
+	h.MustOp(admin, "user.set", map[string]any{"user": h.Owner().Id, "developer": true})
+	if owner := h.MustOp(admin, "me", nil); owner["developer"] != true || owner["admin"] != true || owner["owner"] != true {
+		t.Fatalf("owner developer grant: %v", owner)
+	}
+}

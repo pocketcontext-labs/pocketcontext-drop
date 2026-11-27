@@ -21,7 +21,7 @@ func officialRehearse(c *Ctx, in *dropapi.OfficialRehearsal) (any, error) {
 		return nil, Invalid("evidence", "Supply matching before and after digests for records and attachments from a completed rehearsal.")
 	}
 	var product string
-	if err := c.App.DB().NewQuery("SELECT product FROM drop_official_releases WHERE digest={:d}").Bind(dbx.Params{"d": in.SHA256}).Row(&product); err != nil {
+	if err := c.App.DB().NewQuery("SELECT product FROM drop_official_releases WHERE digest={:d} AND published=0 AND archived=0").Bind(dbx.Params{"d": in.SHA256}).Row(&product); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, NotFound("Candidate")
 		}

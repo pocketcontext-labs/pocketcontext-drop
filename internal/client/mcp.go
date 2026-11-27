@@ -4,9 +4,8 @@ package client
 // (drop_mcp.go), through the ordinary authenticated API with the caller's own
 // session: no shell, no filesystem, no administration. Each tool call reaches
 // only POST /api/drop/op, in-process, so the server checks the account, its
-// role and ownership on every call. There are two MCP servers, one per role,
-// with the same two tools and role-specific enums and descriptions; each
-// request picks one through GET /api/drop/me with the caller's token.
+// role, developer capability and ownership on every call. Each request gets
+// tool schemas through GET /api/drop/me with the caller's current rights.
 import (
 	"bytes"
 	"context"
@@ -43,19 +42,26 @@ type mcpCaller struct {
 }
 
 func newMCPHandler(api http.Handler) http.Handler {
-	user := newDropMCPServer(api, dropapi.RoleUser)
-	official := makeDropMCPServer(api, dropapi.RoleUser, true)
-	admin := newDropMCPServer(api, dropapi.RoleAdmin)
+	servers := make(map[mcpProfile]*mcp.Server)
+	for _, developer := range []bool{false, true} {
+		for _, profile := range []mcpProfile{
+			{role: dropapi.RoleUser, developer: developer},
+			{role: dropapi.RoleUser, developer: developer, official: true},
+			{role: dropapi.RoleAdmin, developer: developer},
+		} {
+			servers[profile] = makeDropMCPServer(api, profile)
+		}
+	}
 	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 		caller, _ := r.Context().Value(mcpRequestContextKey{}).(*mcpCaller)
 		me := mcpAccount(api, caller)
+		profile := mcpProfile{role: dropapi.RoleUser, developer: me.Developer}
 		if me.Admin {
-			return admin
+			profile.role = dropapi.RoleAdmin
+		} else {
+			profile.official = me.OfficialCatalog
 		}
-		if me.OfficialCatalog {
-			return official
-		}
-		return user
+		return servers[profile]
 	}, &mcp.StreamableHTTPOptions{
 		Stateless: true, JSONResponse: true, MaxRequestBodyBytes: mcpInputLimit, PropagateRequestCancellation: true,
 		// The wrapper below requires the stronger exact-origin boundary and OAuth.

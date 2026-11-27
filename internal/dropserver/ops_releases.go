@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -29,6 +30,8 @@ func init() {
 	register("release.list", releaseList)
 	register("release.upload_link", releaseUploadLink)
 	register("release.deploy", releaseDeploy)
+	register("developer.upload_link", releaseUploadLink)
+	register("developer.deploy", releaseDeploy)
 }
 
 // releasesUnavailable is the answer when the server has no release store.
@@ -113,6 +116,12 @@ func releaseUploadLink(c *Ctx, in *dropapi.ReleaseUploadLinkInput) (any, error) 
 	if err != nil {
 		return nil, err
 	}
+	if (c.Spec.Name == "developer.upload_link") != app.GetBool("developer_private") {
+		return nil, NotFound("App")
+	}
+	if app.GetBool("developer_private") && in.Activate {
+		return nil, Invalid("activate", "Upload the executable first, then use developer.deploy.")
+	}
 	if app.GetString("beta_digest") != "" && in.Activate {
 		return nil, Forbidden("Deploy this app through Drop Beta after upload.")
 	}
@@ -156,6 +165,9 @@ func releaseDeploy(c *Ctx, in *dropapi.ReleaseDeployInput) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	if (c.Spec.Name == "developer.deploy") != app.GetBool("developer_private") {
+		return nil, NotFound("App")
+	}
 	if app.GetString("beta_digest") != "" {
 		return nil, Forbidden("Deploy this app through Drop Beta.")
 	}
@@ -166,6 +178,19 @@ func releaseDeploy(c *Ctx, in *dropapi.ReleaseDeployInput) (any, error) {
 	release, err := c.App.FindRecordById("releases", ref)
 	if err != nil || release.GetString("app") != app.Id {
 		return nil, NotFound("Release")
+	}
+	if app.GetBool("developer_private") {
+		if err := betaPlacement(c, app); err != nil {
+			return nil, err
+		}
+		// Placement fixes the volume size on its saved record.
+		app, err = c.App.FindRecordById("apps", app.Id)
+		if err != nil {
+			return nil, err
+		}
+		if err := checkPrivateManifest(c.App, app, release); err != nil {
+			return nil, err
+		}
 	}
 	bumped, err := setCurrentRelease(c.App, app, release)
 	if err != nil {
@@ -184,4 +209,49 @@ func releaseDeploy(c *Ctx, in *dropapi.ReleaseDeployInput) (any, error) {
 		App: c.appOut(app, nil), Release: releaseOut(release, app.GetString("current_release")),
 		DeploymentBumped: bumped, DeploymentID: deploymentID(app),
 	}, nil
+}
+
+func checkInstalledPrivateManifest(tx core.App, app *core.Record) error {
+	if !app.GetBool("developer_private") || app.GetString("current_release") == "" {
+		return nil
+	}
+	release, err := tx.FindRecordById("releases", app.GetString("current_release"))
+	if err != nil {
+		return err
+	}
+	return checkPrivateManifest(tx, app, release)
+}
+
+// The probe is performed per uploaded app release. A generic ELF with no
+// manifest uses the owner's declared settings, never a catalog record.
+func checkPrivateManifest(tx core.App, app, release *core.Record) error {
+	var manifest dropapi.BetaManifest
+	if raw := release.GetString("private_manifest"); raw != "" && raw != "null" {
+		var err error
+		manifest, err = parseBetaManifest([]byte(raw))
+		if err != nil {
+			return err
+		}
+	}
+	if manifest.Schema == "" {
+		app.Set("required_s3", false)
+		return nil
+	}
+	if app.GetInt("http_port") != manifest.HTTPPort || app.GetInt("hook_port") != manifest.HookPort {
+		return Invalid("app", "The app's HTTP and lifecycle ports must match the private release manifest.")
+	}
+	if app.GetInt("vcpu")*4 < manifest.Minimum.CPUQuarters || app.GetInt("memory_mib") < manifest.Minimum.MemoryMiB || app.GetInt("disk_mib") < manifest.Minimum.DiskMiB {
+		return Invalid("app", "The app is smaller than the private release's minimum resources.")
+	}
+	if app.GetString("crew_enrollment") == "" && (slices.Contains(manifest.Requires, "s3_replica") || slices.Contains(manifest.Requires, "sign_in_email") || slices.Contains(manifest.Requires, "verified_owner_email")) {
+		return Invalid("kind", "Create a private app with managed owner services (kind crew) for this release.")
+	}
+	if slices.Contains(manifest.Requires, "sign_in_email") && !app.GetBool("sign_in_email_enabled") {
+		return Invalid("sign_in_email_enabled", "The release requires owner email sign-in.")
+	}
+	app.Set("required_s3", slices.Contains(manifest.Requires, "s3_replica"))
+	if err := allowRequiredStorage(tx, app.GetString("owner"), manifest); err != nil {
+		return err
+	}
+	return nil
 }

@@ -103,12 +103,16 @@ func Check(ctx context.Context, cfg Config, stores Stores, version string) *Chec
 	var heads, probes []error
 	nSecrets := 0
 	for _, app := range d.Apps {
+		if app.PrivateRoute != nil && !cfg.PrivateIngress {
+			heads = append(heads, fmt.Errorf("%s: private app ingress is disabled on this node", app.AppID))
+			continue
+		}
 		if err := checkRelease(app.Release); err != nil {
 			heads = append(heads, fmt.Errorf("%s: %w", app.AppID, err))
 		} else if info, err := stores.Blobs.Head(ctx, app.Release.S3Key); err != nil {
 			heads = append(heads, fmt.Errorf("%s: %s: %v", app.AppID, app.Release.S3Key, err))
-		} else if info.Size != app.Release.SizeBytes {
-			heads = append(heads, fmt.Errorf("%s: %s has %d bytes, expected %d", app.AppID, app.Release.S3Key, info.Size, app.Release.SizeBytes))
+		} else if info.Size != storedReleaseSize(app.Release) {
+			heads = append(heads, fmt.Errorf("%s: %s has %d bytes, expected %d", app.AppID, app.Release.S3Key, info.Size, storedReleaseSize(app.Release)))
 		}
 		probe := &Secrets{Store: stores.Secrets, Prefix: cfg.SSMPrefix}
 		if _, err := probe.Resolve(ctx, app.AppID, app.DeploymentID, app.Secrets); err != nil {

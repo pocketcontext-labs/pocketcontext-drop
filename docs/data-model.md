@@ -16,6 +16,7 @@ Migration `1820001400_app_http_port.js` lowers the minimum guest HTTP port to 1.
   | --- | --- | --- |
   | `role` | select `admin` or `user` | required; set at creation (below), changed only by `user.set` |
   | `app_quota` | number 0-100 | legacy app count (default 3), retained for API compatibility |
+  | `developer` | bool | Developer capability for private apps, initially false for every account. Admins grant and revoke it through `user.set`. |
   | `suspended` | bool | changed by `user.set`; a suspended account cannot sign in or renew a session |
   | `invited_by` | relation to `users` | the admin whose invite created the account |
 
@@ -210,3 +211,22 @@ official workspace, `official_target` pins its desired binary, and
 `official_installed` and `official_version` track the most recent healthy
 target confirmed by the node. Hosted restore invalidates outstanding admin
 upload links alongside customer links.
+
+### Private developer release storage
+
+Migration `1820002680_developer_apps.js` adds the app's developer-private
+classification, a hidden 256-bit app master and the release's hidden, bounded
+inspection manifest. Private apps keep the legacy hostname field empty. Their slugs must be unused, and stay reserved after deletion so a stale public route cannot serve a private hostname. Uploads
+use the isolated probe on their own bytes. A declared manifest is validated and
+stored on that app release; executables without a manifest use the developer's
+declared runtime settings. Placement checks declared ports, resource minima
+and required services before installation.
+
+For a private release, `releases.sha256` and `size_bytes` describe the Linux
+executable, whereas `s3_key` addresses its encrypted representation. Each
+app derives a separate content key for each executable digest with
+HMAC-SHA-256. AES-256-GCM protects 1 MiB chunks, with an increasing chunk
+index as nonce under that content-specific key. The assigned node receives
+the content key in its authenticated desired document. App deletion purges the
+object by stored key. Identical binaries uploaded to different private apps
+therefore have separate ciphertext, records, keys and deletion lifetimes.

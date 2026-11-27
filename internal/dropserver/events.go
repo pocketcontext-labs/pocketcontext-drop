@@ -45,6 +45,15 @@ func WriteEvent(app core.App, e EventRecord) error {
 	record.Set("actor", e.Actor)
 	record.Set("actor_node", e.ActorNode)
 	record.Set("app", e.App)
+	if e.App != "" {
+		parent, err := app.FindRecordById("apps", e.App)
+		if err != nil {
+			return err
+		}
+		if parent.GetBool("developer_private") {
+			record.Set("private_owner", parent.GetString("owner"))
+		}
+	}
 	record.Set("subject_user", e.SubjectUser)
 	record.Set("action", e.Action)
 	record.Set("detail", json.RawMessage(raw))

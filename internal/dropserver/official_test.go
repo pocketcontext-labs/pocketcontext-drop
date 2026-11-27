@@ -31,6 +31,7 @@ func TestOfficialWorkspaceLifecycle(t *testing.T) {
 	node := h.MustOp(admin, "node.create", map[string]any{"name": "official-node", "host_id": hostA})
 	_, nodeToken := h.NodeLogin("official-node", node["password"].(string))
 	ready := reportOf(hostA)
+	ready["nibrunner"].(map[string]any)["allocatable"].(map[string]any)["vcpuCount"] = 8
 	ready["nibrunner"].(map[string]any)["versions"].(map[string]any)["cpuQuarterQuota"] = true
 	if code, body := report(t, h, nodeToken, ready); code != 200 {
 		t.Fatal(body)
@@ -153,6 +154,41 @@ func TestOfficialWorkspaceLifecycle(t *testing.T) {
 	}
 	if third := create(bob, "atlas", "New library"); third["beta_sha256"] != newVersion {
 		t.Fatal(third)
+	}
+	ref := map[string]any{"sha256": newVersion}
+	wantError(t, h.Op(alice, "catalog.archive", ref), 403, dropapi.CodeForbidden)
+	h.MustOp(admin, "catalog.archive", ref)
+	wantError(t, h.Op(admin, "catalog.publish", ref), 409, "release_archived")
+	if actual := appOf(t, h.MustOp(alice, "app.get", map[string]any{"app": a["id"]})); actual["installed_version"] != "1.1.0" || actual["beta_sha256"] != newVersion {
+		t.Fatal("archive changed an installed executable", actual)
+	}
+	for _, rr := range h.MustOp(alice, "catalog.list", nil)["releases"].([]any) {
+		if rr.(map[string]any)["sha256"] == newVersion {
+			t.Fatal("customer saw archived release")
+		}
+	}
+	_, eve := h.User("eve@example.test", "user")
+	choose := map[string]any{"product": "atlas", "name": "Selected version", "multiplier": 1, "sha256": crew}
+	wantError(t, h.Op(eve, "workspace.create", choose), 409, "release_unavailable")
+	choose["sha256"] = newVersion
+	wantError(t, h.Op(eve, "workspace.create", choose), 409, "release_archived")
+	for _, token := range []string{eve, admin} {
+		options := map[string]any{"all_versions": true, "include_archived": true}
+		results := h.MustOp(token, "catalog.list", options)["releases"].([]any)
+		if len(results) != 3 || results[0].(map[string]any)["sha256"] != newVersion || !results[0].(map[string]any)["archived"].(bool) {
+			t.Fatalf("version listing: %v", results)
+		}
+		options["include_archived"] = false
+		if got := h.MustOp(token, "catalog.list", options)["releases"].([]any); len(got) != 2 {
+			t.Fatal(got)
+		}
+	}
+	choose["allow_archived"] = true
+	if pinned := appOf(t, h.MustOp(eve, "workspace.create", choose)); pinned["beta_sha256"] != newVersion {
+		t.Fatal(pinned)
+	}
+	if fallback := create(eve, "atlas", "Default version"); fallback["beta_sha256"] != atlas {
+		t.Fatal(fallback)
 	}
 	wantError(t, h.Op(alice, "user.directory", nil), 403, dropapi.CodeForbidden)
 	if users := h.MustOp(admin, "user.directory", map[string]any{"search": "alice", "status": "active", "workspaces": "yes", "credits": "no"})["users"].([]any); len(users) != 1 {

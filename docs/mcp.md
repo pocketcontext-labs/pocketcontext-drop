@@ -6,7 +6,7 @@ Hosted Drop offers a remote Model Context Protocol (MCP) endpoint at `https://HO
 
 Drop has exactly two tools, `drop_read` and `drop_write` (decision 11). Both act with the account that approved the connection and reach Drop only through its operation route, `POST /api/drop/op` ([Operations](ops.md)), in-process: the server checks the account, its role and ownership on every call, exactly as for the reader and the CLI. No tool runs shell commands, reads host files or administers the server. Future features add operations or `what` values, not tools; a new tool needs the owner's approval.
 
-There are two MCP servers, one per role, with the same two tools and different enums and descriptions. Each MCP request picks one by calling `GET /api/drop/me` with the caller's token: an admin sees the admin server, anyone else the user server. The role only decides what is listed: a user who sends an admin operation or read anyway gets 403 `forbidden` from the server.
+Each MCP request reads `GET /api/drop/me` with the caller’s token and selects the tool descriptions and schemas for that account’s role, Developer access, and the official catalog setting. A developer can be a user or an admin. An existing OAuth connection picks up a grant or revocation on its next request. The API checks the current account again when executing the operation.
 
 ### drop_read
 
@@ -14,7 +14,7 @@ There are two MCP servers, one per role, with the same two tools and different e
 
 | `what` | Role | Operation | Reads |
 | --- | --- | --- | --- |
-| `me` | user | `me` | the account: email, role, app quota, admin, owner |
+| `me` | user | `me` | the account: email, role, developer access, app quota, admin, owner |
 | `apps` | user | `app.list` | the caller's apps and quota; `all` (admins) everyone's |
 | `app` | user | `app.get` | one app (`app`) with its secret names |
 | `releases` | user | `release.list` | an app's releases (`app`); not available until releases exist |
@@ -22,6 +22,7 @@ There are two MCP servers, one per role, with the same two tools and different e
 | `usage` | user | `usage.get` | an app's S3 usage (`app`): the last 24 hours by hour, the month to date against its soft and hard limits, stored bytes and an estimated cost |
 | `status` | user | `status` | an app's runtime status (`app`): phase, message, deployment, restarts; the node's name for admins |
 | `events` | user | `event.list` | events of the caller's apps or of one app (`app`); `all` (admins) every event |
+| `shared` | user | `private.shared` | private apps the owner has shared with the caller |
 | `users` | admin | `user.list` | every account |
 | `invites` | admin | `invite.list` | invites and their state |
 | `nodes` | admin | `node.list` | nodes (hosts): state, online, desired_seq, capacity and app count |
@@ -32,12 +33,22 @@ A `what` whose operation is not registered yet stays listed, marked "(not availa
 
 `drop_write {op, input?, idempotency_key?}`, annotated `destructiveHint` (the enum includes `app.stop` and `secret.delete`): a thin pass-through to `POST /api/drop/op`. `op` is an enum of the caller's operations, `input` the operation's object (default `{}`), and `idempotency_key` replays the first result of a retried write for 24 hours (`secret.set` ignores keys). The answer is `{op, result, replayed?}`.
 
-The op enum and the op table in the tool description (name, role, input signature such as `{app, name?, env?: {set?, unset?}}` and summary) are generated from the registry in `internal/dropapi`: the operations whose `Spec` has `MCP: true`, filtered to the role of the account. `TestMCPWriteTableMatchesRegistry` checks the enum and table against the registry, and `TestMCPWriteOpsFollowTicket` checks the set against decision 11's list:
+The op enum and the op table in the tool description (name, role, input signature such as `{app, name?, env?: {set?, unset?}}` and summary) are generated from the registry in `internal/dropapi`: the operations whose `Spec` has `MCP: true`, filtered to the role and capabilities of the account. `TestMCPWriteTableMatchesRegistry` checks the enum and table against the registry, and `TestMCPWriteOpsFollowTicket` checks the set against decision 11's list:
 
 - users: `app.create`, `app.set`, `app.start`, `app.stop`, `release.upload_link`, `release.deploy`, `secret.set`, `secret.delete`;
 - admins: `invite.create`, `invite.revoke`, `user.set`, `node.create`, `node.rotate_secret`, `node.set_state`, `placement.set`, `placement.clear`.
 
 Every operation on these lists is registered (`node.create` and `node.rotate_secret` return a node's agent password once: it passes through the conversation, so the instructions ask admins to hand it only to whoever installs the agent). Reads sent to `drop_write` are refused (use `drop_read`), and so are operations not offered through MCP (`app.archive`, `app.restore`).
+
+### Test a private app
+
+1. Call `drop_read` with `{"what":"me"}`. A developer account returns `developer: true`.
+2. Use `drop_write` with `developer.create` and an input such as `{"name":"Atlas preview","slug":"atlas-preview"}`. Keep the returned app ID.
+3. Call `developer.upload_link` with that app ID. Upload the local Linux executable with an HTTP PUT to the one-time URL, outside of MCP. Keep the returned release ID. The file belongs to the private app.
+4. Call `developer.deploy` with `{"app":"APP_ID","release":"RELEASE_ID"}`. Use `drop_read` with `{"what":"status","app":"APP_ID"}` to follow the deployment. For a later build, repeat the upload and deploy steps on the same app.
+5. Use `private.grant` and `private.revoke` to manage who can open the running app. A collaborator can find their invitations with `drop_read` and `{"what":"shared"}`. Access to the running app grants no rights to download the binary, deploy a release, or manage collaborators.
+
+The private operations are also available when the official catalog is active. A private deployment creates no official catalog entry.
 
 ### Errors
 

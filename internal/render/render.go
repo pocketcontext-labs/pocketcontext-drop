@@ -15,7 +15,10 @@
 package render
 
 import (
+	"crypto/ed25519"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"maps"
 	"slices"
@@ -50,16 +53,27 @@ type Input struct {
 }
 
 // App is one resolved app as the agent hands it to Render.
+// PrivateRoute carries the hostname separately so earlier agents never render
+// it with public access. Only an Ed25519 verification key travels to the node.
+type PrivateRoute struct {
+	Hostname  string `json:"hostname"`
+	PublicKey []byte `json:"publicKey"`
+}
+
+const PrivateAccessIssuer = "drop-private-app"
+const PrivateAccessHeader = "X-Drop-App-Access"
+
 type App struct {
-	GenericBeta         bool   `json:"genericBeta,omitzero"`
-	AppID               string `json:"appId"`        // ^d-[a-z0-9]{15}$
-	DeploymentID        string `json:"deploymentId"` // <appId>-dep-<n>
-	LocalOnly           bool   `json:"localOnly,omitzero"`
-	ProxyOnly           bool   `json:"proxyOnly,omitzero"`
-	ManagedCrew         bool   `json:"managedCrew,omitzero"`
-	CrewFreshEnrollment bool   `json:"crewFreshEnrollment,omitzero"`
-	CrewReplicaBucket   string `json:"crewReplicaBucket,omitempty"`
-	AWSRegion           string `json:"awsRegion,omitempty"`
+	PrivateRoute        *PrivateRoute `json:"privateRoute,omitempty"`
+	GenericBeta         bool          `json:"genericBeta,omitzero"`
+	AppID               string        `json:"appId"`        // ^d-[a-z0-9]{15}$
+	DeploymentID        string        `json:"deploymentId"` // <appId>-dep-<n>
+	LocalOnly           bool          `json:"localOnly,omitzero"`
+	ProxyOnly           bool          `json:"proxyOnly,omitzero"`
+	ManagedCrew         bool          `json:"managedCrew,omitzero"`
+	CrewFreshEnrollment bool          `json:"crewFreshEnrollment,omitzero"`
+	CrewReplicaBucket   string        `json:"crewReplicaBucket,omitempty"`
+	AWSRegion           string        `json:"awsRegion,omitempty"`
 	// CrewOwnerEmail is the immutable address Drop verified at creation.
 	PrivateOwnerEmail  bool   `json:"privateOwnerEmail,omitzero"`
 	CrewOwnerEmail     string `json:"crewOwnerEmail,omitempty"`
@@ -101,9 +115,11 @@ type Volume struct {
 // Release is the staged executable. The agent stores it under its sha256, so
 // the layer's objectKey is the sha256 (nibrun's localArtifactReference).
 type Release struct {
-	SHA256    string `json:"sha256"`
-	S3Key     string `json:"s3Key"` // releases/<sha256>
-	SizeBytes int64  `json:"sizeBytes"`
+	// PrivateKey is delivered only to the assigned node, never serialized into nibrunner state.
+	PrivateKey string `json:"privateKey,omitempty"`
+	SHA256     string `json:"sha256"`
+	S3Key      string `json:"s3Key"` // releases/<sha256>
+	SizeBytes  int64  `json:"sizeBytes"`
 }
 
 // Resources are the microVM's size.
@@ -349,6 +365,16 @@ func inputNames(in Input, id string) bool {
 	return false
 }
 
+func (app App) platformHostname() string {
+	if app.PrivateRoute != nil {
+		return app.PrivateRoute.Hostname
+	}
+	if len(app.Hostnames) == 1 && app.Hostnames[0].Kind == "platform" {
+		return app.Hostnames[0].Hostname
+	}
+	return ""
+}
+
 func renderEnvironment(app App) map[string]string {
 	env := make(map[string]string, len(app.Env)+len(app.Secrets)+3)
 	for k, v := range app.Env {
@@ -361,7 +387,7 @@ func renderEnvironment(app App) map[string]string {
 		env["DROP_OWNER_EMAIL"] = app.CrewOwnerEmail
 	}
 	if app.ManagedCrew {
-		env["POCKETCONTEXT_DOMAIN"] = app.Hostnames[0].Hostname
+		env["POCKETCONTEXT_DOMAIN"] = app.platformHostname()
 		env["CREW_DROP_APP_ID"] = app.AppID
 		if !app.LocalOnly {
 			env["CREW_DROP_BUCKET"] = app.CrewReplicaBucket
@@ -393,6 +419,14 @@ func renderInstance(app App) instance {
 	}
 
 	hostnames := toHostnames(app.Hostnames)
+	policy := access{Kind: "public"}
+	if route := app.PrivateRoute; route != nil {
+		hostnames = []hostname{{Hostname: route.Hostname, Kind: "platform"}}
+		der, _ := x509.MarshalPKIXPublicKey(ed25519.PublicKey(route.PublicKey))
+		key := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der})
+		policy = access{Kind: "jwt", Issuer: PrivateAccessIssuer, Audiences: []string{app.AppID},
+			Token: &tokenSource{Header: PrivateAccessHeader, Format: "raw"}, PublicKeys: []string{string(key)}}
+	}
 	sort.Slice(hostnames, func(i, j int) bool { return hostnames[i].Hostname < hostnames[j].Hostname })
 
 	inst := instance{
@@ -419,7 +453,7 @@ func renderInstance(app App) instance {
 			RestartPolicy: restart,
 		},
 		Hostnames: hostnames,
-		Access:    access{Kind: "public"},
+		Access:    policy,
 	}
 	if app.HookPort != 0 {
 		inst.Config.Hooks = &hooks{Port: app.HookPort}

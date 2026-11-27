@@ -8,6 +8,7 @@ interface Ledger {
   account: string;
   state: { balance: number; reserved?: number; pending_compute_seconds?: number; paid: boolean; trial_seconds: number };
   settings: { pack: number; euro_micros_per_credit: number };
+  has_more: boolean;
   entries: { id: number; kind: string; delta: number; app: string; created: number }[];
   apps: { id: string; name: string; rate: number; compute: number; s3: number }[];
 }
@@ -22,7 +23,11 @@ export default function Credits({ admin, onPurchase }: { admin: boolean; onPurch
   const currentPage = page?.offset === offset && page.query === query ? page : null;
   const accounts = currentPage?.accounts ?? [];
   const [data, setData] = useState<Ledger | null>(null);
-  const [before, setBefore] = useState(0);
+  const [cursors, setCursors] = useState<number[]>([0]);
+  const before = cursors[cursors.length - 1];
+  const [historyQuery, setHistoryQuery] = useState("");
+  const [kind, setKind] = useState("");
+  const [historyLoading, setHistoryLoading] = useState(true);
   const [error, setError] = useState("");
   const [delta, setDelta] = useState("");
   const [busy, setBusy] = useState(false);
@@ -45,13 +50,13 @@ export default function Credits({ admin, onPurchase }: { admin: boolean; onPurch
   useEffect(() => {
     let active = true;
     async function load() {
-      const result = await op<Ledger>("credits.get", { account, before });
-      if (active) { setData(result); setError(""); }
+      const result = await op<Ledger>("credits.get", { account, before, limit: pageSize, query: historyQuery, kind });
+      if (active) { setData(result); setHistoryLoading(false); setError(""); }
     }
-    void load().catch(e => { if (active) setError(message(e)); });
+    const loadTimer = window.setTimeout(() => void load().catch(e => { if (active) { setHistoryLoading(false); setError(message(e)); } }), 150);
     const timer = window.setInterval(refresh, 30_000);
-    return () => { active = false; window.clearInterval(timer); };
-  }, [account, admin, before, refresh, version]);
+    return () => { active = false; window.clearTimeout(loadTimer); window.clearInterval(timer); };
+  }, [account, before, historyQuery, kind, refresh, version]);
 
   async function submit() {
     if (!data || busy) return;
@@ -63,7 +68,7 @@ export default function Credits({ admin, onPurchase }: { admin: boolean; onPurch
       if (admin) await op("credits.adjust", { account: data.account, microcredits: amount }, pending.current.key);
       else await op("credits.buy", {}, pending.current.key);
       window.dispatchEvent(new Event("drop-credits-changed"));
-      pending.current = null; setDelta(""); setBefore(0); refresh();
+      pending.current = null; setDelta(""); setCursors([0]); refresh();
       if (!admin) onPurchase?.();
     } catch (e) { setError(message(e)); }
     finally { setBusy(false); }
@@ -79,7 +84,7 @@ export default function Credits({ admin, onPurchase }: { admin: boolean; onPurch
         setQuery(e.target.value); setOffset(0);
       }} /></label>
       <label>View balance <select value={account} onChange={e => {
-        setData(null); setBefore(0); setSelected(accounts.find(a => a.id === e.target.value) ?? null);
+        setData(null); setCursors([0]); setSelected(accounts.find(a => a.id === e.target.value) ?? null);
       }}>
         <option value="">My account</option>
         {selected && !accounts.some(a => a.id === selected.id) && <option value={selected.id}>{selected.email}</option>}
@@ -106,10 +111,22 @@ export default function Credits({ admin, onPurchase }: { admin: boolean; onPurch
         {data.apps.map(a => <tr key={a.id}><td>{a.name}</td><td>{a.rate}</td><td>{credits(a.compute)}</td><td>{credits(a.s3)}</td></tr>)}
       </tbody></table></div></>}
       <details className="credit-history"><summary>Transaction history</summary>
-      {data.entries.length ? <div className="credit-table"><table><thead><tr><th>Time</th><th>Entry</th><th>Credits</th></tr></thead><tbody>{data.entries.map(e => <tr key={e.id}>
-        <td>{new Date(e.created * 1000).toLocaleString()}</td><td>{e.kind === "s3" ? "Storage" : e.kind === "compute" ? "App runtime" : e.kind}</td><td>{credits(e.delta)}</td></tr>)}</tbody></table></div> : <p>No entries.</p>}
-      {data.entries.length === 100 && <button onClick={() => setBefore(data.entries[data.entries.length-1].id)}>Older entries</button>}
-      {before > 0 && <button onClick={() => setBefore(0)}>Latest entries</button>}
+      <div className="row">
+        <label>Find transactions <input type="search" placeholder="App name or entry type" value={historyQuery} onChange={e => {
+          setHistoryLoading(true); setHistoryQuery(e.target.value); setCursors([0]);
+        }} /></label>
+        <label>Entry type <select value={kind} onChange={e => {
+          setHistoryLoading(true); setKind(e.target.value); setCursors([0]);
+        }}><option value="">All types</option><option value="compute">App runtime</option><option value="s3">Storage</option><option value="purchase">Purchase</option><option value="adjustment">Adjustment</option></select></label>
+      </div>
+      {historyLoading ? <p role="status">Loading transactions…</p> : data.entries.length ? <div className="credit-table"><table><thead><tr><th>Time</th><th>App</th><th>Entry</th><th>Credits</th></tr></thead><tbody>{data.entries.map(e => <tr key={e.id}>
+        <td>{new Date(e.created * 1000).toLocaleString()}</td><td>{data.apps.find(a => a.id === e.app)?.name || e.app || "—"}</td><td>{e.kind === "s3" ? "Storage" : e.kind === "compute" ? "App runtime" : e.kind}</td><td>{credits(e.delta)}</td></tr>)}</tbody></table></div> : <p>No matching transactions.</p>}
+      {data.has_more && <button className="secondary" disabled={historyLoading} onClick={() => {
+        setHistoryLoading(true); setCursors([...cursors, data.entries[data.entries.length - 1].id]);
+      }}>Older transactions</button>}
+      {before > 0 && <button className="secondary" disabled={historyLoading} onClick={() => {
+        setHistoryLoading(true); setCursors(cursors.slice(0, -1));
+      }}>Newer transactions</button>}
       </details>
     </>}
   </section>;

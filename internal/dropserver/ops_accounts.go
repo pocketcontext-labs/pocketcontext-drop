@@ -32,10 +32,11 @@ func me(c *Ctx) (dropapi.Me, error) {
 	if c.Admin {
 		role = dropapi.RoleAdmin
 	}
-	out := dropapi.Me{Hosted: accountsOf(c.App).hosted, ID: c.Auth.Id, Email: c.Auth.Email(), Role: role, Admin: c.Admin, Owner: c.Owner, AppQuota: c.Auth.GetInt("app_quota")}
+	out := dropapi.Me{Hosted: accountsOf(c.App).hosted, ID: c.Auth.Id, Email: c.Auth.Email(), Role: role, Admin: c.Admin, Developer: c.Auth.GetBool("developer"), Owner: c.Owner, AppQuota: c.Auth.GetInt("app_quota")}
 	if out.Hosted {
 		var err error
 		out.OfficialCatalog, err = officialEnabled(c.App)
+		out.ReleaseSelection = out.OfficialCatalog
 		if err != nil {
 			return out, err
 		}
@@ -56,7 +57,7 @@ func me(c *Ctx) (dropapi.Me, error) {
 func userOut(app core.App, r *core.Record) dropapi.User {
 	return dropapi.User{
 		ID: r.Id, Email: r.Email(), Role: dropapi.Role(r.GetString("role")), AppQuota: r.GetInt("app_quota"),
-		Suspended: r.GetBool("suspended"), Owner: isOwner(app, r), SignedIn: r.Verified(),
+		Developer: r.GetBool("developer"), Suspended: r.GetBool("suspended"), Owner: isOwner(app, r), SignedIn: r.Verified(),
 		InvitedBy: r.GetString("invited_by"), Created: r.GetDateTime("created").String(),
 	}
 }
@@ -145,8 +146,8 @@ func userSet(c *Ctx, in *dropapi.UserSetInput) (any, error) {
 	if in.User == "" {
 		return nil, Invalid("user", "Name the account by id or email.")
 	}
-	if in.Role == nil && in.AppQuota == nil && in.Suspended == nil {
-		return nil, Invalid("user", "Change at least one of role, app_quota or suspended.")
+	if in.Role == nil && in.AppQuota == nil && in.Suspended == nil && in.Developer == nil {
+		return nil, Invalid("user", "Change at least one of role, developer, app_quota or suspended.")
 	}
 	target, err := findUser(c.App, in.User)
 	if err != nil {
@@ -169,6 +170,10 @@ func userSet(c *Ctx, in *dropapi.UserSetInput) (any, error) {
 			target.Set("role", string(*in.Role))
 			changes["role"] = map[string]any{"from": from, "to": *in.Role}
 		}
+	}
+	if in.Developer != nil && *in.Developer != target.GetBool("developer") {
+		target.Set("developer", *in.Developer)
+		changes["developer"] = map[string]any{"from": !*in.Developer, "to": *in.Developer}
 	}
 	if in.AppQuota != nil {
 		if *in.AppQuota < 0 || *in.AppQuota > dropapi.MaxAppQuota {
@@ -203,6 +208,11 @@ func userSet(c *Ctx, in *dropapi.UserSetInput) (any, error) {
 	if len(changes) > 0 {
 		if err := c.App.Save(target); err != nil {
 			return nil, err
+		}
+		if (changes["developer"] != nil && !target.GetBool("developer")) || (changes["suspended"] != nil && target.GetBool("suspended")) {
+			if err := invalidatePrivateAccountAccess(c.App, target); err != nil {
+				return nil, err
+			}
 		}
 	}
 	c.Event(Event{SubjectUser: target.Id, Detail: map[string]any{"email": target.Email(), "changes": changes}})

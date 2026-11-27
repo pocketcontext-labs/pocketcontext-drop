@@ -35,6 +35,8 @@ func eventList(c *Ctx, in *dropapi.EventListInput) (any, error) {
 			return nil, err
 		}
 		filter, params["app"] = "app = {:app}", app.Id
+	case in.All:
+		filter, params["owner"] = "(private_owner = '' || private_owner = {:owner})", c.Auth.Id
 	case !in.All:
 		filter, params["owner"] = "app != '' && app.owner = {:owner}", c.Auth.Id
 	}

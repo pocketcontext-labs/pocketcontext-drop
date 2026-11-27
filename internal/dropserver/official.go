@@ -18,6 +18,7 @@ func init() {
 	register("catalog.list", officialList)
 	register("catalog.upload", officialUpload)
 	register("catalog.publish", officialPublish)
+	register("catalog.archive", officialArchive)
 	register("catalog.activate", officialActivate)
 	register("workspace.create", workspaceCreate)
 	register("workspace.resize", workspaceResize)
@@ -25,6 +26,7 @@ func init() {
 }
 
 type officialRelease struct {
+	Archived  bool   `db:"archived" json:"archived"`
 	Minimum   int    `db:"min_size" json:"minimum_multiplier"`
 	Rehearsed bool   `db:"rehearsed" json:"rehearsed,omitempty"`
 	Product   string `db:"product" json:"product"`
@@ -40,19 +42,26 @@ func officialEnabled(app core.App) (bool, error) {
 	return enabled, err
 }
 
-func officialList(c *Ctx, _ *dropapi.MeInput) (any, error) {
+func officialList(c *Ctx, in *dropapi.CatalogListInput) (any, error) {
 	rows := []officialRelease{}
 	// Only current published releases are public to customers. Operators also
 	// see the last 50 candidate and superseded versions.
-	query := `SELECT * FROM drop_official_releases r WHERE published>0 AND NOT EXISTS
-	(SELECT 1 FROM drop_official_releases n WHERE n.product=r.product AND n.published>r.published) ORDER BY product`
+	query := `SELECT * FROM drop_official_releases r WHERE archived=0 AND published>0 AND NOT EXISTS
+	(SELECT 1 FROM drop_official_releases n WHERE n.product=r.product AND n.archived=0 AND n.published>r.published) ORDER BY product`
 	if c.Admin {
 		query = `SELECT r.*,EXISTS(SELECT 1 FROM drop_official_rehearsals h WHERE h.candidate=r.digest AND h.baseline=
-	    COALESCE((SELECT digest FROM drop_official_releases p WHERE p.product=r.product AND published>0 ORDER BY published DESC LIMIT 1),'')) rehearsed
+	    COALESCE((SELECT digest FROM drop_official_releases p WHERE p.product=r.product AND archived=0 AND published>0 ORDER BY published DESC LIMIT 1),'')) rehearsed
 	    FROM drop_official_releases r WHERE r.digest IN (SELECT digest FROM drop_official_releases ORDER BY rowid DESC LIMIT 50)
-	    OR (r.published>0 AND NOT EXISTS(SELECT 1 FROM drop_official_releases n WHERE n.product=r.product AND n.published>r.published)) ORDER BY r.rowid DESC`
+	    OR (r.published>0 AND NOT EXISTS(SELECT 1 FROM drop_official_releases n WHERE n.product=r.product AND n.archived=0 AND n.published>r.published)) ORDER BY r.rowid DESC`
 	}
-	if err := c.App.DB().NewQuery(query).All(&rows); err != nil {
+	if in.AllVersions || in.IncludeArchived {
+		query = `SELECT * FROM drop_official_releases r WHERE published>0
+		AND (archived=0 OR {:include_archived})
+		AND ({:all_versions} OR NOT EXISTS (SELECT 1 FROM drop_official_releases n
+		  WHERE n.product=r.product AND n.published>r.published AND (n.archived=0 OR {:include_archived})))
+		ORDER BY product,published DESC`
+	}
+	if err := c.App.DB().NewQuery(query).Bind(dbx.Params{"all_versions": in.AllVersions, "include_archived": in.IncludeArchived}).All(&rows); err != nil {
 		return nil, err
 	}
 	enabled, err := officialEnabled(c.App)
@@ -84,13 +93,16 @@ func officialPublish(c *Ctx, in *dropapi.BetaDigest) (any, error) {
 		}
 		return nil, err
 	}
+	if r.Archived {
+		return nil, Conflict("release_archived", "This release is archived.")
+	}
 	if _, err := betaRelease(c.App, r.Digest); err != nil {
 		return nil, err
 	}
 	// A repeated publish of an older version never moves it ahead of newer releases.
 	if r.Published == 0 {
 		var baseline string
-		if err := c.App.DB().NewQuery("SELECT COALESCE((SELECT digest FROM drop_official_releases WHERE product={:p} AND published>0 ORDER BY published DESC LIMIT 1),'')").Bind(dbx.Params{"p": r.Product}).Row(&baseline); err != nil {
+		if err := c.App.DB().NewQuery("SELECT COALESCE((SELECT digest FROM drop_official_releases WHERE product={:p} AND archived=0 AND published>0 ORDER BY published DESC LIMIT 1),'')").Bind(dbx.Params{"p": r.Product}).Row(&baseline); err != nil {
 			return nil, err
 		}
 		if err := requireRehearsal(c.App, r.Digest, baseline); err != nil {
@@ -102,13 +114,29 @@ func officialPublish(c *Ctx, in *dropapi.BetaDigest) (any, error) {
 	}
 	// Adopt verified legacy deployments only when the exact running release,
 	// product executable and managed volume agree. Their runtime stays pinned.
-	if err := waitExec(c.App, `UPDATE apps SET official_product={:p},official_target={:d},official_minimum={:minimum} WHERE official_product='' AND executable_name={:p}
+	if err := waitExec(c.App, `UPDATE apps SET official_product={:p},official_target={:d},official_minimum={:minimum} WHERE developer_private=0 AND official_product='' AND executable_name={:p}
 	AND crew_enrollment!='' AND crew_owner_email!='' AND generic_beta=0 AND current_release IN
 	(SELECT id FROM releases WHERE sha256={:d})`, dbx.Params{"p": r.Product, "d": r.Digest, "minimum": r.Minimum}); err != nil {
 		return nil, err
 	}
 	c.Event(Event{Detail: map[string]any{"product": r.Product, "version": r.Version, "sha256": r.Digest}})
 	return map[string]bool{"published": true}, nil
+}
+
+func officialArchive(c *Ctx, in *dropapi.BetaDigest) (any, error) {
+	result, err := c.App.DB().NewQuery("UPDATE drop_official_releases SET archived=1 WHERE digest={:d} AND published>0").Bind(dbx.Params{"d": in.SHA256}).Execute()
+	if err != nil {
+		return nil, err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if n == 0 {
+		return nil, NotFound("Published release")
+	}
+	c.Event(Event{Detail: map[string]any{"sha256": in.SHA256}})
+	return map[string]bool{"archived": true}, nil
 }
 
 func officialActivate(c *Ctx, _ *dropapi.MeInput) (any, error) {
@@ -136,9 +164,25 @@ func officialActivate(c *Ctx, _ *dropapi.MeInput) (any, error) {
 
 func currentOfficial(app core.App, product string) (officialRelease, error) {
 	var r officialRelease
-	err := app.DB().NewQuery("SELECT * FROM drop_official_releases WHERE product={:product} AND published>0 ORDER BY published DESC LIMIT 1").Bind(dbx.Params{"product": product}).One(&r)
+	err := app.DB().NewQuery("SELECT * FROM drop_official_releases WHERE product={:product} AND archived=0 AND published>0 ORDER BY published DESC LIMIT 1").Bind(dbx.Params{"product": product}).One(&r)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = Conflict("release_unavailable", "Publish a checked release for this product first.")
+	}
+	return r, err
+}
+
+func selectedOfficial(app core.App, in *dropapi.WorkspaceCreate) (officialRelease, error) {
+	if in.SHA256 == "" {
+		return currentOfficial(app, in.Product)
+	}
+	var r officialRelease
+	err := app.DB().NewQuery("SELECT * FROM drop_official_releases WHERE product={:p} AND digest={:d} AND published>0").
+		Bind(dbx.Params{"p": in.Product, "d": in.SHA256}).One(&r)
+	if errors.Is(err, sql.ErrNoRows) {
+		return r, Conflict("release_unavailable", "Choose a published release of the selected app.")
+	}
+	if err == nil && r.Archived && !in.AllowArchived {
+		return r, Conflict("release_archived", "Confirm the archived release to install it.")
 	}
 	return r, err
 }
@@ -154,7 +198,7 @@ func workspaceCreate(c *Ctx, in *dropapi.WorkspaceCreate) (any, error) {
 	if !slices.Contains(crewBetaSizes, in.Multiplier) {
 		return nil, Invalid("multiplier", "Choose a resource multiplier from 1 to 8.")
 	}
-	r, err := currentOfficial(c.App, in.Product)
+	r, err := selectedOfficial(c.App, in)
 	if err != nil {
 		return nil, err
 	}
@@ -274,18 +318,15 @@ func workspaceUpgrade(c *Ctx, in *dropapi.WorkspaceUpgrade) (any, error) {
 	if product == "" {
 		return nil, Invalid("app", "Select an official workspace.")
 	}
-	r, err := currentOfficial(c.App, product)
+	desired := a.GetString("official_target")
+	var r officialRelease
+	if in.SHA256 == desired {
+		err = c.App.DB().NewQuery("SELECT * FROM drop_official_releases WHERE digest={:d} AND product={:p} AND published>0").Bind(dbx.Params{"d": desired, "p": product}).One(&r)
+	} else {
+		r, err = currentOfficial(c.App, product)
+	}
 	if err != nil {
 		return nil, err
-	}
-	desired := a.GetString("official_target")
-	// A failed target is retried with the same binary even after a newer
-	// release is published. A half-migrated volume is never opened with
-	// the previous writer automatically.
-	if in.SHA256 == desired && r.Digest != desired {
-		if err := c.App.DB().NewQuery("SELECT * FROM drop_official_releases WHERE digest={:d} AND product={:p} AND published>0").Bind(dbx.Params{"d": desired, "p": product}).One(&r); err != nil {
-			return nil, err
-		}
 	}
 	if in.SHA256 != r.Digest {
 		return nil, Conflict("release_changed", "Review the current release before installing.")

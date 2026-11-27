@@ -15,6 +15,7 @@ import (
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/appconfig"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/buildinfo"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropserver"
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/privateingress"
 )
 
 // args is a small argparse-like parser: flags may appear anywhere.
@@ -191,35 +192,36 @@ parsed:
 		return nil
 	}
 	spec := map[string][2][]string{
-		"serve":          {{"ui-dev", "port", "domain", "hosted-http-address", "hosted-proxy-header", "hosted-proxy-networks", "fake-aws"}, {"take-over", "tcp-only", "headless", "mcp", "hosted", "hosted-init", "hosted-restore"}},
-		"start":          {nil, {"take-over"}},
-		"ensure-running": {nil, {"take-over"}},
-		"stop":           {nil, nil},
-		"status":         {nil, nil},
-		"open":           {nil, {"no-browser"}},
-		"flush":          {nil, nil},
-		"recover":        {{"keep"}, nil},
-		"init":           {{"port"}, {"password-stdin"}},
-		"password":       {nil, {"password-stdin"}},
-		"skill":          {{"agent", "dir"}, nil},
-		"whoami":         {nil, nil},
-		"schema":         {nil, nil},
-		"sql":            {nil, nil},
-		"query":          {nil, nil},
-		"app":            {{"kind", "sign-in-email", "slug", "name", "mode", "idle-timeout", "vcpu", "memory", "disk", "port", "hook-port", "executable", "args-json", "health", "health-path", "limit", "replica-sync-interval"}, {"all", "archived", "finish-enrollment"}},
-		"secret":         {nil, nil},
-		"release":        {{"note", "limit"}, {"activate"}},
-		"search":         {{"limit", "offset", "generation"}, nil},
-		"login-code":     {{"ttl"}, nil},
-		"login":          {nil, {"password-stdin", "code-stdin"}},
-		"logout":         {nil, nil},
-		"invite":         {{"role", "quota", "expires-days", "state", "limit"}, nil},
-		"user":           {{"role", "quota", "limit"}, {"suspend", "unsuspend"}},
-		"op":             {{"idempotency-key"}, nil},
-		"node":           {{"host-id", "ec2-instance-id", "private-ip", "limit"}, nil},
-		"place":          {nil, {"clear"}},
-		"usage":          {{"requests-a", "requests-b", "bytes-out", "stored-bytes"}, {"reset"}},
-		"agent":          {agentValueFlags, nil},
+		"serve":           {{"ui-dev", "port", "domain", "hosted-http-address", "hosted-proxy-header", "hosted-proxy-networks", "fake-aws"}, {"take-over", "tcp-only", "headless", "mcp", "hosted", "hosted-init", "hosted-restore"}},
+		"start":           {nil, {"take-over"}},
+		"ensure-running":  {nil, {"take-over"}},
+		"stop":            {nil, nil},
+		"status":          {nil, nil},
+		"open":            {nil, {"no-browser"}},
+		"flush":           {nil, nil},
+		"recover":         {{"keep"}, nil},
+		"init":            {{"port"}, {"password-stdin"}},
+		"password":        {nil, {"password-stdin"}},
+		"skill":           {{"agent", "dir"}, nil},
+		"whoami":          {nil, nil},
+		"schema":          {nil, nil},
+		"sql":             {nil, nil},
+		"query":           {nil, nil},
+		"app":             {{"kind", "sign-in-email", "slug", "name", "mode", "idle-timeout", "vcpu", "memory", "disk", "port", "hook-port", "executable", "args-json", "health", "health-path", "limit", "replica-sync-interval"}, {"all", "archived", "finish-enrollment"}},
+		"secret":          {nil, nil},
+		"release":         {{"note", "limit"}, {"activate"}},
+		"search":          {{"limit", "offset", "generation"}, nil},
+		"login-code":      {{"ttl"}, nil},
+		"login":           {nil, {"password-stdin", "code-stdin"}},
+		"logout":          {nil, nil},
+		"invite":          {{"role", "quota", "expires-days", "state", "limit"}, nil},
+		"user":            {{"role", "quota", "limit"}, {"suspend", "unsuspend", "developer", "no-developer"}},
+		"op":              {{"idempotency-key"}, nil},
+		"node":            {{"host-id", "ec2-instance-id", "private-ip", "limit"}, nil},
+		"place":           {nil, {"clear"}},
+		"usage":           {{"requests-a", "requests-b", "bytes-out", "stored-bytes"}, {"reset"}},
+		"agent":           {agentValueFlags, nil},
+		"private-ingress": {{"listen", "upstream", "app-domain", "control-origin"}, nil},
 	}
 	s, known := spec[command]
 	if !known {
@@ -228,6 +230,12 @@ parsed:
 	a, err := parseArgs(rest, s[0], s[1])
 	if err != nil {
 		return err
+	}
+	if command == "private-ingress" {
+		if len(a.pos) != 0 || a.has("db") || a.has("url") {
+			return fail(2, "private-ingress takes only its listener and routing flags")
+		}
+		return privateingress.Run(a.flags["listen"], a.flags["upstream"], a.flags["app-domain"], a.flags["control-origin"])
 	}
 	if command == "agent" {
 		// The node agent never resolves a project or uses remote mode.

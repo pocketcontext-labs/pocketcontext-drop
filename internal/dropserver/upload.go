@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"io"
 	"net"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/awsx"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/privateblob"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/releasebundle"
 )
 
@@ -163,6 +165,13 @@ func usableLink(app core.App, hash string, now time.Time) (*core.Record, error) 
 	return links[0], nil
 }
 
+func canUploadRelease(tx core.App, app, account *core.Record) bool {
+	if app.GetBool("developer_private") {
+		return account.GetBool("developer")
+	}
+	return !hostedAdmin(tx, account)
+}
+
 func (u *uploader) serve(re *core.RequestEvent) error {
 	re.Response.Header().Set("Cache-Control", "no-store")
 	token := re.Request.PathValue("token")
@@ -185,7 +194,7 @@ func (u *uploader) serve(re *core.RequestEvent) error {
 		return writeError(re, uploadLinkInvalid())
 	}
 	creator, err := re.App.FindRecordById("users", link.GetString("created_by"))
-	if err != nil || hostedAdmin(re.App, creator) || creator.GetBool("suspended") || app.GetString("owner") != creator.Id {
+	if err != nil || !canUploadRelease(re.App, app, creator) || creator.GetBool("suspended") || app.GetString("owner") != creator.Id {
 		return writeError(re, uploadLinkInvalid())
 	}
 	if app.GetBool("archived") {
@@ -233,7 +242,40 @@ func (u *uploader) serve(re *core.RequestEvent) error {
 	if err := checkBetaUpload(re.App, app, sha, link.GetBool("activate")); err != nil {
 		return writeError(re, err)
 	}
-	key, err := awsx.ReleaseKey(sha)
+	var manifest *dropapi.BetaManifest
+	blob, storedSize, storedHash := file, size, sha
+	if app.GetBool("developer_private") {
+		outcome, raw, err := probeFile(re.Request.Context(), services.ProbeSocket, file, size, sha)
+		if err != nil {
+			return writeError(re, Conflict("probe_pending", "The private release checker is unavailable. Retry this upload."))
+		}
+		if outcome == "success" {
+			parsed, err := parseBetaManifest(raw)
+			if err != nil {
+				return writeError(re, err)
+			}
+			manifest = &parsed
+		}
+		// Encrypt from the verified bytes, without giving another node a
+		// usable copy even if it knows the object key or plaintext digest.
+		releaseKey, err := privateblob.Key(app.GetString("private_release_master"), sha)
+		if err != nil {
+			return writeError(re, err)
+		}
+		blob, err = os.CreateTemp("", "drop-private-release-*")
+		if err != nil {
+			return writeError(re, err)
+		}
+		defer os.Remove(blob.Name())
+		defer blob.Close()
+		h := sha256.New()
+		err = privateblob.Seal(io.MultiWriter(blob, h), io.NewSectionReader(file, 0, size), releaseKey, size)
+		if err != nil {
+			return writeError(re, err)
+		}
+		storedSize, storedHash = privateblob.StoredSize(size), hex.EncodeToString(h.Sum(nil))
+	}
+	key, err := awsx.ReleaseKey(storedHash)
 	if err != nil {
 		return writeError(re, err)
 	}
@@ -241,11 +283,19 @@ func (u *uploader) serve(re *core.RequestEvent) error {
 	defer cancel()
 	releaseBlobMu.Lock()
 	defer releaseBlobMu.Unlock()
-	_, err = services.Releases.PutIfAbsent(ctx, key, file, size, sha)
-	if err != nil {
-		re.App.Logger().Error("Drop release store failed", "key", key, "error", err.Error())
-		return writeError(re, &dropapi.Error{Status: http.StatusBadGateway, Code: dropapi.CodeReleaseStoreFailed,
-			Message: "The release store did not answer. Nothing changed; the link still works until it expires."})
+	put := func() error {
+		_, err := services.Releases.PutIfAbsent(ctx, key, blob, storedSize, storedHash)
+		if err != nil {
+			re.App.Logger().Error("Drop release store failed", "key", key, "error", err.Error())
+			return &dropapi.Error{Status: http.StatusBadGateway, Code: dropapi.CodeReleaseStoreFailed,
+				Message: "The release store did not answer. Nothing changed; the link still works until it expires."}
+		}
+		return nil
+	}
+	if !app.GetBool("developer_private") {
+		if err := put(); err != nil {
+			return writeError(re, err)
+		}
 	}
 
 	var result dropapi.UploadResult
@@ -263,7 +313,7 @@ func (u *uploader) serve(re *core.RequestEvent) error {
 			return err
 		}
 		freshCreator, err := tx.FindRecordById("users", link.GetString("created_by"))
-		if err != nil || hostedAdmin(tx, freshCreator) || freshCreator.GetBool("suspended") || freshCreator.Id != app.GetString("owner") || freshCreator.TokenKey() != creator.TokenKey() {
+		if err != nil || !canUploadRelease(tx, app, freshCreator) || freshCreator.GetBool("suspended") || freshCreator.Id != app.GetString("owner") || freshCreator.TokenKey() != creator.TokenKey() {
 			return uploadLinkInvalid()
 		}
 		if app.GetBool("archived") {
@@ -275,6 +325,16 @@ func (u *uploader) serve(re *core.RequestEvent) error {
 		release, created, err := findOrCreateRelease(tx, app, sha, key, size, link.GetString("note"), creator.Id)
 		if err != nil {
 			return err
+		}
+		if created && manifest != nil {
+			raw, err := json.Marshal(manifest)
+			if err != nil {
+				return err
+			}
+			release.Set("private_manifest", raw)
+			if err := tx.Save(release); err != nil {
+				return err
+			}
 		}
 		if created && provenance != nil {
 			release.Set("archive_sha256", provenance.ArchiveSHA256)
@@ -318,6 +378,12 @@ func (u *uploader) serve(re *core.RequestEvent) error {
 			"deployment_seq": app.GetInt("deployment_seq"),
 		}}); err != nil {
 			return err
+		}
+		if app.GetBool("developer_private") {
+			// Revalidate the developer grant before storing encrypted bytes.
+			if err := put(); err != nil {
+				return err
+			}
 		}
 		result = dropapi.UploadResult{Release: releaseOut(release, app.GetString("current_release")),
 			Created: created, Deployed: deployed, DeploymentID: deploymentID(app)}
