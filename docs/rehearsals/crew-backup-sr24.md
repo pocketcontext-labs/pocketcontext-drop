@@ -1,6 +1,6 @@
 # Crew backup and restore on SR24
 
-On 28 November 2026 the Crew guest backup hooks restored a note and its binary attachment into a different Crew app on SR24. The development node reported zero managed instances and volumes before and after the drill.
+On 28 November 2026 the Crew 0.45.4-drop.7 guest backup hooks restored a note and its binary attachment into a different Crew app on SR24. The development node reported zero managed instances and volumes before and after the drill.
 
 The fixture booted three isolated Firecracker microVMs using the NibRunner kernel and root filesystem. The source and destination had distinct app IDs, hostnames, hook tokens and ext4 data volumes. Each VM had a vsock connection and no network adapter. Crew sign-in used its normal OTP routes with a synthetic vsock mailbox.
 
@@ -8,13 +8,13 @@ The test created the note and attached 8,192 random bytes through the authentica
 
 | Measurement | Result |
 | --- | --- |
-| Source and destination | `d-894cda5820002cf` → `d-82f413a799ef59a` |
-| Crew binary SHA-256 | `ec229602d38342b016e8a6a78da99e5a80bf70b7e1fd7346070a5fcb4a75fd94` |
-| Note ID | `ztp1vdsoggrg27m` |
-| Note body SHA-256 before and after cold boot | `6b01207a3e0abe31f9fdba8f00b5f7e72c17efe409e79dffe6d5bab3abe5e630` |
-| Attachment SHA-256 before and after cold boot | `b02855d5e1da7efd79030e3ef133dbc3919005b38cd356946413f2478c32c6d4` |
-| Archive size and SHA-256 | 61,754 bytes · `ccc95e7c6043740be15deb52b672fc38c1924a7b5eb917cbcd89afaf7f26c501` |
-| Guest capture / restore to ready / whole drill | 0.01 s / 2.31 s / 37.57 s |
+| Source and destination | `d-e467fe8c4a68e76` → `d-f46624bb7ed96e9` |
+| Crew binary SHA-256 | `f3f23dc08d6ef63cc3c2d575e428e9847ae09d448e111d34efba17d62084da6d` |
+| Note ID | `p5sfhxzhwf01fft` |
+| Note body SHA-256 before and after cold boot | `0673700153b06de46560357eee6282e6eebeee526cab29e736269c641c8f97fe` |
+| Attachment SHA-256 before and after cold boot | `c4ade15ed70a14afcf691997af3e522aff0f2bc855d26075b7aa93e9da07c759` |
+| Archive size and SHA-256 | 61,754 bytes · `6f536d96409050808ef615f78a7800d97f19805f6b8b2df90ce19aa63b99de94` |
+| Guest capture / restore to ready / whole drill | 0.01 s / 2.32 s / 37.58 s |
 
 The drill covers the guest contract. The archive travelled through a temporary local file, independently of the platform job queue, S3 billing and dashboard.
 
