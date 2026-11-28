@@ -273,6 +273,11 @@ Resources:
     Properties:
       UserName: drop-ax41-node-ex44
       ManagedPolicyArns: [!Ref NodeReader]
+  NodeAx41:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: drop-ax41-node-ax41
+      ManagedPolicyArns: [!Ref NodeReader]
 Outputs:
   WorkspaceBackupBucket: {Value: !Ref WorkspaceBackups}
   WorkloadBoundary: {Value: !Ref WorkloadBoundary}
