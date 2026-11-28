@@ -16,6 +16,7 @@ import AccountMenu from "./AccountMenu";
 import Brand from "./Brand";
 import BetaDeploy, { BetaLanding } from "./BetaDeploy";
 import Credits from "./Credits";
+import Backups from "./Backups";
 import Connect from "./Connect";
 import { dropApi, type Me } from "./dropApi";
 import Login from "./Login";
@@ -187,6 +188,7 @@ function Workspace({
   else if(hostedAdmin&&me.official_catalog&&(defaultPage||view==="admin-waitlist"||view==="admin-users"))page=<UserDirectory me={me} waiting={view==="admin-waitlist"}/>;
   else if(view==="admin-releases")page=<NotFound/>;
   else if (view === "custom-new") page = developer ? <CreateWorkspace privateBuild /> : <NotFound admin={hostedAdmin} />;
+  else if (view === "backups") page = me.hosted && !hostedAdmin ? <Backups key={hash} initialApp={new URLSearchParams(hash.split("?")[1]).get("app") || ""} /> : <NotFound />;
   else if (view === "credits") page = <Credits admin={me.admin} />;
   else if (hostedAdmin && (defaultPage || view === "admin-waitlist"))
     page = <AdminWaitlist account={me.id} />;
@@ -244,6 +246,7 @@ function Workspace({
             </a>
           )}
           <a href={viewHashes.credits} aria-current={view === "credits" ? "page" : undefined}><NavIcon path="M3 5h18v14H3z M3 10h18 M6 15h4" />Credits</a>
+          {!mobile && me.hosted && !hostedAdmin && <a href={viewHashes.backups} aria-current={view === "backups" ? "page" : undefined}>Backups</a>}
           {!mobile && !hostedAdmin && <a
             href={viewHashes.connect}
             aria-current={view === "connect" ? "page" : undefined}
@@ -267,6 +270,7 @@ function Workspace({
               <h2 id="more-title" tabIndex={-1}>More</h2>
               <button type="button" className="primary" onClick={() => moreSheet.current?.close()}>Done</button>
             </div>
+            {!hostedAdmin && me.hosted && <a href={viewHashes.backups} onClick={() => moreSheet.current?.close()}>Backups</a>}
             {!hostedAdmin && <a href={viewHashes.connect} aria-current={view === "connect" ? "page" : undefined} onClick={() => moreSheet.current?.close()}>Connect an assistant</a>}
             <button className="secondary" type="button" onClick={() => api.logout()}>Sign out</button>
             {email && <p>{email}</p>}

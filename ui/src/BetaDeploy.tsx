@@ -23,6 +23,7 @@ import { appHash, viewHashes } from "./routes";
 const serviceNames: Record<string,string> = {
   persistent_volume: "Local disk",
   s3_replica: "Platform S3 (credits required)",
+  platform_backup_v1: "Platform backups",
   sign_in_email: "Sign-in email",
   verified_owner_email: "Verified owner email",
 };
@@ -630,12 +631,12 @@ export default function BetaDeploy({
             <>
               {!product.generic && product.http_port && <p>HTTP port {product.http_port}.</p>}
               {!!product.requires?.length && <p>Required services: {product.requires.map(x => serviceNames[x]).join(", ")}.</p>}
-              {!!product.optional?.length && <p>Optional services: {product.optional.map(x => serviceNames[x]).join(", ")}.</p>}
+              {!!product.optional?.length && <p>Optional services: {product.optional.map(x => serviceNames[x] ?? x).join(", ")}.</p>}
               {product.needs_storage_credits && <>
                 <p>This app requires platform S3. Buy credits to continue with this file.</p>
                 <Credits admin={false} onPurchase={() => void refreshStorageEntitlement()} />
               </>}
-              <p>Local disk is a cache. Your app is responsible for backups.</p>
+              <p>For this deployment, keep a separate backup of your app data. Eligible catalog workspaces can enable daily copies in <a href={viewHashes.backups}>Backups</a>.</p>
               {product.generic && <>
                 {file && !configured && !locked && <button className="secondary" onClick={()=>{
                   setArchiveFile(file);

@@ -1,3 +1,4 @@
+import { AppBackupSetting } from "./Backups";
 import PrivateBuildSource, {type Build} from "./PrivateBuildSource";
 import CopyButton from "./CopyButton";
 import "./releases.css";
@@ -654,6 +655,7 @@ export function WorkspaceDetail({ app, reload, latest, loadError, children }: {
         </>}
         {app.archived && app.developer_private && <button className="secondary" disabled={busy} onClick={() => void mutate(() => op("app.restore", {app: app.id}))}>Restore app</button>}
         {(error || loadError) && <p role="alert">{error || loadError}</p>}
+        {app.official_product === "crew" && !app.archived && <AppBackupSetting app={app.id} />}
         {!resizing && <div className="workspace-delete"><DeleteApp app={app} /></div>}
       </section>
       {children}

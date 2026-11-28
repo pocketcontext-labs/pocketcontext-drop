@@ -17,6 +17,7 @@ export type View =
   | "custom-new"
   | "app-new"
   | "app"
+  | "backups"
   | "credits"
   | "connect"
   | "admin-waitlist"
@@ -29,6 +30,7 @@ export const viewHashes: Record<Exclude<View, "app">, string> = {
   apps: "#/apps",
   "app-new": "#/apps/new",
   "custom-new": "#/custom/new",
+  backups: "#/backups",
   credits: "#/credits",
   connect: "#/connect",
   "admin-waitlist": "#/admin/waitlist",
@@ -57,6 +59,7 @@ export function appHash(id: string, tab: AppTab = "overview"): string {
 /** The page of a hash; anything unknown is the apps page. */
 export function viewFromHash(hash: string): View {
   if(hash===viewHashes["admin-releases"])return "admin-releases";
+  if (hash === viewHashes.backups || hash.startsWith(viewHashes.backups + "?")) return "backups";
   if (hash === viewHashes.credits) return "credits";
   if (/^#\/connect(?:\?.*)?$/.test(hash)) return "connect";
   if (hash === viewHashes["admin-waitlist"]) return "admin-waitlist";

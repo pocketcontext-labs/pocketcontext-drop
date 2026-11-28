@@ -122,6 +122,10 @@ try {
     await page
       .getByRole("heading", { name: "Retained workspace", exact: true })
       .waitFor();
+    if (mobile) await page.getByRole("button", { name: "More" }).click();
+    await page.getByRole("link", { name: "Backups", exact: true }).click();
+    await page.getByRole("heading", { name: "Saved backups", exact: true }).waitFor();
+    assert.equal(await page.locator("dialog[open]").count(), 0);
     await page.goto(origin + "/#/deploy?name=obsolete");
     await page.getByRole("button", { name: "Choose " + product }).click();
     const resources = page.getByRole("combobox", { name: "Resources", exact: true });
