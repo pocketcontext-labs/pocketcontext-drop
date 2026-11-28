@@ -141,7 +141,7 @@ func workspaceManifest(raw []byte) (dropapi.BetaManifest, int, error) {
 		return m, 0, err
 	}
 	if m.Minimum.CPUQuarters > 8 || m.Minimum.MemoryMiB > 2048 || m.Minimum.DiskMiB > 16384 {
-		return m, 0, Invalid("minimum", "The manifest exceeds the workspace resource allowance.")
+		return m, 0, Invalid("minimum", "The manifest exceeds the app resource allowance.")
 	}
 	return m, max(m.Minimum.CPUQuarters, (m.Minimum.MemoryMiB+255)/256, (m.Minimum.DiskMiB+2047)/2048), nil
 }

@@ -25,7 +25,7 @@ Use this skill when the user asks to create, configure, start, stop, list, find 
 When this assistant has Drop's MCP connector (a hosted Drop at `https://HOST/mcp`, added by the user and approved in their browser; you cannot approve it for them), it has exactly two tools, acting with the account that approved the connection:
 
 - `drop_read {what, app?, all?, limit?, offset?}` reads: start with `what: "me"` (the account and its role), then `apps`, `app` (with `app`, an id or slug), `releases`, `secrets`, `status` (an app's runtime phase), `usage` (an app's S3 usage against its monthly limits, with an estimated cost), `events`; admins also `users`, `invites` and `nodes`. `all: true` gives admins everyone's apps or events. A `what` marked "not available yet" answers `not_available`: say so rather than retrying.
-- `drop_write {op, input, idempotency_key?}` calls one of Drop's operations, listed with their inputs in the tool's description (users manage published workspaces; developers can also create custom apps, upload and deploy executables, and submit a release for catalog review; admins manage invitations, accounts, nodes and placement). The result is `{op, result}`; reuse the same `idempotency_key` when you retry a write whose result you did not see.
+- `drop_write {op, input, idempotency_key?}` calls one of Drop's operations, listed with their inputs in the tool's description (users manage published apps; developers can also create custom apps, upload and deploy executables, and submit a release for catalog review; admins manage invitations, accounts, nodes and placement). The result is `{op, result}`; reuse the same `idempotency_key` when you retry a write whose result you did not see.
 
 The server checks the account's role and ownership on every call: another account's app answers `not_found`, an admin operation from a user `forbidden`. Do not try operations the tool does not list. Errors come back as `{"error": {status, code, message, field}}`: fix the input named by `field`, and stop on `forbidden`.
 
@@ -109,5 +109,5 @@ When `drop_read what=me` reports `official_catalog`, read `what=catalog` and
 use `workspace.create {product,name,multiplier}` for Crew or Atlas. Both
 accept 1–8, suggest 4, and charge one credit per unit per awake hour. Resize
 through `workspace.resize`, and install a new release only on the owner's
-selection of that workspace and digest through `workspace.upgrade`. The
+selection of that app and digest through `workspace.upgrade`. The
 reader shows the affected resources and requires sliding right to delete.

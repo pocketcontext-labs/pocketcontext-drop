@@ -2,9 +2,9 @@
 
 PocketContext Drop: a private, invite-only service that runs people's apps (one Linux executable each) on a PocketContext-managed host. It builds on the shared library [pocketcontext-core](https://github.com/pocketcontext-labs/pocketcontext-core), pinned to an exact release in `go.mod`, and is one Go executable with nothing else needed at run time: a server on PocketBase with hosted multi-account mode (email sign-in, remote MCP with OAuth) behind a TLS-terminating proxy, a browser reader, a command-line client and an agent skill for Claude Code, Codex and Antigravity.
 
-The development build supports optional, paid backups for Crew releases that declare `platform_backup_v1`. Owners can schedule a daily copy, download it as a ZIP, or restore it to the original app or a new one. [Workspace backup operations](docs/ops.md#crew-workspace-backups) · [SR24 restore drill](docs/rehearsals/crew-backup-sr24.md).
+The development build supports optional, paid backups for Crew releases that declare `platform_backup_v1`. Owners can schedule a daily copy, download it as a ZIP, or restore it to the original app or a new one. [App backup operations](docs/ops.md#crew-workspace-backups) · [SR24 restore drill](docs/rehearsals/crew-backup-sr24.md).
 
-**[Drop 0.9.0](docs/releases/0.9.0.md)** hosts official Crew and Atlas workspaces, with owner-selected upgrades, a shared awake-time buffer and funded storage enforcement.
+**[Drop 0.9.0](docs/releases/0.9.0.md)** hosts official Crew and Atlas apps, with owner-selected upgrades, a shared awake-time buffer and funded storage enforcement.
 
 **[Drop 0.8.0](docs/releases/0.8.0.md)** adds shareable deployment links, verified archive imports, PocketBase and ZeroClaw recipes, an email-first login, and deletion receipts.
 
@@ -71,15 +71,15 @@ Without `--db`, the database is `bin/drop.db`. The server listens on `http://127
 
 **Local** (plain `serve`, for developing the reader): a project has exactly one account, created by `init`, with no name or email to choose (`users` holds one hidden record). The reader asks only for its password. `open` signs the browser in with a single-use link valid for two minutes; `login-code` issues one-time codes for remote clients (see below). The CLI needs no password: it reads a random key that the server writes to the private cache at start and exchanges it, in the `X-Drop-Local-Key` header, for an ordinary `users` token. Anyone who can read that key can already read the database. All APIs, including SQL and search, still require a token, CORS allows only the server's own origin, and requests for any other `Host` are refused, so web pages cannot reach the server through `127.0.0.1`. The local server listens on loopback only. `/api/bundle/instance` answers `{"app": "drop", ...}` so the CLI and the launcher can tell this server from another program on the port.
 
-### Official workspace catalog
+### Official app catalog
 
 After the admin stages and publishes checked Crew and Atlas releases and
-enables the official catalog, customers create named workspaces from the
+enables the official catalog, customers create named apps from the
 catalog, choose a 1×–8× resource size, and install new releases individually.
 Developers can use the same form with a custom Linux executable from a file or public HTTPS URL. Drop inspects its manifest before creation. Custom instances receive a generated `dev-` address. Its HTTPS root opens directly and the app handles its own sign-in. When an admin publishes a new product, its catalog prefix applies to new catalog instances.
 The admin **Users** page combines waiting, invited and active accounts with
 search, filters and pagination. **Releases** manages official binaries and
-per-baseline rehearsal evidence. See [official workspace operations](docs/ops.md#official-crew-and-atlas-workspaces)
+per-baseline rehearsal evidence. See [official app operations](docs/ops.md#official-crew-and-atlas-apps)
 for the production cutover and upgrade procedure.
 
 ### Legacy deploy links before catalog cutover

@@ -204,15 +204,15 @@ Migration `1820002400_credits.js` creates private SQLite tables. No raw accounti
 
 The shared buffer migration preserves exhausted billing holds and initializes already-funded accounts with 60 buffer minutes. The private `drop_storage_reservations` table correlates node authorization, observed request charges and final provider settlement. An in-flight hold reduces funds available for simultaneous requests, compute charges and account adjustments. Provider corrections and provisional usage are append-only ledger entries.
 
-### Official workspace releases
+### Official app releases
 
 Private tables `drop_official_releases`, `drop_official_uploads`,
 `drop_official_rehearsals` and `drop_official_config` hold the immutable
 product/version-to-digest mapping, short-lived hashed admin upload links,
-per-baseline rehearsal receipts and the cutover flag. Ordinary workspace
+per-baseline rehearsal receipts and the cutover flag. Ordinary app
 release records share content-addressed bytes with the catalog. Per-app
 deletion retains every catalog digest. The app's `official_product` marks an
-official workspace, `official_target` pins its desired binary, and
+official app, `official_target` pins its desired binary, and
 `official_installed` and `official_version` track the most recent healthy
 target confirmed by the node. Hosted restore invalidates outstanding admin
 upload links alongside customer links.
@@ -238,9 +238,9 @@ therefore have separate ciphertext, records, keys and deletion lifetimes.
 
 ### Migrating existing hosted roles
 
-The exclusive-role migration keeps account IDs. An existing user with Developer access becomes a developer and keeps the same workspaces, billing history and invitations. Existing admins retain their administrative role. New invitations record the selected role directly.
+The exclusive-role migration keeps account IDs. An existing user with Developer access becomes a developer and keeps the same apps, billing history and invitations. Existing admins retain their administrative role. New invitations record the selected role directly.
 
-Before upgrading, inspect a consistent backup for private workspaces owned by an admin:
+Before upgrading, inspect a consistent backup for private apps owned by an admin:
 
 ```sql
 SELECT a.id, a.slug, u.email
@@ -252,11 +252,11 @@ If any rows appear, identify a separate developer account with the owner before 
 
 ### Private builds and catalog hostnames
 
-Drop keeps one pending upload link per developer in `drop_private_build_links`. A successful file upload or URL import runs the manifest probe and temporarily retains the inspected executable for that developer. The staging file expires and a server restart clears it. Creating the workspace binds the inspected digest to its private release and assigns a generated `dev-` hostname.
+Drop keeps one pending upload link per developer in `drop_private_build_links`. A successful file upload or URL import runs the manifest probe and temporarily retains the inspected executable for that developer. The staging file expires and a server restart clears it. Creating the app binds the inspected digest to its private release and assigns a generated `dev-` hostname.
 
-`drop_official_products` maps each published product to its unique hostname prefix. Crew and Atlas have existing mappings. The administrator assigns a new product’s prefix when publishing its first release. Future catalog instances use that prefix. Publication preserves the hostname and access rules of the developer’s original workspace.
+`drop_official_products` maps each published product to its unique hostname prefix. Crew and Atlas have existing mappings. The administrator assigns a new product’s prefix when publishing its first release. Future catalog instances use that prefix. Publication preserves the hostname and access rules of the developer’s original app.
 
-## Workspace backups
+## App backups
 
 Migration `1820002810_platform_backups.js` creates three private tables. `drop_backup_policies` holds one next capture time per enrolled app. `drop_backups` records the captured account, app identity, release digest, tier and final archive receipt. Its source ID survives deletion of the app. `drop_backup_jobs` binds each capture or restore to a destination app, placement node and exact deployment. Each app has at most one pending job. The control database holds metadata. Immutable archive bytes are stored under `backups/<owner>/<backup>` in the dedicated backup bucket.
 

@@ -239,7 +239,7 @@ func workspaceCreate(c *Ctx, in *dropapi.WorkspaceCreate) (any, error) {
 		return nil, err
 	}
 	if !enabled {
-		return nil, Conflict("catalog_pending", "The workspace catalog is not enabled yet.")
+		return nil, Conflict("catalog_pending", "The app catalog is not enabled yet.")
 	}
 	if !slices.Contains(crewBetaSizes, in.Multiplier) {
 		return nil, Invalid("multiplier", "Choose a resource multiplier from 1 to 8.")
@@ -387,7 +387,7 @@ func workspaceUpgrade(c *Ctx, in *dropapi.WorkspaceUpgrade) (any, error) {
 	}
 	product := a.GetString("official_product")
 	if product == "" {
-		return nil, Invalid("app", "Select an official workspace.")
+		return nil, Invalid("app", "Select an official app.")
 	}
 	desired := a.GetString("official_target")
 	var r officialRelease
@@ -415,11 +415,11 @@ func workspaceUpgrade(c *Ctx, in *dropapi.WorkspaceUpgrade) (any, error) {
 		return nil, err
 	}
 	if m.App != product || m.HTTPPort != a.GetInt("http_port") || m.HookPort != a.GetInt("hook_port") {
-		return nil, Conflict("incompatible_upgrade", "The new release requires a different workspace configuration.")
+		return nil, Conflict("incompatible_upgrade", "The new release requires a different app configuration.")
 	}
 	_, features := manifestWorkspaceRuntime(m)
 	if features.storage != (a.GetString("crew_enrollment") != "") || features.signInEmail != a.GetBool("sign_in_email_enabled") || features.ownerEmail != (a.GetString("crew_owner_email") != "" && !a.GetBool("private_owner_email")) {
-		return nil, Conflict("incompatible_upgrade", "The release requests different managed services from this workspace.")
+		return nil, Conflict("incompatible_upgrade", "The release requests different managed services from this app.")
 	}
 	if err := allowRequiredStorage(c.App, a.GetString("owner"), m); err != nil {
 		return nil, err

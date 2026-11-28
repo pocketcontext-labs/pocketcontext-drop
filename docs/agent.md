@@ -43,7 +43,7 @@ With `DROP_AGENT_HOST_SERVICES=s3`, `drop agent run` gives funded managed deploy
 
 | Rule | Enforcement |
 | --- | --- |
-| Funding | Every S3 exchange, including an internal prefix listing, needs a reservation against the workspace owner’s unreserved balance. A budget outage or insufficient funds rejects the request before forwarding. Object GET first checks the requested length with a funded HEAD and pins the GET to the returned ETag. Each grant uses a fresh HTTP/1.1 connection. Redirects are returned to the guest, and another attempt needs a new grant. |
+| Funding | Every S3 exchange, including an internal prefix listing, needs a reservation against the app owner’s unreserved balance. A budget outage or insufficient funds rejects the request before forwarding. Object GET first checks the requested length with a funded HEAD and pins the GET to the returned ETag. Each grant uses a fresh HTTP/1.1 connection. Redirects are returned to the guest, and another attempt needs a new grant. |
 | Credentials | The guest holds placeholder keys. The proxy drops the guest's `Authorization`, date, token, ACL, grant, storage-class, tagging, object-lock, encryption and redirect headers. It signs again with the app's STS session, from `AssumeRoleWithWebIdentity` with a token it signs with the node key (`app_id` session tag). Sessions are cached per app until five minutes before they expire. |
 | Scope | Path-style requests only. The bucket must be the app's replica bucket, and every key, list prefix, `start-after` and DeleteObjects key must start with `<appId>/`. Keys may not contain empty, `.` or `..` segments or control characters. Version IDs and copies are refused. |
 | Operations | GetObject, HeadObject, PutObject, DeleteObject, DeleteObjects, ListObjectsV2 and multipart upload (create, part, complete, abort). Anything else is `NotImplemented`. |
@@ -191,8 +191,8 @@ directory. The control plane stores ciphertext under its own SHA-256; the
 public release catalog and its digest-based inspection cache never participate
 in a developer upload.
 
-## Workspace backup transport
+## App backup transport
 
-The node polls the control plane for backup and restore jobs every 15 seconds. For each job it checks the local desired deployment, then reads the running guest address from NibRunner's current report and the matching deployment's lifecycle binding from its VM directory. For an on-request workspace the node can wake the guest by sending a HEAD request through the local ingress.
+The node polls the control plane for backup and restore jobs every 15 seconds. For each job it checks the local desired deployment, then reads the running guest address from NibRunner's current report and the matching deployment's lifecycle binding from its VM directory. For an on-request app the node can wake the guest by sending a HEAD request through the local ingress.
 
-Before sending a bearer token or workspace bytes, the node challenges the guest on its hook port with a fresh nonce. It verifies the guest’s HMAC with the locally staged lifecycle token and sends the authenticated request over that same TCP connection. A closed connection requires a new challenge. ZIP transfers are limited to 90 MiB. The node stages bytes in an immediately unlinked temporary file and verifies the control plane’s byte count and SHA-256 before restore. A restore completes only after the guest acknowledges the same job ID as applied.
+Before sending a bearer token or backup data, the node challenges the guest on its hook port with a fresh nonce. It verifies the guest’s HMAC with the locally staged lifecycle token and sends the authenticated request over that same TCP connection. A closed connection requires a new challenge. ZIP transfers are limited to 90 MiB. The node stages bytes in an immediately unlinked temporary file and verifies the control plane’s byte count and SHA-256 before restore. A restore completes only after the guest acknowledges the same job ID as applied.

@@ -34,7 +34,7 @@ A `what` whose operation is not registered yet stays listed, marked "(not availa
 
 The op enum and the op table in the tool description (name, role, input signature such as `{app, name?, env?: {set?, unset?}}` and summary) are generated from the registry in `internal/dropapi`: the operations whose `Spec` has `MCP: true`, filtered to the role and capabilities of the account. `TestMCPWriteTableMatchesRegistry` checks the enum and table against the registry, and `TestMCPWriteOpsFollowTicket` checks the set against decision 11's list:
 
-- users: manage their own published catalog workspaces with `workspace.create`, `workspace.resize` and `workspace.upgrade`;
+- users: manage their own published catalog apps with `workspace.create`, `workspace.resize` and `workspace.upgrade`;
 - developers: user operations plus custom apps, including build inspection, custom app creation and release submission;
 - admins: `invite.create`, `invite.revoke`, `user.set`, `node.create`, `node.rotate_secret`, `node.set_state`, `placement.set`, `placement.clear`.
 
@@ -79,8 +79,8 @@ OAuth state is machine-local in the private cache, separate from the database. T
 
 On an installation with the official catalog enabled, read `what: "catalog"`
 to see the published releases. Customer writes offer
-`workspace.create`, `workspace.resize` and `workspace.upgrade`. Creating a workspace needs a product, a name and a 1–8
-multiplier. Upgrading needs the workspace and exact reviewed digest. Use a
+`workspace.create`, `workspace.resize` and `workspace.upgrade`. Creating an app needs a product, a name and a 1–8
+multiplier. Upgrading requires the app ID and the exact reviewed digest. Use a
 stable idempotency key when retrying an operation.
 
 Use `drop_read` with `what: "backups"` to list your portable Crew archives, schedules and recent jobs. `drop_write` offers `backup.configure`, `backup.create` and `backup.restore` to customer accounts. Follow a restore job until it reports completion. The authenticated download route delivers archive bytes directly to the owner.

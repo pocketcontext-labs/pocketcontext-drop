@@ -54,7 +54,7 @@ function failureReason(code?: string) {
     case "guest_rejected":
       return "Crew could not complete the operation.";
     case "target_unavailable":
-      return "The workspace was unavailable.";
+      return "The app was unavailable.";
     default:
       return "";
   }

@@ -636,7 +636,7 @@ export default function BetaDeploy({
                 <p>This app requires platform S3. Buy credits to continue with this file.</p>
                 <Credits admin={false} onPurchase={() => void refreshStorageEntitlement()} />
               </>}
-              <p>For this deployment, keep a separate backup of your app data. Eligible catalog workspaces can enable daily copies in <a href={viewHashes.backups}>Backups</a>.</p>
+              <p>For this deployment, keep a separate backup of your app data. Eligible catalog apps can enable daily copies in <a href={viewHashes.backups}>Backups</a>.</p>
               {product.generic && <>
                 {file && !configured && !locked && <button className="secondary" onClick={()=>{
                   setArchiveFile(file);

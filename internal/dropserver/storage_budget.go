@@ -157,7 +157,7 @@ func storageBudget(tx core.App, node string, in dropapi.StorageBudget) error {
 		return err
 	}
 	if !ok || wallet.Balance <= wallet.Reserved || held > wallet.Balance-wallet.Reserved {
-		return Forbidden("The workspace has insufficient available storage credits.")
+		return Forbidden("The app owner has insufficient available storage credits.")
 	}
 	_, err = tx.DB().Insert("drop_storage_reservations", dbx.Params{"token": in.Token, "owner": owner, "app": id, "node": node, "deployment": in.Deployment, "class": in.Class, "byte_limit": in.Bytes, "held": held, "state": "pending", "markup": s.MarkupPPM, "exchange": s.EURPerUSDPPM, "price": s.EuroMicrosPerCredit}).Execute()
 	return err

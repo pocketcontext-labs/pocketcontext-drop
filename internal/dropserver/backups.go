@@ -103,7 +103,7 @@ func backupSupported(app core.App, a *core.Record) error {
 			return nil
 		}
 	}
-	return Conflict("backups_unsupported", "Choose an active Crew workspace with platform backup support.")
+	return Conflict("backups_unsupported", "Choose an active Crew app with platform backup support.")
 }
 
 func backupConfigure(c *Ctx, in *dropapi.BackupPolicyInput) (any, error) {
@@ -156,7 +156,7 @@ func queueCapture(app core.App, a *core.Record) (map[string]string, error) {
 		return nil, err
 	}
 	if enabled == 0 {
-		return nil, Conflict("backups_disabled", "Enable backups for this workspace first.")
+		return nil, Conflict("backups_disabled", "Enable backups for this app first.")
 	}
 	if err := requireBackupFunds(app, a.GetString("owner")); err != nil {
 		return nil, err
@@ -176,7 +176,7 @@ func queueBackupJob(app core.App, a *core.Record, backup, kind string) (map[stri
 		return nil, err
 	}
 	if p == nil || a.GetString("desired_state") == "stopped" {
-		return nil, Conflict("backup_app_unavailable", "This workspace must have an active placement.")
+		return nil, Conflict("backup_app_unavailable", "This app must have an active placement.")
 	}
 	job := core.GenerateDefaultRandomId()
 	r, err := app.DB().NewQuery(`INSERT INTO drop_backup_jobs(id,backup_id,kind,target,node,instance_id,state,created)
@@ -223,13 +223,13 @@ func backupRestore(c *Ctx, in *dropapi.BackupRestoreInput) (any, error) {
 		return nil, err
 	}
 	if in.SameApp != "" && a.GetString("slug") != in.SameApp {
-		return nil, Invalid("same_app", "Enter the original workspace slug to confirm replacement.")
+		return nil, Invalid("same_app", "Enter the original app slug to confirm replacement.")
 	}
 	if err = backupSupported(c.App, a); err != nil {
 		return nil, err
 	}
 	if a.GetString("official_target") != b.Release {
-		return nil, Conflict("backup_release_mismatch", "Restore into a new workspace with the matching Crew release.")
+		return nil, Conflict("backup_release_mismatch", "Restore into a new app with the matching Crew release.")
 	}
 	c.Event(Event{App: a.Id, Detail: map[string]any{"backup": in.Backup}})
 	return queueBackupJob(c.App, a, in.Backup, "restore")

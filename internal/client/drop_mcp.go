@@ -49,7 +49,7 @@ var dropReads = []dropRead{
 	{"usage", "usage.get", dropapi.RoleUser, "an app's S3 usage (app): last 24 hours by hour, month to date against its soft and hard limits, stored bytes and an estimated cost"},
 	{"events", "event.list", dropapi.RoleUser, "events (who changed what), newest first, of your apps or of one app (app); all:true (admins) lists every event"},
 	{"backups", "backup.list", dropapi.RoleUser, "your Crew backup archives, schedules and restore jobs"},
-	{"catalog", "catalog.list", dropapi.RoleUser, "published product releases in the workspace catalog"},
+	{"catalog", "catalog.list", dropapi.RoleUser, "published product releases in the app catalog"},
 	{"users", "user.list", dropapi.RoleAdmin, "every account with role, developer access, quota and suspension"},
 	{"invites", "invite.list", dropapi.RoleAdmin, "invites and their state (open, used, revoked, expired)"},
 	{"nodes", "node.list", dropapi.RoleAdmin, "hosts and their state"},

@@ -39,7 +39,7 @@ A key is 1-128 letters, digits, `.`, `_`, `:` or `-`, and belongs to the calling
 
 ## Roles
 
-Each hosted account has one role. Users deploy approved catalog releases and manage their own workspaces. Developers can also upload and deploy compatible private binaries. Admins manage invitations, accounts, nodes, placement, the official catalog and metering. A person who administers Drop and deploys workspaces signs in with a separate email address for each responsibility. The owner (`DROP_OWNER_EMAIL`, or the local account of a local project) is always an admin: it gets the role at creation and again at every start. An invited account takes its invite's role.
+Each hosted account has one role. Users deploy approved catalog releases and manage their own apps. Developers can also upload and deploy compatible private binaries. Admins manage invitations, accounts, nodes, placement, the official catalog and metering. A person who administers Drop and deploys apps signs in with a separate email address for each responsibility. The owner (`DROP_OWNER_EMAIL`, or the local account of a local project) is always an admin: it gets the role at creation and again at every start. An invited account takes its invite's role.
 
 ## Operations
 
@@ -97,8 +97,8 @@ Each hosted account has one role. Users deploy approved catalog releases and man
 - **Replica sync interval.** A Crew app's Litestream sync interval, `replica_sync_interval` on `app.set` (CLI `--replica-sync-interval`), is a Go duration of whole seconds from `1s` to `300s`; new Crew apps start at `10s` (pre-0.3.0 Crew apps have none and keep the guest's default until it is set). The node hands it to the guest as `DROP_REPLICA_SYNC_INTERVAL` (`10s`). A change starts a new deployment; ordinary apps refuse it (400).
 - **`app.start`** sets `desired_state` back to the state the app had before it stopped (`running` or `on-request`, kept as `start_state`); **`app.stop`** sets `stopped`. Neither bumps the deployment.
 - **`app.deletions`** lists your deletion receipts newest first (limit and offset), or looks up one by immutable app ID in `app`. Admins may look up an individual receipt for another account. Each receipt gives the original slug, the number of former nodes still to confirm disk removal, and `completed`, which becomes true only after final cleanup releases the slug. Receipts remain available through the operation after cleanup. Use `app.get` with `deletion_inventory:true` to preview the release count and replica mode alongside the app and secret names.
-- **`app.delete`** takes the immutable app record ID in `app` and its exact slug in `confirm_slug`. Owners and admins can request it. Acceptance hides the workspace from app lists and lookups immediately and queues permanent removal. Each former node confirms volume removal before the worker erases replica versions, secrets, release records and unshared release objects. The slug becomes available after cleanup succeeds. Retrying the same ID cannot affect a replacement app. Hosting restore pauses pending removals for reconfirmation.
-- **`app.archive`** marks an app archived (its node stops it, retaining its volume, secrets and slug and continuing to count its disk against the allowance). Writes to an archived app answer 409 `app_archived`; **`app.restore`** brings it back when the account can deploy and its existing placement has capacity (409 `app_not_archived` for an app that is not archived). `app.list` lists archived apps with `archived: true`. The reader uses `include_archived: true` to include retained legacy workspaces in the main list; with `all: true` (admins only, else 403) it lists every account's. Its `quota` is `{used, limit, unlimited}` for the caller.
+- **`app.delete`** takes the immutable app record ID in `app` and its exact slug in `confirm_slug`. Owners and admins can request it. Once accepted, the request immediately hides the app from lists and lookups and queues permanent removal. Each former node confirms volume removal before the worker erases replica versions, secrets, release records and unshared release objects. The slug becomes available after cleanup succeeds. Retrying the same ID cannot affect a replacement app. Hosting restore pauses pending removals for reconfirmation.
+- **`app.archive`** marks an app archived (its node stops it, retaining its volume, secrets and slug and continuing to count its disk against the allowance). Writes to an archived app answer 409 `app_archived`; **`app.restore`** brings it back when the account can deploy and its existing placement has capacity (409 `app_not_archived` for an app that is not archived). `app.list` lists archived apps with `archived: true`. The reader uses `include_archived: true` to include retained legacy apps in the main list; with `all: true` (admins only, else 403) it lists every account's. Its `quota` is `{used, limit, unlimited}` for the caller.
 
 ### Deployments
 
@@ -222,7 +222,7 @@ For imported archives Drop checks the assigned public HTTPS origin after the pro
 
 The status of a generic app can include a private, expiring `first_run` action for the current deployment. Its owner can open the PocketBase installer at the assigned HTTPS hostname or copy the ZeroClaw pairing code into the dashboard. Only the matching app owner can read the action and startup output.
 
-Developers can inspect a custom binary with `developer.build_upload` (one-time file PUT) or `developer.build_import` (public HTTPS URL), then create an instance with `developer.build_create {sha256,name,multiplier}`. Both sources accept a raw Linux amd64 executable or a tar.gz archive containing a single compatible executable. The extracted executable must implement `--drop-manifest`. The server binds the executable digest to the developer account and generates a `dev-` hostname whose HTTPS root opens directly. Guest applications handle their own sign-in. Users create workspaces from published catalog releases. Catalog and probe records stay out of account queries and the public route table.
+Developers can inspect a custom binary with `developer.build_upload` (one-time file PUT) or `developer.build_import` (public HTTPS URL), then create an instance with `developer.build_create {sha256,name,multiplier}`. Both sources accept a raw Linux amd64 executable or a tar.gz archive containing a single compatible executable. The extracted executable must implement `--drop-manifest`. The server binds the executable digest to the developer account and generates a `dev-` hostname whose HTTPS root opens directly. Guest applications handle their own sign-in. Users create apps from published catalog releases. Catalog and probe records stay out of account queries and the public route table.
 
 Install `deploy/drop-ax41/drop-manifest-probe.socket` and `drop-manifest-probe@.service` in the systemd unit directory on the NibRunner host serving Drop. Set the socket's owner to the Drop service account. Run `systemctl daemon-reload` and `systemctl enable --now drop-manifest-probe.socket`. Drop passes only validated bytes and their digest over the private socket. The worker calls `nibrunnerd probe-manifest` with the host's `/etc/nibrunner/config.toml`. NibRunner uses an isolated, time-limited microVM for `--drop-manifest`. The guest receives no account credentials, network or app volume. Infrastructure failures are retriable.
 
@@ -252,7 +252,7 @@ A hosted restore drops unverified waitlist requests and cancels queued delivery,
 
 ## Private Beta credits
 
-The Credits page and these operations use integer microcredits (1,000,000 per credit). Each account starts with a shared 3,600-second awake buffer. Each successful purchase resets it to 3,600 seconds once, including when the balance was already positive. Adjustments and purchase retries preserve it. Paid compute consumes spendable credits first. When an in-flight S3 request has reserved a positive balance, Drop retains unsettled compute seconds and bills them when funds become available. These seconds draw from the buffer only after actual depletion, and only for time since the last purchase. Workspaces can pause if outstanding compute would exhaust the remaining buffer while funding is unresolved. At zero, each running workspace uses one buffer second per awake second regardless of size, so two awake workspaces use two seconds together. Sleeping consumes zero compute credits. At size N×, the hourly rate is N credits.
+The Credits page and these operations use integer microcredits (1,000,000 per credit). Each account starts with a shared 3,600-second awake buffer. Each successful purchase resets it to 3,600 seconds once, including when the balance was already positive. Adjustments and purchase retries preserve it. Paid compute consumes spendable credits first. When an in-flight S3 request has reserved a positive balance, Drop retains unsettled compute seconds and bills them when funds become available. These seconds draw from the buffer only after actual depletion, and only for time since the last purchase. Apps can pause if outstanding compute would exhaust the remaining buffer while funding is unresolved. At zero, each running app uses one buffer second per awake second regardless of size, so two awake apps use two seconds together. Sleeping consumes zero compute credits. At size N×, the hourly rate is N credits.
 
 | Operation | Role | Input and result |
 | --- | --- | --- |
@@ -262,7 +262,7 @@ The Credits page and these operations use integer microcredits (1,000,000 per cr
 | `credits.adjust` | Admin | `account` and signed `microcredits`, required request idempotency key. The transaction records the actor and adjustment and checks the cap and available funds. |
 | `credits.configure` | Admin | Supply integer `pack`, `cap`, `starting` in whole credits, `euro_micros_per_credit`, `eur_per_usd_ppm` and `markup_ppm`. The initial values are 500, 10000, 0, 10000, 1000000 and 1250000 respectively. EUR/USD is a configurable simulation rate. |
 
-Retained disk includes every app volume owned by the account, including archived volumes. The app listing's `quota.used` and `quota.limit` are MiB. A volume increase and a new app share the same 10 GiB check. At buffer exhaustion Drop places a billing stop on running workspaces and retains their volumes. A top-up clears the billing hold and restores any app archived by the pre-upgrade trial. An on-request workspace stays asleep until its next HTTP request. That wake uses the funded storage configuration. A node awaiting support for deferred activation retains the workspace stopped until its runner and agent are updated. Funded and local-only transitions reuse the existing release and volume. Manually archived apps stay archived.
+Retained disk includes every app volume owned by the account, including archived volumes. The app listing's `quota.used` and `quota.limit` are MiB. A volume increase and a new app share the same 10 GiB check. At buffer exhaustion Drop places a billing stop on running apps and retains their volumes. A top-up clears the billing hold and restores any app archived by the pre-upgrade trial. An on-request app stays asleep until its next HTTP request. That wake uses the funded storage configuration. A node awaiting support for deferred activation retains the app stopped until its runner and agent are updated. Funded and local-only transitions reuse the existing release and volume. Manually archived apps stay archived.
 
 ### Linked release imports
 
@@ -278,7 +278,7 @@ redirects and checks the optional SHA-256 against the exact downloaded bytes.
 The response contains the digest and base64 content. The control plane limits
 downloads to 90 MiB, two concurrent imports, and two minutes per download.
 
-## Official Crew and Atlas workspaces
+## Official Crew and Atlas apps
 
 The administrator stages and checks both binaries before switching an existing
 installation. Use **Releases** in the hosted admin reader. All transitions also
@@ -314,8 +314,8 @@ releases remain visible only to their owners.
    exact version pair and retains the immutable receipt; the operator runs
    the rehearsal and retains its evidence. Keep secrets and customer data
    out of these artifacts.
-4. Publish with `catalog.publish {sha256,prefix}`. Choose a unique prefix on the first release of a new product. Later releases reuse the product’s prefix. Drop reserves `dev` for private instances and retains `crew` and `atlas` for the existing products. Publication preserves the source workspace’s private address and access rules. Publishing requires a matching receipt for the currently
-   published baseline. Workspaces several versions behind need a receipt
+4. Publish with `catalog.publish {sha256,prefix}`. Choose a unique prefix on the first release of a new product. Later releases reuse the product’s prefix. Drop reserves `dev` for private instances and retains `crew` and `atlas` for the existing products. Publication preserves the source app’s private address and access rules. Publishing requires a matching receipt for the currently
+   published baseline. Apps several versions behind need a receipt
    for their own installed baseline before upgrading. After publishing both
    products, call `catalog.activate {}` to switch hosted creation to the
    official catalog. Existing placements, volumes and addresses remain in
@@ -325,13 +325,13 @@ With `catalog.list {all_versions:true}`, customers and administrators see every 
 
 `workspace.create` optionally accepts `sha256` to pin a published version of the selected product. For an archived digest, also pass `allow_archived:true`. An unavailable digest returns an error. Omitting the digest installs the latest active version.
 
-Official apps suspend automatically and wake on HTTP requests. Manual `app.start` and `app.stop` return 403 for an official workspace.
+Official apps suspend automatically and wake on HTTP requests. Manual `app.start` and `app.stop` return 403 for an official app.
 
 Customers use `catalog.list`, `workspace.create {product,name,multiplier}`,
 `workspace.resize {app,multiplier}` and `workspace.upgrade {app,sha256}`.
-Every catalog release supports 1×–8× compute. Manifest resource values guide the recommendation. Creating, resizing and upgrading a workspace accept any of the eight tiers, subject to node capacity and safe disk resizing. Each unit provides
-256 MiB memory and a quarter vCPU. New catalog workspaces reserve 2 GiB of persistent disk per unit, independently of the legacy per-account disk quota. On a node reporting `localVolumeResize`, a change of disk size creates a durable resize request. Drop reserves the target resources on that placement while serving and metering the current allocation. The node fences traffic during maintenance. A matching successful receipt applies the new allocation; a refusal keeps the original disk and allocation. Older nodes support compute-only upgrades and refuse a downgrade that needs a smaller disk. A fresh guest filesystem measurement can explain when the data already exceeds the selected tier. Publication affects
-new workspaces immediately. Existing workspaces install only the specific
+Every catalog release supports 1×–8× compute. Manifest resource values guide the recommendation. Creating, resizing and upgrading an app accept any of the eight tiers, subject to node capacity and safe disk resizing. Each unit provides
+256 MiB memory and a quarter vCPU. New catalog apps reserve 2 GiB of persistent disk per unit, independently of the legacy per-account disk quota. On a node reporting `localVolumeResize`, a change of disk size creates a durable resize request. Drop reserves the target resources on that placement while serving and metering the current allocation. The node fences traffic during maintenance. A matching successful receipt applies the new allocation; a refusal keeps the original disk and allocation. Older nodes support compute-only upgrades and refuse a downgrade that needs a smaller disk. A fresh guest filesystem measurement can explain when the data already exceeds the selected tier. Publication affects
+new apps immediately. Existing apps install only the specific
 version their owner accepts. A matching healthy node report confirms the
 installed version. Failed deployments can retry the same target; a failed
 migration never selects an older executable to open the migrated volume.
@@ -339,7 +339,7 @@ migration never selects an older executable to open the migrated volume.
 Hosted admins use `user.directory` to page a combined directory of signed-in
 accounts, verified waitlist entries and invitations. Search accepts an email
 substring or account ID. Filters cover account status, role, presence of
-workspaces, and positive credit balance. Waiting is a directory status.
+apps, and positive credit balance. Waiting is a directory status.
 
 ## Crew workspace backups
 
@@ -349,8 +349,8 @@ Owners can enable daily backups for a published Crew build whose manifest includ
 | --- | --- | --- |
 | `backup.list` | `{}` | Owner's eligible apps, current policies, backups, transfer jobs and storage price. Timestamps are Unix seconds. |
 | `backup.configure` | `app`, `enabled` | Enables or disables daily capture. The first scheduled capture is due one day after enrollment. |
-| `backup.create` | `app` | Queues an immediate capture for an enrolled workspace. |
-| `backup.restore` | `backup`, `new_name` | Creates a new workspace at the captured release and compute size, then queues import. |
-| `backup.restore` | `backup`, `same_app` | Replaces the original workspace's content. Supply its exact slug as confirmation. The installed target release must match the captured release. |
+| `backup.create` | `app` | Queues an immediate capture for an enrolled app. |
+| `backup.restore` | `backup`, `new_name` | Creates a new app at the captured release and compute size, then queues import. |
+| `backup.restore` | `backup`, `same_app` | Replaces the contents of the original Crew workspace. Supply the original app’s exact slug as confirmation. The installed target release must match the captured release. |
 
 For a queued capture or restore, the response includes `app`, `backup` and `job`. Supply an idempotency key when retrying these operations. Follow the job in `backup.list`; restoration completes after the guest confirms the restored data is live. To export a ready copy, GET `/api/drop/backups/{backup}/download` with the owning account's authorization header. The response is a ZIP attachment. A failed capture never becomes downloadable.
