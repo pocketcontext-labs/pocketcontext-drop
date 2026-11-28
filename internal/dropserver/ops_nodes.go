@@ -55,7 +55,8 @@ func (c *Ctx) nodeOut(r *core.Record) (dropapi.Node, error) {
 		return dropapi.Node{}, err
 	}
 	state := agentStateOf(c.App)
-	history, err := nodeMemoryHistory(c.App, r.Id, state.clock())
+	windowEnd := state.clock()
+	history, err := nodeMemoryHistory(c.App, r.Id, windowEnd)
 	if err != nil {
 		return dropapi.Node{}, err
 	}
@@ -72,7 +73,7 @@ func (c *Ctx) nodeOut(r *core.Record) (dropapi.Node, error) {
 		HostState: r.GetString("host_state"), AgentVersion: r.GetString("agent_version"),
 		AcceptedRevision: r.GetString("accepted_revision"),
 		Capacity:         jsonMap(r, "capacity"), Allocatable: jsonMap(r, "allocatable"), Versions: jsonMap(r, "versions"),
-		MemoryHistory: history, Apps: placed, Created: dateString(r, "created"),
+		MemoryHistoryEnd: windowEnd.Unix(), MemoryHistory: history, Apps: placed, Created: dateString(r, "created"),
 	}, nil
 }
 

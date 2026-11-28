@@ -149,7 +149,7 @@ The proxy supplies its own request marker in S3 access logs. On a known response
 
 ### Node guest memory history
 
-An agent can include `nibrunner.guestMemory` in its node report. `used_mib` is the sum of guest memory used by simultaneously active microVMs, rounded up to MiB after addition. `running_vms` counts the guests contributing to that measurement and `at` is their common NibRunner sampling time in Unix seconds. An idle node reports zero. Missing, stale or incomplete measurements leave a gap. Drop keeps the last 24 hours and includes the peak measurement in each UTC hour in the admin-only `node.list` response. This measures guest RAM, excluding host services and virtualization overhead. Upgrade the control plane before the agents to enable the new report field.
+An agent can include `nibrunner.guestMemory` in its node report. `used_mib` is the sum of guest memory used by simultaneously active microVMs, rounded up to MiB after addition. `running_vms` counts the guests contributing to that measurement and `at` is their common NibRunner sampling time in Unix seconds. An idle node reports zero. Missing, stale or incomplete measurements leave a gap. Drop keeps the last 24 hours and includes the peak measurement in each of 24 consecutive one-hour intervals ending at `memory_history_end` (Unix seconds, upper endpoint inclusive) in the admin-only `node.list` response. This measures guest RAM, excluding host services and virtualization overhead. Upgrade the control plane before the agents to enable the new report field.
 
 ## Workspace backup jobs
 

@@ -13,13 +13,13 @@ func memoryWindow(node string, now time.Time) dbx.Params {
 	return dbx.Params{"node": node, "since": now.Add(-24 * time.Hour).Unix(), "until": now.Unix()}
 }
 
-// nodeMemoryHistory returns the measurement at each UTC hour's highest
+// nodeMemoryHistory returns the measurement at each rolling hour's highest
 // aggregate usage. Keep the timestamp and VM count from that same sample.
 func nodeMemoryHistory(app core.App, node string, now time.Time) ([]dropapi.GuestMemory, error) {
 	out := []dropapi.GuestMemory{}
 	err := app.DB().NewQuery(`SELECT at, used_mib, running_vms FROM (
   SELECT at, used_mib, running_vms, ROW_NUMBER() OVER
-  (PARTITION BY at/3600 ORDER BY used_mib DESC,at DESC) AS rank
+  (PARTITION BY ({:until}-at)/3600 ORDER BY used_mib DESC,at DESC) AS rank
   FROM drop_node_memory WHERE node={:node} AND at>{:since} AND at<={:until}
  ) WHERE rank=1 ORDER BY at`).Bind(memoryWindow(node, now)).All(&out)
 	return out, err
