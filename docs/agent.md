@@ -22,7 +22,18 @@ drop agent render --input FILE|- [--previous FILE]
 
 ## Crew sign-in email
 
-NibRunner uses the last desired state it applied, including across restarts while Drop is unavailable. A stopped or tombstoned instance has no sign-in email binding. Disabling delivery removes the binding when the node applies the update. A node disconnected before a move can still use its old binding. Fence the source before activating the destination when exclusive delivery is required. Configure the SMTP relay, sender and credential on NibRunner. The guest receives its fixed owner email through `DROP_OWNER_EMAIL`.
+Crew generates and redeems its own code. The guest connects to vsock port 51006 and sends the existing JSON line containing the six-digit code. NibRunner identifies the VM and deployment and forwards the connection to the Drop Agent host-services socket. The agent obtains the verified recipient from the runnable deployment's `signInEmail.recipient` in `desired.json`. Email delivery works independently of S3 funding. Drop dashboard sign-in continues to use the control plane's hosted email configuration.
+
+On nodes that deliver guest sign-in messages, give `drop-agent-host-services.service` the SMTP credential through a systemd drop-in. For an upgrade, use the same root-owned TOML and trusted CA as the existing NibRunner service:
+
+```ini
+[Service]
+LoadCredential=sign-in-email.toml:/etc/nibrunner/sign-in-email.toml
+```
+
+The TOML contains `host`, `username`, `password` and `sender`. Set `port` when the implicit-TLS relay uses a port other than 465. An optional `ca_file` must be readable by the host-services process. Set NibRunner's `[host_services]` socket path to the agent listener. Install and start the upgraded host service first, then switch NibRunner. After verifying delivery, remove the SMTP credential assignment from the NibRunner unit and restart it; retain the credential file for Drop Agent. To roll back, restore the assignment to NibRunner before restarting the previous runner. Existing guest binaries and their owner sessions can be reused.
+
+A disconnected node continues to use its last desired state. Fence the source before activating a destination when exclusive delivery is required.
 
 ## Host services
 

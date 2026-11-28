@@ -7,10 +7,12 @@
 # /run/drop-agent/host-services.sock. nibrunner's config.toml names that
 # socket under [host_services].
 #
+# Guest email uses a node-specific SMTP LoadCredential drop-in (docs/agent.md).
+#
 #   install -m 0644 drop-agent-host-services.service /etc/systemd/system/
 #   systemctl daemon-reload && systemctl enable --now drop-agent-host-services
 [Unit]
-Description=Drop host services (S3 proxy for guests without credentials)
+Description=Drop guest host services (S3 proxy and sign-in email)
 Documentation=https://github.com/pocketcontext-labs/pocketcontext-drop/blob/main/docs/agent.md
 Wants=network-online.target
 After=network-online.target
@@ -30,7 +32,7 @@ Restart=always
 RestartSec=2
 
 # Hardening: reads the signing key, desired.json and its state directory,
-# talks to STS and S3, and writes only its usage file and socket.
+# talks to SMTP, STS and S3, and writes only its usage file and socket.
 NoNewPrivileges=yes
 ProtectSystem=strict
 ReadOnlyPaths=/var/lib/nibrunner
