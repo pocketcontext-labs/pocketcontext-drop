@@ -52,10 +52,6 @@ jobs:
         run: |
           set -eu
           test -c /dev/kvm
-          if test "$(cat /sys/devices/system/cpu/smt/active)" = 1; then
-            echo forceoff | sudo tee /sys/devices/system/cpu/smt/control
-          fi
-          test "$(cat /sys/devices/system/cpu/smt/active)" = 0
           if test -d /sys/kernel/mm/ksm; then
             echo 2 | sudo tee /sys/kernel/mm/ksm/run
             test "$(cat /sys/kernel/mm/ksm/pages_shared)" = 0
