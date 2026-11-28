@@ -9,6 +9,7 @@ import (
 	"ganigeorgiev.com/pocketbase/pocketbase/core"
 
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/awsx"
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dnsx"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
 )
 
@@ -48,6 +49,9 @@ type Services struct {
 	// that is not Enabled, turns metering off.
 	Usage       awsx.UsageStore
 	UsageConfig awsx.UsageConfig
+	// DNS is the app domain's zone (DROP_DNS_ZONE_ID, DROP_DNS_TOKEN_FILE);
+	// nil leaves app DNS to the operator (dns.go).
+	DNS dnsx.Provider
 }
 
 // metering reports whether the usage collector runs on this server.

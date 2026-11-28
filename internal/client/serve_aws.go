@@ -9,12 +9,21 @@ import (
 	"strings"
 
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/awsx"
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dnsx"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropserver"
 )
 
 // EnvAppDomain names the domain under which apps get their hostnames.
 const EnvAppDomain = "DROP_APP_DOMAIN"
+
+// EnvDNSZoneID and EnvDNSTokenFile turn on per-app DNS records: the
+// Cloudflare zone of DROP_APP_DOMAIN and a file holding an API token with
+// Zone DNS Edit on it (a systemd credential, for example).
+const (
+	EnvDNSZoneID    = "DROP_DNS_ZONE_ID"
+	EnvDNSTokenFile = "DROP_DNS_TOKEN_FILE"
+)
 
 // EnvReleaseMaxBytes optionally lowers the release upload cap below 90 MiB.
 const EnvReleaseMaxBytes = "DROP_RELEASE_MAX_BYTES"
@@ -48,6 +57,16 @@ func serveServices(a *args, hosted bool, listenAddr string, getenv func(string) 
 			return s, fail(2, "%s must be a lower-case domain name such as apps.example.com", EnvAppDomain)
 		}
 		s.AppDomain = domain
+	}
+	if zone, tokenFile := getenv(EnvDNSZoneID), getenv(EnvDNSTokenFile); zone != "" || tokenFile != "" {
+		if s.AppDomain == "" || zone == "" || tokenFile == "" {
+			return s, fail(2, "%s and %s go together and need %s", EnvDNSZoneID, EnvDNSTokenFile, EnvAppDomain)
+		}
+		cf, err := dnsx.NewCloudflare(zone, tokenFile)
+		if err != nil {
+			return s, fail(2, "%v", err)
+		}
+		s.DNS = cf
 	}
 	if raw := getenv(EnvReleaseMaxBytes); raw != "" {
 		n, err := strconv.ParseInt(raw, 10, 64)

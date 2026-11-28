@@ -86,6 +86,7 @@ Errors (body `{status, code, message, data}`): 401 `unauthenticated` (no or ende
   "agentVersion": "0.1.0",
   "desiredSeq": 7,
   "acceptedRevision": "drop-7-0123456789ab",
+  "tunnel": "8cd529b8-e868-4fe0-bcf2-09283ea078af",
   "nibrunner": {
     "state": "ready",
     "message": "",
@@ -101,7 +102,7 @@ Errors (body `{status, code, message, data}`): 401 `unauthenticated` (no or ende
 }
 ```
 
-- `hostId` must be the node's (409 `host_mismatch` otherwise: the agent is on the wrong host and must stop reconciling). `agentVersion` 1-64 of `[A-Za-z0-9._+-]`. `desiredSeq` is the seq of the last document applied; `acceptedRevision` nibrunner's.
+- `hostId` must be the node's (409 `host_mismatch` otherwise: the agent is on the wrong host and must stop reconciling). `agentVersion` 1-64 of `[A-Za-z0-9._+-]`. `desiredSeq` is the seq of the last document applied; `acceptedRevision` nibrunner's. `tunnel` (optional) is the node's own Cloudflare Tunnel ID, lower case; the server stores it as the node's `tunnel_id` and points the node's apps at it ([hosting](hosting.md#per-app-dns-records)). A report without it clears it.
 - `nibrunner` is the host part of `reported.json`, or `null` when the agent could not read it. Never send `cron` (it holds tenant environment values), checkpoints or exports. `capacity`, `allocatable` and `versions` are at most 2 KiB of JSON each; a new `allocatable` can change which apps pass the server's check (and bump `desiredSeq`).
 - `apps` (at most 256, each appId once): `phase` is one of `pending`, `staging`, `staging_failed`, `secret_failed`, `deploying`, `starting`, `running`, `sleeping`, `unhealthy`, `stopped`, `failed`, `unknown` (mapping from nibrunner in plan 7.7); `deploymentId` `<appId>-dep-<n>` or empty; `message` for people (never secret or environment values; cut to 2000 characters); `lastExitCode` an integer or `null`; `convergedAt` RFC 3339 or empty. Optional `lastHook` carries `event` (suspend, resume or terminate), `outcome` (ok, error, timeout or unreachable), RFC 3339 `time` and nonnegative `durationMs`. Optional `usage` `{deploymentId, seq, counters: {readRequests, writeRequests, listRequests, deleteRequests, rejectedRequests, bytesIn, bytesOut}}` holds the host services proxy's monotonic counters for the app's `deploymentId`. The server takes it only for a new deployment or a higher `seq`, adds the difference to `node_reports.host_usage_total` and writes usage on its own at most every five minutes. Optional `volumeUsage` carries `usedBytes`, `totalBytes` and RFC 3339 `measuredAt` from the canonical guest data volume. Drop uses a reading from the current deployment that is at most five minutes old to explain a disk downgrade refusal. Apps not placed on this node are ignored (listed in the answer).
 - A node with `versions.localVolumeResize=true` accepts a desired volume containing `localResize:{requestId,fromBytes}` and a target `sizeBytes`. The agent reports `apps[].localResize:{deploymentId,requestId,outcome,sizeBytes}` from the canonical volume after the runner accepts its desired revision. An applied receipt must show the target size; a refusal must show the original size. The control plane matches the ID, deployment, node and placement generation before committing. Upgrade the control plane before the agents.

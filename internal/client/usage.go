@@ -78,6 +78,7 @@ Accounts and nodes (admins; Drop emails admin invitations):
   node create NAME --host-id HOST_ID add a node; prints its agent password once
   node rotate-secret NODE            replace a node's password (shown once)
   node set-state NODE active|draining|disabled
+  node set-pool NODE beta|owner|none
   place APP NODE | place APP --clear put an app on a node, or take it off
   usage show APP                     an app's S3 usage, limits and estimated cost
   usage limits APP [--requests-a N] [--requests-b N] [--bytes-out B] [--stored-bytes B] [--reset]

@@ -27,7 +27,7 @@
 
 1. Back up the hosted project before applying the Beta catalog and terms migrations. Keep the old binary and follow the hosted restore procedure if reverting the database.
 2. Upgrade the node agents. Install the NibRunner release with the manifest probe on the inspection host and its matching guest image. Nodes offering fractional sizes must report support for quarter-core CPU quotas.
-3. Publish and configure the verified terms and privacy notice before admitting Beta customers. Set `DROP_BETA_NODES` to eligible nodes with tenant isolation, managed Crew storage and sign-in email configured. The operator-only drop-ax41 host is ineligible while SMT is active.
+3. Publish and configure the verified terms and privacy notice before admitting Beta customers. Put eligible nodes, with tenant isolation, managed Crew storage and sign-in email configured, in the `beta` pool (`DROP_BETA_NODES` before 0.11.0). Host SMT does not make a node ineligible.
 4. Admit the independently verified Crew release digest and run the [release inspection](ops.md#beta-release-admission-and-deployment). Check an invited user's account activation, upload and HTTPS deployment on an eligible host.
 
 ## From 0.5.0 to 0.5.1
@@ -66,3 +66,10 @@ Back up the hosted project before starting the new server. The archive provenanc
 1. Inventory the existing apps, placements, release digests and volume IDs. Keep the previous executables and a verified, stopped backup of the project and its matching private cache. The nineteen new migrations change the database schema, so a downgrade requires that backup.
 2. Upgrade the control plane, then the agents and their host services. To deliver guest sign-in codes, give `drop-agent-host-services.service` the SMTP credential and switch NibRunner's host-services socket as described in [the agent manual](agent.md). Upgrade the agent on every node serving custom apps before using direct links to them ([Opening custom apps](private-ingress.md#node-upgrades)). Set `DROP_BACKUP_BUCKET` on the control plane to offer Crew backups.
 3. Check that each node has pulled the current desired document and reported successfully, and that every app kept its ID, owner, volume, placement and release. Confirm control-plane replication with a scratch restore.
+
+## From 0.10.0 to 0.11.0
+
+1. Back up the project. The new migration adds `tunnel_id` and `pool` to nodes, so a downgrade requires that backup.
+2. Upgrade the control plane, then the agents. Give each node's agent `DROP_AGENT_TUNNEL_ID` once its own tunnel runs (drop-node does both). A 0.10.0 agent keeps working and reports no tunnel.
+3. Move the placement pool to the node records: `drop node set-pool NODE beta` for each node in `DROP_BETA_NODES` (`owner` for `DROP_BETA_OWNER_NODES`), then remove the variables and restart.
+4. To manage app DNS, create a Cloudflare API token with Zone DNS Edit on the app domain's zone, give it to the server as a credential file and set `DROP_DNS_ZONE_ID` and `DROP_DNS_TOKEN_FILE`. Check the log for `Drop added an app DNS record` and resolve one app hostname. A wildcard record can stay until every node reports a tunnel.

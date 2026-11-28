@@ -741,6 +741,14 @@ func TestConfig(t *testing.T) {
 	if _, err := LoadConfig(get, Overrides{"desired": "relative.json"}, true); err == nil {
 		t.Fatal("paths must be absolute")
 	}
+	env[EnvTunnelID] = "8CD529B8-E868-4FE0-BCF2-09283EA078AF"
+	if _, err := LoadConfig(get, Overrides{}, true); err == nil {
+		t.Fatal("an upper-case tunnel ID was accepted")
+	}
+	env[EnvTunnelID] = "8cd529b8-e868-4fe0-bcf2-09283ea078af"
+	if c, err := LoadConfig(get, Overrides{}, true); err != nil || c.TunnelID != env[EnvTunnelID] {
+		t.Fatalf("tunnel: %v %q", err, c.TunnelID)
+	}
 	env[EnvPullInterval] = "1"
 	if _, err := LoadConfig(get, Overrides{}, true); err == nil {
 		t.Fatal("intervals are bounded")

@@ -506,7 +506,7 @@ func TestIsolationMatrix(t *testing.T) {
 	// Node and placement operations are admin only.
 	for op, input := range map[string]map[string]any{
 		"node.list": nil, "node.create": {"name": "mine", "host_id": "h-1"}, "node.rotate_secret": {"node": n1},
-		"node.set_state": {"node": n1, "state": "disabled"}, "placement.set": {"app": appA, "node": n2},
+		"node.set_state": {"node": n1, "state": "disabled"}, "node.set_pool": {"node": n1, "pool": "beta"}, "placement.set": {"app": appA, "node": n2},
 		"placement.clear": {"app": appA}, "user.list": nil, "invite.list": nil,
 		"usage.set_limits": {"app": appA, "requests_a": 1}, "usage.collect": nil,
 	} {

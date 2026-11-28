@@ -525,6 +525,7 @@ func (a *Agent) report(ctx context.Context) error {
 		a.logf("%v", err)
 	}
 	body := buildReport(a.hostID, a.version, a.appliedSeq, a.intents, rep, a.writtenRevision, a.now())
+	body.Tunnel = a.cfg.TunnelID
 	if body.Nibrunner != nil {
 		if body.Nibrunner.Versions == nil {
 			body.Nibrunner.Versions = map[string]any{}

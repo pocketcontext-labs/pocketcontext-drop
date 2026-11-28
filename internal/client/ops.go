@@ -451,8 +451,17 @@ func runNode(c *Client, sub string, a *args) (any, error) {
 			return nil, err
 		}
 		return c.Op("node.set_state", dropapi.NodeSetStateInput{Node: a.pos[1], State: a.pos[2]}, "")
+	case "set-pool":
+		if err := a.need(3, "node set-pool NODE beta|owner|none"); err != nil {
+			return nil, err
+		}
+		pool := a.pos[2]
+		if pool == "none" {
+			pool = ""
+		}
+		return c.Op("node.set_pool", dropapi.NodeSetPoolInput{Node: a.pos[1], Pool: pool}, "")
 	}
-	return nil, fail(2, "usage: drop node list|create|rotate-secret|set-state ...")
+	return nil, fail(2, "usage: drop node list|create|rotate-secret|set-state|set-pool ...")
 }
 
 // runPlace runs `drop place` (admins): put an app on a node, or clear it.

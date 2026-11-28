@@ -17,7 +17,7 @@ import (
 const validCrewManifest = `{"schema":"drop.manifest/v1","app":"crew","version":"0.45.4-drop.4","http_port":8080,"hook_port":8081,"health":"tcp","hooks":["suspend","resume","terminate"],"requires":["persistent_volume","s3_replica","verified_owner_email","sign_in_email"],"minimum":{"memory_mib":512,"cpu_quarters":4,"disk_mib":1024}}`
 
 func TestBetaProbeLeasesAndDeployment(t *testing.T) {
-	h := droptest.NewHosted(t, droptest.Options{BetaNodes: []string{"beta-node", "another-node"}, BetaOwnerNodes: []string{"owner-node"}})
+	h := droptest.NewHosted(t, droptest.Options{BetaNodes: []string{"beta-node"}, BetaOwnerNodes: []string{"owner-node"}})
 	admin := h.Token(h.Owner())
 	_, alice := h.User("alice@example.test", "developer")
 	_, bob := h.User("bob@example.test", "developer")
@@ -108,7 +108,9 @@ func TestBetaProbeLeasesAndDeployment(t *testing.T) {
 	// The earlier busy node is still eligible, but its observed RAM peak
 	// leaves less room than the second node. Retries must keep the volume
 	// on the chosen node even after the relative headroom changes.
+	// The second node joins the pool through its record, not the environment.
 	_, _, anotherToken := h.Node("another-node", hostB)
+	h.MustOp(admin, "node.set_pool", map[string]any{"node": "another-node", "pool": "beta"})
 	reportMemory := func(host, token string, used int, at time.Time) {
 		t.Helper()
 		doc := reportOf(host)

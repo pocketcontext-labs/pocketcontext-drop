@@ -147,6 +147,7 @@ Environment (`/etc/drop/agent.env`, example `deploy/walter-aws/agent.env.example
 | `DROP_AGENT_ALLOWED_HOST_SUFFIX` | Every app hostname must end with it, for example `.bigconfig.space` |
 | `DROP_SSM_PREFIX` | Secret parameter prefix, default `/drop` |
 | `DROP_AWS_REGION`, `DROP_S3_BUCKET` | S3 and SSM through the default credential chain (`docs/aws.md`) |
+| `DROP_AGENT_TUNNEL_ID` | The node's own Cloudflare Tunnel ID, sent in every report so the control plane can point the node's apps at it (optional) |
 | `DROP_AGENT_PULL_INTERVAL`, `DROP_AGENT_REPORT_INTERVAL` | Seconds, default 60 (5–3600) and 30 (5–300) |
 | `DROP_AGENT_HOST_SERVICES` | Empty, or `s3` to give managed Crew apps the node's S3 proxy (above) |
 | `DROP_HOST_SERVICES_SOCKET`, `DROP_HOST_SERVICES_PEER_UID` | `drop agent host-services`: its socket (default `/run/drop-agent/host-services.sock`) and nibrunnerd's uid (default 0) |

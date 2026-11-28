@@ -56,7 +56,7 @@ func betaEnabled(app core.App) (bool, error) {
 		return true, nil
 	}
 	var enabled bool
-	err := app.DB().NewQuery("SELECT EXISTS(SELECT 1 FROM drop_beta_catalog)").Row(&enabled)
+	err := app.DB().NewQuery("SELECT EXISTS(SELECT 1 FROM drop_beta_catalog) OR EXISTS(SELECT 1 FROM nodes WHERE pool != '')").Row(&enabled)
 	return enabled, err
 }
 

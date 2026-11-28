@@ -159,15 +159,52 @@ func betaCapacityError() error {
 	return Conflict("beta_no_capacity", "There is no capacity for this deployment right now. Retry this app in a few minutes.")
 }
 
+// placementPools are the nodes Drop Beta may place new apps on: the nodes
+// whose pool field is beta or owner, by name, after the deprecated
+// DROP_BETA_NODES and DROP_BETA_OWNER_NODES lists. A node keeps its first
+// pool when it appears in both places.
+func placementPools(app core.App) (beta, owner []string, err error) {
+	services := servicesOf(app)
+	seen := map[string]bool{}
+	add := func(list *[]string, names ...string) {
+		for _, name := range names {
+			if !seen[name] {
+				seen[name] = true
+				*list = append(*list, name)
+			}
+		}
+	}
+	add(&beta, services.BetaNodes...)
+	add(&owner, services.BetaOwnerNodes...)
+	var rows []struct {
+		Name string `db:"name"`
+		Pool string `db:"pool"`
+	}
+	if err := app.DB().NewQuery("SELECT name, pool FROM nodes WHERE pool != '' ORDER BY name").All(&rows); err != nil {
+		return nil, nil, err
+	}
+	for _, r := range rows {
+		if r.Pool == dropapi.PoolOwner {
+			add(&owner, r.Name)
+		} else {
+			add(&beta, r.Name)
+		}
+	}
+	return beta, owner, nil
+}
+
 func betaPlacement(c *Ctx, a *core.Record) error {
 	p, err := placementOf(c.App, a.Id)
 	if err != nil {
 		return err
 	}
-	services := servicesOf(c.App)
-	names := services.BetaNodes
+	beta, owner, err := placementPools(c.App)
+	if err != nil {
+		return err
+	}
+	names := beta
 	if c.Owner && c.Auth.Id == a.GetString("owner") {
-		names = slices.Concat(services.BetaOwnerNodes, names)
+		names = slices.Concat(owner, names)
 	}
 	state := agentStateOf(c.App)
 	now := state.clock()

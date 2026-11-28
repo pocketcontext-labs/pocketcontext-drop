@@ -199,6 +199,9 @@ func checkReport(r *dropapi.Report) error {
 	if !shortText(r.AcceptedRevision, 128) {
 		return reportInvalid("acceptedRevision", "acceptedRevision is at most 128 characters.")
 	}
+	if r.Tunnel != "" && !dropapi.TunnelIDPattern.MatchString(r.Tunnel) {
+		return reportInvalid("tunnel", "tunnel is a lower-case Cloudflare Tunnel ID.")
+	}
 	if h := r.Nibrunner; h != nil {
 		if !shortText(h.State, 32) || !shortText(h.ReportedAt, 40) {
 			return reportInvalid("nibrunner", "nibrunner state and reportedAt are short text.")
@@ -277,6 +280,7 @@ func checkReport(r *dropapi.Report) error {
 type nodeFields struct {
 	AgentVersion     string `json:"agent_version"`
 	AcceptedRevision string `json:"accepted_revision"`
+	TunnelID         string `json:"tunnel_id"`
 	HostState        string `json:"host_state"`
 	ReportedAt       string `json:"reported_at"`
 	Capacity         any    `json:"capacity"`
@@ -286,7 +290,7 @@ type nodeFields struct {
 }
 
 func reportNodeFields(r *dropapi.Report) nodeFields {
-	f := nodeFields{AgentVersion: r.AgentVersion, AcceptedRevision: r.AcceptedRevision}
+	f := nodeFields{AgentVersion: r.AgentVersion, AcceptedRevision: r.AcceptedRevision, TunnelID: r.Tunnel}
 	if h := r.Nibrunner; h != nil {
 		f.hasHost = true
 		f.HostState, f.ReportedAt = h.State, h.ReportedAt
@@ -308,6 +312,7 @@ func (f nodeFields) fingerprint() string {
 func (f nodeFields) apply(node *core.Record, now time.Time) {
 	node.Set("agent_version", f.AgentVersion)
 	node.Set("accepted_revision", f.AcceptedRevision)
+	node.Set("tunnel_id", f.TunnelID)
 	node.Set("last_heartbeat", now)
 	if !f.hasHost {
 		return

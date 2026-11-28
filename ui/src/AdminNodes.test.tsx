@@ -11,7 +11,7 @@ const node: DropNode = {
   id: "node00000000001", name: "walter-aws", host_id: "host-0001", ec2_instance_id: "", private_ip: "", state: "active",
   desired_seq: 3, online: true, last_heartbeat: "2026-11-20T10:00:00Z", last_report_at: "", host_state: "ready",
   agent_version: "0.1.0", accepted_revision: "drop-3-000000000000", capacity: {},
-  allocatable: { vcpuCount: 6, memoryMib: 12288 }, versions: {}, apps: 1, created: "2026-11-19 10:00:00.000Z",
+  allocatable: { vcpuCount: 6, memoryMib: 12288 }, versions: {}, tunnel_id: "", pool: "", apps: 1, created: "2026-11-19 10:00:00.000Z",
 };
 
 beforeEach(() => {

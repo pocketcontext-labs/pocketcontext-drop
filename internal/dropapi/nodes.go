@@ -22,6 +22,18 @@ var NodeNamePattern = regexp.MustCompile(`^[a-z][a-z0-9-]{1,30}$`)
 // HostIDPattern is nibrunner's host identifier (reported.json hostId).
 var HostIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$`)
 
+// TunnelIDPattern is a Cloudflare Tunnel ID, lower-case, as cloudflared
+// writes it in the tunnel's credentials file.
+var TunnelIDPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+// Placement pools. Drop Beta places new apps on active nodes in the beta
+// pool; the instance owner's own apps try the owner pool first. A node in no
+// pool takes only explicit placement.set.
+const (
+	PoolBeta  = "beta"
+	PoolOwner = "owner"
+)
+
 // NodePasswordLength is the length of a generated node password.
 const NodePasswordLength = 40
 
@@ -50,6 +62,8 @@ type Node struct {
 	Capacity         map[string]any `json:"capacity"`
 	Allocatable      map[string]any `json:"allocatable"`
 	Versions         map[string]any `json:"versions"`
+	TunnelID         string         `json:"tunnel_id"`
+	Pool             string         `json:"pool"`
 	Apps             int            `json:"apps"`
 	Created          string         `json:"created"`
 }
@@ -92,6 +106,13 @@ type NodeSetStateInput struct {
 	State string `json:"state"`
 }
 
+// NodeSetPoolInput puts a node in a placement pool (beta or owner) or, with
+// an empty pool, takes it out of automatic placement. Placed apps stay.
+type NodeSetPoolInput struct {
+	Node string `json:"node"`
+	Pool string `json:"pool"`
+}
+
 // NodeSecret is the answer of node.create and node.rotate_secret. Password
 // is shown once and never stored in clear: give it to the agent as its
 // node-secret credential (docs/agent-api.md). Identity and Collection are how
@@ -103,7 +124,7 @@ type NodeSecret struct {
 	Collection string `json:"collection"`
 }
 
-// NodeResult is the answer of node.set_state.
+// NodeResult is the answer of node.set_state and node.set_pool.
 type NodeResult struct {
 	Node Node `json:"node"`
 }

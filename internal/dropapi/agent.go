@@ -132,13 +132,15 @@ var ReportPhases = []string{
 // the agent could not read it); its cron, checkpoints and exports are never
 // sent (cron holds tenant environment values). Apps are the agent's phase of
 // each app it was given or still runs; apps not placed on this node are
-// ignored.
+// ignored. Tunnel is the ID of the node's own Cloudflare Tunnel, empty when
+// the node has none; the control plane points the node's apps at it.
 type Report struct {
 	Schema           string      `json:"schema"`
 	HostID           string      `json:"hostId"`
 	AgentVersion     string      `json:"agentVersion"`
 	DesiredSeq       int64       `json:"desiredSeq"`
 	AcceptedRevision string      `json:"acceptedRevision"`
+	Tunnel           string      `json:"tunnel,omitempty"`
 	Nibrunner        *HostReport `json:"nibrunner"`
 	Deleted          []string    `json:"deleted,omitempty"`
 	Apps             []AppReport `json:"apps"`

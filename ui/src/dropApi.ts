@@ -64,6 +64,7 @@ export const OPS = [
   "node.create",
   "node.rotate_secret",
   "node.set_state",
+  "node.set_pool",
   "placement.set",
   "placement.clear",
   "usage.get",
@@ -254,9 +255,12 @@ export interface DropNode {
   capacity: Record<string, unknown>;
   allocatable: Record<string, unknown>;
   versions: Record<string, unknown>;
+  tunnel_id: string;
+  pool: NodePool;
   apps: number;
   created: string;
 }
+export type NodePool = "" | "beta" | "owner";
 /** A node's agent password, shown once (node.create, node.rotate_secret). */
 export interface NodeSecret {
   node: DropNode;
@@ -529,6 +533,9 @@ async function rotateNodeSecret(node: string): Promise<NodeSecret> {
 async function setNodeState(node: string, state: NodeState): Promise<DropNode> {
   return (await op<{ node: DropNode }>("node.set_state", { node, state })).node;
 }
+async function setNodePool(node: string, pool: NodePool): Promise<DropNode> {
+  return (await op<{ node: DropNode }>("node.set_pool", { node, pool })).node;
+}
 async function placeApp(
   app: string,
   node: string,
@@ -659,6 +666,7 @@ export const dropApi = {
   createNode,
   rotateNodeSecret,
   setNodeState,
+  setNodePool,
   placeApp,
   clearPlacement,
   getUsage,

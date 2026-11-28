@@ -54,6 +54,7 @@ func Hooks() appserver.Hooks {
 			workers.Go(func() { runUploadLinkPruning(ctx, app) })
 			workers.Go(func() { runWaitlistMail(ctx, app) })
 			workers.Go(func() { runUsageCollector(ctx, app) })
+			workers.Go(func() { runDNSSync(ctx, app) })
 			runOpKeyPruning(ctx, app)
 			workers.Wait()
 		},

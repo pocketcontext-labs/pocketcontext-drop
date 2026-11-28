@@ -176,6 +176,8 @@ var specs = []Spec{
 		Summary: "Replace a node's password (shown once); the old one and the agent's current tokens stop working until it gets the new one."},
 	{Name: "node.set_state", Role: RoleAdmin, MCP: true, Input: &NodeSetStateInput{},
 		Summary: "Set a node active, draining (keeps its apps, takes no new ones) or disabled (its agent is locked out and its apps stop being updated)."},
+	{Name: "node.set_pool", Role: RoleAdmin, Input: &NodeSetPoolInput{},
+		Summary: "Put a node in a placement pool: beta (Drop Beta places every account's new apps there), owner (the instance owner's own apps first) or empty (no automatic placement). Placed apps stay."},
 	{Name: "placement.set", Role: RoleAdmin, MCP: true, Input: &PlacementSetInput{},
 		Summary: "Place an app (any account's) on an active node, or move it to another one; its disk size is fixed from the first placement. A moved app stops on the old node, whose copy of its data stays there."},
 	{Name: "placement.clear", Role: RoleAdmin, MCP: true, Input: &PlacementClearInput{},

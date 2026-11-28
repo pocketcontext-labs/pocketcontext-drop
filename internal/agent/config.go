@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/pocketcontext-labs/pocketcontext-drop/internal/awsx"
+	"github.com/pocketcontext-labs/pocketcontext-drop/internal/dropapi"
 )
 
 // Environment variables the agent reads (systemd EnvironmentFile
@@ -46,6 +47,9 @@ const (
 	EnvAllowedHostSuffix = "DROP_AGENT_ALLOWED_HOST_SUFFIX"
 	EnvPullInterval      = "DROP_AGENT_PULL_INTERVAL"
 	EnvReportInterval    = "DROP_AGENT_REPORT_INTERVAL"
+	// EnvTunnelID is the ID of the node's own Cloudflare Tunnel, reported so
+	// the control plane can point the node's apps at it.
+	EnvTunnelID = "DROP_AGENT_TUNNEL_ID"
 	// EnvCredentialsDirectory is set by systemd for LoadCredential=.
 	EnvCredentialsDirectory = "CREDENTIALS_DIRECTORY"
 	// EnvStateDirectory is set by systemd for StateDirectory=.
@@ -98,6 +102,8 @@ type Config struct {
 	HostServices bool
 	// PrivateIngress is enabled only after the node's private ingress path is installed.
 	PrivateIngress bool
+	// TunnelID is the node's own Cloudflare Tunnel (DROP_AGENT_TUNNEL_ID).
+	TunnelID string
 }
 
 // StatePath is the full path of state.json.
@@ -161,6 +167,9 @@ func LoadConfig(getenv func(string) string, o Overrides, needServer bool) (Confi
 		if c.PrivateIngress, err = strconv.ParseBool(value); err != nil {
 			return c, fmt.Errorf("DROP_AGENT_PRIVATE_INGRESS must be true or false")
 		}
+	}
+	if c.TunnelID = getenv(EnvTunnelID); c.TunnelID != "" && !dropapi.TunnelIDPattern.MatchString(c.TunnelID) {
+		return c, fmt.Errorf("%s must be a lower-case Cloudflare Tunnel ID", EnvTunnelID)
 	}
 	if c.HostServices, err = hostServicesEnabled(getenv); err != nil {
 		return c, err

@@ -14,6 +14,7 @@ import {
   type App,
   type DropNode,
   type NodeSecret,
+  type NodePool,
   type NodeState,
 } from "./dropApi";
 import { message } from "./errors";
@@ -315,6 +316,21 @@ function Nodes({
                       {stateNames[s]}
                     </option>
                   ))}
+                </select>
+              </label>
+              <label>
+                Pool
+                <select
+                  value={node.pool}
+                  disabled={busy === node.id}
+                  onChange={(event) => {
+                    const pool = event.target.value as NodePool;
+                    void act(node, () => dropApi.setNodePool(node.id, pool));
+                  }}
+                >
+                  <option value="">None</option>
+                  <option value="beta">Beta</option>
+                  <option value="owner">Owner</option>
                 </select>
               </label>
               <button

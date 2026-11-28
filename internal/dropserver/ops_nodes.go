@@ -27,6 +27,7 @@ func init() {
 	register("node.create", nodeCreate)
 	register("node.rotate_secret", nodeRotateSecret)
 	register("node.set_state", nodeSetState)
+	register("node.set_pool", nodeSetPool)
 	register("placement.set", placementSet)
 	register("placement.clear", placementClear)
 }
@@ -73,6 +74,7 @@ func (c *Ctx) nodeOut(r *core.Record) (dropapi.Node, error) {
 		HostState: r.GetString("host_state"), AgentVersion: r.GetString("agent_version"),
 		AcceptedRevision: r.GetString("accepted_revision"),
 		Capacity:         jsonMap(r, "capacity"), Allocatable: jsonMap(r, "allocatable"), Versions: jsonMap(r, "versions"),
+		TunnelID: r.GetString("tunnel_id"), Pool: r.GetString("pool"),
 		MemoryHistoryEnd: windowEnd.Unix(), MemoryHistory: history, Apps: placed, Created: dateString(r, "created"),
 	}, nil
 }
@@ -198,6 +200,29 @@ func nodeSetState(c *Ctx, in *dropapi.NodeSetStateInput) (any, error) {
 		return nil, err
 	}
 	c.Event(Event{Detail: map[string]any{"node": node.Id, "name": node.GetString("name"), "state": in.State, "previous_state": previous}})
+	n, err := c.nodeOut(node)
+	if err != nil {
+		return nil, err
+	}
+	return dropapi.NodeResult{Node: n}, nil
+}
+
+func nodeSetPool(c *Ctx, in *dropapi.NodeSetPoolInput) (any, error) {
+	node, err := c.findNode(in.Node)
+	if err != nil {
+		return nil, err
+	}
+	switch in.Pool {
+	case "", dropapi.PoolBeta, dropapi.PoolOwner:
+	default:
+		return nil, Invalid("pool", "pool must be beta, owner or empty.")
+	}
+	previous := node.GetString("pool")
+	node.Set("pool", in.Pool)
+	if err := c.App.Save(node); err != nil {
+		return nil, err
+	}
+	c.Event(Event{Detail: map[string]any{"node": node.Id, "name": node.GetString("name"), "pool": in.Pool, "previous_pool": previous}})
 	n, err := c.nodeOut(node)
 	if err != nil {
 		return nil, err
