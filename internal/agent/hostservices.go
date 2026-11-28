@@ -8,6 +8,7 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -59,16 +60,17 @@ func hostServicesEnabled(getenv func(string) string) (bool, error) {
 
 // HostServicesConfig configures `drop agent host-services`.
 type HostServicesConfig struct {
-	nodeConfig  Config
-	budget      hostservices.Budget
-	identity    identityConfig
-	Desired     string
-	StateDir    string
-	Socket      string
-	PeerUID     uint32
-	S3Endpoint  string
-	STSEndpoint string
-	STSRegion   string
+	nodeConfig     Config
+	budget         hostservices.Budget
+	identity       identityConfig
+	mailCredential string
+	Desired        string
+	StateDir       string
+	Socket         string
+	PeerUID        uint32
+	S3Endpoint     string
+	STSEndpoint    string
+	STSRegion      string
 }
 
 func (c HostServicesConfig) appsPath() string { return filepath.Join(c.StateDir, HostServicesAppsFile) }
@@ -94,6 +96,9 @@ func LoadHostServicesConfig(getenv func(string) string, o Overrides) (HostServic
 	c := HostServicesConfig{nodeConfig: base, identity: base.identity, Desired: base.Desired, StateDir: base.StateDir,
 		Socket: getenv(EnvHostServicesSocket), S3Endpoint: getenv(EnvHostServicesS3), STSEndpoint: getenv(EnvHostServicesSTS),
 		STSRegion: getenv(EnvHostServicesRegion)}
+	if dir := getenv(EnvCredentialsDirectory); dir != "" {
+		c.mailCredential = filepath.Join(dir, "sign-in-email.toml")
+	}
 	if v := o["socket"]; v != "" {
 		c.Socket = v
 	}
@@ -118,7 +123,7 @@ func LoadHostServicesConfig(getenv func(string) string, o Overrides) (HostServic
 	if c.STSRegion == "" {
 		c.STSRegion = getenv(awsx.EnvRegion)
 	}
-	if c.identity.issuer == "" {
+	if c.identity.issuer == "" && (base.HostServices || c.mailCredential == "") {
 		return c, errors.New("host services need the workload identity settings (DROP_IDENTITY_ISSUER, DROP_IDENTITY_ROLE_ARN, DROP_IDENTITY_KEY_FILE)")
 	}
 	return c, nil
@@ -197,7 +202,7 @@ func RunHostServices(ctx context.Context, c HostServicesConfig, logf func(string
 		return err
 	}
 	if signer == nil {
-		return errors.New("host services need the workload identity settings")
+		return runHostServices(ctx, c, nil, nil, logf)
 	}
 	secret, err := ReadSecret(c.nodeConfig.SecretFile)
 	if err != nil {
@@ -222,6 +227,32 @@ func RunHostServices(ctx context.Context, c HostServicesConfig, logf func(string
 }
 
 func runHostServices(ctx context.Context, c HostServicesConfig, signer *workloadSigner, client *http.Client, logf func(string, ...any)) error {
+	registry := &hostservices.Registry{DesiredPath: c.Desired, AppsPath: c.appsPath()}
+	srv := &hostservices.Server{Socket: c.Socket, PeerUID: c.PeerUID, Lookup: registry.Lookup, Logf: logf}
+	if c.mailCredential != "" {
+		mail, err := hostservices.NewSignInEmail(c.mailCredential, c.Desired)
+		if err != nil {
+			if signer == nil {
+				return errors.New("host services could not load the sign-in email credential")
+			}
+			if !errors.Is(err, os.ErrNotExist) {
+				logf("host services: invalid sign-in email credential; email disabled")
+			}
+		}
+		srv.Mail = mail
+	}
+	if signer == nil && srv.Mail == nil {
+		return errors.New("host services need a sign-in email credential or workload identity")
+	}
+	l, err := srv.Listen()
+	if err != nil {
+		return err
+	}
+	defer l.Close()
+	logf("host services: listening on %s for uid %d", c.Socket, c.PeerUID)
+	if signer == nil {
+		return srv.Serve(ctx, l)
+	}
 	usage, err := hostservices.OpenUsage(c.usagePath())
 	if err != nil {
 		return err
@@ -237,14 +268,7 @@ func runHostServices(ctx context.Context, c HostServicesConfig, signer *workload
 	}
 	region := c.STSRegion
 	creds := &stsSessions{signer: signer, region: region, endpoint: c.STSEndpoint, client: client, now: time.Now}
-	registry := &hostservices.Registry{DesiredPath: c.Desired, AppsPath: c.appsPath()}
-	srv := &hostservices.Server{Socket: c.Socket, PeerUID: c.PeerUID, Lookup: registry.Lookup, Logf: logf,
-		Proxy: &hostservices.Proxy{Budget: c.budget, Upstream: hostservices.Upstream{Endpoint: c.S3Endpoint, Client: client}, Creds: creds, Usage: usage, Logf: logf}}
-	l, err := srv.Listen()
-	if err != nil {
-		return err
-	}
-	logf("host services: serving S3 on %s for uid %d", c.Socket, c.PeerUID)
+	srv.Proxy = &hostservices.Proxy{Budget: c.budget, Upstream: hostservices.Upstream{Endpoint: c.S3Endpoint, Client: client}, Creds: creds, Usage: usage, Logf: logf}
 	flushed := make(chan struct{})
 	go func() {
 		defer close(flushed)

@@ -19,7 +19,7 @@ import (
 // The header nibrunnerd sends before relaying a guest connection:
 // "CONNECT <appId> <deploymentId>\n". nibrunnerd fixes both from the jail the
 // guest connected through; nothing in it comes from the guest.
-var headerPattern = regexp.MustCompile(`^CONNECT (d-[a-z0-9]{15}) (d-[a-z0-9]{15}-dep-[0-9]{1,9})\n$`)
+var headerPattern = regexp.MustCompile(`^CONNECT(-MAIL)? (d-[a-z0-9]{15}) (d-[a-z0-9]{15}-dep-[0-9]{1,9})\n$`)
 
 const (
 	maxHeaderLine     = 128
@@ -39,6 +39,7 @@ type Server struct {
 	PeerUID    uint32 // only connections from this uid (nibrunnerd's) are accepted
 	Lookup     Lookup
 	Proxy      *Proxy
+	Mail       *SignInEmail
 	MaxConns   int
 	MaxPerApp  int
 	Logf       func(string, ...any)
@@ -215,19 +216,36 @@ func (s *Server) handshake(c *net.UnixConn, cl *chanListener) {
 		return
 	}
 	m := headerPattern.FindSubmatch(line)
-	if m == nil || !strings.HasPrefix(string(m[2]), string(m[1])+"-dep-") {
+	if m == nil || !strings.HasPrefix(string(m[3]), string(m[2])+"-dep-") {
 		_ = c.Close()
 		return
 	}
-	appID, deploymentID := string(m[1]), string(m[2])
-	if _, ok := s.Lookup(appID, deploymentID); !ok {
-		refuseConn(c, http.StatusForbidden)
+	appID, deploymentID := string(m[2]), string(m[3])
+	mail := len(m[1]) != 0
+	if mail && s.Mail == nil {
+		mailReply(c, "disabled")
+		_ = c.Close()
 		return
+	}
+	if !mail {
+		if s.Proxy == nil {
+			refuseConn(c, http.StatusForbidden)
+			return
+		}
+		if _, ok := s.Lookup(appID, deploymentID); !ok {
+			refuseConn(c, http.StatusForbidden)
+			return
+		}
 	}
 	s.mu.Lock()
 	if s.total >= s.MaxConns || s.active[appID] >= s.MaxPerApp {
 		s.mu.Unlock()
-		refuseConn(c, http.StatusServiceUnavailable)
+		if mail {
+			mailReply(c, "throttled")
+			_ = c.Close()
+		} else {
+			refuseConn(c, http.StatusServiceUnavailable)
+		}
 		return
 	}
 	s.total++
@@ -243,6 +261,11 @@ func (s *Server) handshake(c *net.UnixConn, cl *chanListener) {
 		}
 		s.mu.Unlock()
 	}}
+	if mail {
+		defer gc.Close()
+		s.Mail.serve(gc)
+		return
+	}
 	select {
 	case cl.conns <- gc:
 	case <-cl.done:
