@@ -131,7 +131,7 @@ var specs = []Spec{
 	{Name: "waitlist.resend", Role: RoleAdmin, Input: &WaitlistID{}, Summary: "Resend an open waitlist invitation."},
 	{Name: "waitlist.revoke", Role: RoleAdmin, Input: &WaitlistID{}, Summary: "Revoke an open waitlist invitation."},
 	{Name: "invite.create", Role: RoleAdmin, MCP: true, Input: &InviteCreateInput{},
-		Summary: "Invite an email address (role user, developer or admin, app quota, 1-30 days, default 7). Returns the invite and a sign-in URL to share; no email is sent."},
+		Summary: "Invite an email address (role user, developer or admin, app quota, 1-30 days, default 7). Returns the invite and a sign-in URL. Drop emails admin invitations."},
 	{Name: "invite.list", Role: RoleAdmin, Read: true, Input: &InviteListInput{},
 		Summary: "Invites, newest first, with their state (open, used, revoked or expired)."},
 	{Name: "invite.revoke", Role: RoleAdmin, MCP: true, Input: &InviteRevokeInput{},

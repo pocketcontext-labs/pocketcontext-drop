@@ -192,7 +192,7 @@ func dropReadDescription(role dropapi.Role) string {
 func dropInstructions(role dropapi.Role) string {
 	admin := ""
 	if role == dropapi.RoleAdmin {
-		admin = " As an admin you also read accounts and invites and invite people (invite.create returns a sign-in URL for the person to pass on; Drop sends no invite email) and change accounts with user.set: do so only when the person asks, naming the address. You also manage nodes (node.create and node.rotate_secret return the node's agent password once: pass it on only to whoever installs the agent) and place apps on them (placement.set, placement.clear), only on the person's request."
+		admin = " As an admin you also read accounts and invites and invite people (invite.create returns a sign-in URL and emails admin invitations) and change accounts with user.set: do so only when the person asks, naming the address. You also manage nodes (node.create and node.rotate_secret return the node's agent password once: pass it on only to whoever installs the agent) and place apps on them (placement.set, placement.clear), only on the person's request."
 	}
 	custom := ""
 	if role == dropapi.RoleDeveloper {

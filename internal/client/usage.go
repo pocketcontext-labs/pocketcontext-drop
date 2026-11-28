@@ -66,7 +66,7 @@ Whole-table reads (the local server or --url; never the hosted origin):
   sql|query SQL|-                    run one read-only SELECT
   whoami | schema                    the session's account ID; the readable schema
 
-Accounts and nodes (admins; Drop is invite-only, and no invite email is sent):
+Accounts and nodes (admins; Drop emails admin invitations):
   invite create EMAIL [--role user|developer|admin] [--quota N] [--expires-days N]
                                      invite an address; prints the sign-in URL to share
   invite list [--state all|open]     invites, newest first, with their state

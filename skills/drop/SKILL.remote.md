@@ -84,7 +84,7 @@ Drop is invite-only, and every account has a role: `admin` or `user`. The owner 
 "{{BINARY}}" op me --url "{{URL}}"
 ```
 
-`invite create` prints `{"invite", "sign_in_url"}`. Drop sends no invite email: give the sign-in URL to the user, who passes it on; the invited person signs in with the code Drop emails them. Invite, suspend, change a role or revoke only when the user asks, naming the address. An address that already has an account or an open invite exits 4. `op NAME [INPUT_JSON|-] [--idempotency-key KEY]` calls any operation (the project's `docs/ops.md` lists them); reuse the same key when retrying a write whose result you did not see.
+`invite create` prints `{"invite", "sign_in_url"}`. Drop emails admin invitations. For a customer invitation, give the sign-in URL to the user to pass on; the invited person signs in with the code Drop emails them. Invite, suspend, change a role or revoke only when the user asks, naming the address. An address that already has an account or an open invite exits 4. `op NAME [INPUT_JSON|-] [--idempotency-key KEY]` calls any operation (the project's `docs/ops.md` lists them); reuse the same key when retrying a write whose result you did not see.
 
 Admins also manage nodes, the hosts that run apps (each with one agent that signs in as its node), and place apps on them:
 
