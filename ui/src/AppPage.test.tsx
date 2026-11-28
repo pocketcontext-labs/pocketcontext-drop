@@ -418,15 +418,15 @@ it("uploads a private executable and deploys a selected release separately", asy
   expect(call).toHaveBeenCalledWith("developer.deploy", { app: id, release: older.id });
 });
 
-it("submits the deployed private release for catalog review", async () => {
-  const apiModule = await import("./dropApi");
-  vi.spyOn(dropApi, "me").mockResolvedValue({ ...member, role: "developer", official_catalog: true });
-  vi.spyOn(dropApi, "getApp").mockResolvedValue({ app: { ...app, developer_private: true, current_release: release.id }, secrets: [] });
-  vi.spyOn(dropApi, "listReleases").mockResolvedValue({ releases: [{ ...release, current: true }, older], current_release: release.id, has_more: false });
-  const submit = vi.spyOn(apiModule, "op").mockResolvedValue({ product: "crew", version: "1.2", sha256: release.sha256 });
-  history.replaceState(null, "", `/#/apps/${id}/releases`);
-  render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: "Submit for catalog review" }));
-  expect(await screen.findByText("Submitted crew 1.2 (aaaaaaaaaaaa) for catalog review.")).toBeVisible();
-  expect(submit).toHaveBeenCalledWith("developer.submit", { app: id, release: release.id });
+it("accepts a commit without a deployed app",async()=>{
+  const apiModule=await import("./dropApi");
+  vi.spyOn(dropApi,"me").mockResolvedValue({...member,role:"developer",official_catalog:true});
+  vi.spyOn(dropApi,"listApps").mockResolvedValue({apps:[],quota:{used:0,limit:10240,unlimited:false},has_more:false});
+  const submit=vi.spyOn(apiModule,"op").mockResolvedValue({});
+  history.replaceState(null,"","/#/apps");
+  render(<App/>);
+  const url="https://github.com/example/app/commit/"+"a".repeat(40);
+  fireEvent.change(await screen.findByLabelText("GitHub commit URL"),{target:{value:url}});
+  fireEvent.click(screen.getByRole("button",{name:"Submit for catalog review"}));
+  await vi.waitFor(()=>expect(submit).toHaveBeenCalledWith("developer.submit",{commit_url:url}));
 });

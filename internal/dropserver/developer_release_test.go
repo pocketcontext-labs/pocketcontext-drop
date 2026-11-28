@@ -61,9 +61,9 @@ func testPrivateDeveloperRelease(t *testing.T, withManifest bool) {
 		}
 		done <- err
 	}()
-	store := &promotionStore{MemBlobStore: awsx.NewMemBlobStore()}
+	store := awsx.NewMemBlobStore()
 	h := droptest.NewHosted(t, droptest.Options{ProbeSocket: socket, BetaNodes: []string{"old-node", "new-node"}, Releases: store})
-	h.Releases = store.MemBlobStore
+	h.Releases = store
 	owner := h.Owner()
 	admin := h.Token(owner)
 	joe, user := h.User("private-developer@example.test", "user")
@@ -165,11 +165,7 @@ func testPrivateDeveloperRelease(t *testing.T, withManifest bool) {
 	if err != nil || !bytes.Equal(got, raw) {
 		t.Fatal("staged bytes differ", err)
 	}
-	if withManifest {
-		testCatalogPromotion(t, h, store, user, admin, other, id, rel.ID, raw)
-	} else {
-		wantError(t, h.Op(user, "developer.submit", deploy), 400, dropapi.CodeInvalidInput)
-	}
+	wantError(t, h.Op(user, "developer.submit", deploy), 400, dropapi.CodeInvalidInput)
 	path = h.MustOp(user, "developer.upload_link", ref)["path"].(string)
 	h.MustOp(admin, "user.set", map[string]any{"user": joe.Id, "role": "user"})
 	wantUploadError(t, upload(t, h, path, raw), 404, dropapi.CodeUploadLinkInvalid)

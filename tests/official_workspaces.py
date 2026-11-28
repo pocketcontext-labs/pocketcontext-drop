@@ -114,7 +114,7 @@ def publish(server, assets, release, baseline=""):
         subprocess.check_output([artifact, "--drop-manifest"], timeout=10)
     )
     assert manifest["app"] == product and manifest["version"] == version
-    link = owner(server, "catalog.upload", product=product, version=version)
+    link = owner(server, "catalog.upload", product=product, version=version, commit_url="https://github.com/example/fixture/commit/" + expected[:40])
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
         listener.bind("/run/drop-manifest-probe.sock")
         listener.listen(1)
@@ -146,30 +146,7 @@ def publish(server, assets, release, baseline=""):
         assert status == 200, (status, body[:300])
         worker.join(5)
     Path("/run/drop-manifest-probe.sock").unlink()
-    data = json.loads(receipt.read_bytes())
-    tag = RELEASES[2][2] if name == "baseline" else version
-    url = f"https://github.com/pocketcontext-labs/pocketcontext-{product}-drop/releases/download/v{tag}/{receipt_name}"
-    proof = {
-        k: data[k]
-        for k in (
-            "before_records_sha256",
-            "after_records_sha256",
-            "before_attachments_sha256",
-            "after_attachments_sha256",
-            "records",
-            "attachments",
-        )
-    }
-    owner(
-        server,
-        "catalog.rehearse",
-        sha256=expected,
-        baseline_sha256=baseline,
-        evidence_url=url,
-        evidence_sha256=report_hash,
-        **proof,
-    )
-    owner(server, "catalog.publish", sha256=expected)
+    owner(server, "catalog.publish", sha256=expected, upgrade_from=[baseline] if baseline else [])
 
 
 def sample(g, host, product, token, previous=None):

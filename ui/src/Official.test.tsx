@@ -46,7 +46,7 @@ it("offers the same resource units for Atlas and creates the named app", async (
     ),
   );
 });
-it("requires baseline rehearsal evidence before showing a usable publish action", async () => {
+it("requires source provenance before showing a usable publish action", async () => {
   vi.spyOn(api, "op").mockResolvedValue({
     enabled: true,
     releases: [
@@ -190,26 +190,12 @@ it("offers both active Crew versions and pins the older selection", async () => 
     expect.objectContaining({ sha256: "older" }), expect.any(String)));
 });
 
-it("stages the exact submitted digest before catalog publication", async () => {
-  const candidate = { app: "private1", release: "release1", product: "crew", version: "1.2", sha256: "a".repeat(64), submitted_by: "account1", size_bytes: 1024 };
-  let accepted = false;
-  const ops = vi.spyOn(api, "op").mockImplementation(async name => {
-    if (name === "catalog.submissions") return { submissions: accepted ? [] : [candidate] };
-    if (name === "catalog.accept") {
-      accepted = true;
-      return candidate;
-    }
-    if (name === "catalog.list") return { enabled: true, releases: accepted ? [{ ...candidate, published: 0 }] : [] };
-    throw new Error("Unexpected operation " + name);
-  });
-  render(<OfficialReleases />);
-  expect(await screen.findByText("sha256: " + candidate.sha256)).toBeVisible();
-  fireEvent.click(screen.getByRole("button", { name: "Accept for rehearsal" }));
-  await waitFor(() => expect(ops).toHaveBeenCalledWith("catalog.accept", {
-    app: candidate.app, release: candidate.release, sha256: candidate.sha256,
-  }));
-  expect(await screen.findByRole("button", { name: "Publish release" })).toBeDisabled();
-  expect(screen.queryByText("Submitted for review")).toBeNull();
+it("selects the submitted revision for an admin build", async () => {
+  const commit_url="https://github.com/example/tool/commit/"+"a".repeat(40);
+  vi.spyOn(api,"op").mockImplementation(async name => name==="catalog.submissions" ? {submissions:[{commit_url,submitted_by:"developer"}]} : {releases:[]});
+  render(<OfficialReleases/>);
+  fireEvent.click(await screen.findByRole("button",{name:"Use reviewed commit"}));
+  expect(screen.getByLabelText("Reviewed GitHub commit")).toHaveValue(commit_url);
 });
 
 it("invites an account directly as a developer", async () => {
@@ -245,7 +231,7 @@ it("checks an uploaded executable before enabling private creation", async () =>
 
 it("lets the admin assign a new product's prefix at publication", async () => {
   const ops = vi.spyOn(api, "op").mockImplementation(async name => name === "catalog.list" ? {
-    releases: [{product: "my-tool", version: "1", size_bytes: 100, sha256: "abc", rehearsed: true}],
+    releases: [{product: "my-tool", version: "1", size_bytes: 100, sha256: "abc", commit_url: "https://github.com/example/tool/commit/"+"a".repeat(40)}],
   } : {submissions: []});
   render(<OfficialReleases />);
   const prefix = await screen.findByLabelText("Catalog prefix");
@@ -254,7 +240,7 @@ it("lets the admin assign a new product's prefix at publication", async () => {
   expect(publish).toBeDisabled();
   fireEvent.change(prefix, {target: {value: "tool"}});
   fireEvent.click(publish);
-  await waitFor(() => expect(ops).toHaveBeenCalledWith("catalog.publish", {sha256: "abc", prefix: "tool"}));
+  await waitFor(() => expect(ops).toHaveBeenCalledWith("catalog.publish", {sha256: "abc", prefix: "tool", upgrade_from: []}));
 });
 
 it("shows published products beyond Crew and Atlas in the catalog", async () => {
@@ -266,17 +252,4 @@ it("shows published products beyond Crew and Atlas in the catalog", async () => 
   expect(screen.getByLabelText("App name")).toHaveValue("My New Product");
   expect(screen.getByLabelText("Release")).toHaveValue("abc");
   expect(screen.getByLabelText("Resources").querySelectorAll("option")).toHaveLength(8);
-});
-
-it("stages an administrator's HTTPS release URL for rehearsal", async () => {
-  const ops = vi.spyOn(api, "op").mockImplementation(async name =>
-    name === "catalog.list" ? { enabled: true, releases: [] } : { submissions: [] });
-  render(<OfficialReleases />);
-  const url = "https://releases.example.test/crew.tar.gz";
-  fireEvent.change(screen.getByLabelText("Source"), { target: { value: "url" } });
-  fireEvent.change(screen.getByLabelText("Release URL"), { target: { value: url } });
-  fireEvent.change(screen.getByLabelText("Version"), { target: { value: "1.2" } });
-  fireEvent.click(screen.getByRole("button", { name: "Download and check" }));
-  expect(await screen.findByText(/Manifest checked/)).toBeVisible();
-  expect(ops).toHaveBeenCalledWith("catalog.import_url", { product: "crew", version: "1.2", url });
 });

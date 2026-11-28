@@ -28,12 +28,6 @@ func TestOfficialWorkspaceLifecycle(t *testing.T) {
 	admin := h.Token(h.Owner())
 	_, alice := h.User("alice@example.test", "user")
 	_, bob := h.User("bob@example.test", "user")
-	_, developer := h.User("developer@example.test", "developer")
-	badURL := map[string]any{"product": "crew", "version": "1.2", "url": "http://example.test/file.tar.gz"}
-	for _, token := range []string{alice, developer} {
-		wantError(t, h.Op(token, "catalog.import_url", badURL), 403, dropapi.CodeForbidden)
-	}
-	wantError(t, h.Op(admin, "catalog.import_url", badURL), 400, dropapi.CodeInvalidInput)
 	node := h.MustOp(admin, "node.create", map[string]any{"name": "official-node", "host_id": hostA})
 	_, nodeToken := h.NodeLogin("official-node", node["password"].(string))
 	ready := reportOf(hostA)
@@ -46,7 +40,7 @@ func TestOfficialWorkspaceLifecycle(t *testing.T) {
 		t.Helper()
 		body := droptest.ELF(4096, seed)
 		digest := sha(body)
-		input := map[string]any{"product": product, "version": version}
+		input := map[string]any{"product": product, "version": version, "commit_url": "https://github.com/example/product/commit/" + digest[:40]}
 		wantError(t, h.Op(alice, "catalog.upload", input), 403, dropapi.CodeForbidden)
 		path := h.MustOp(admin, "catalog.upload", input)["path"].(string)
 		ch := make(chan error, 1)
@@ -87,17 +81,11 @@ func TestOfficialWorkspaceLifecycle(t *testing.T) {
 		}
 		return digest
 	}
-	rehearse := func(d, b string) {
-		t.Helper()
-		proof := map[string]any{"sha256": d, "baseline_sha256": b, "evidence_url": "https://evidence.example.test/rehearsal", "evidence_sha256": sha([]byte("fixture report")),
-			"before_records_sha256": sha([]byte("record")), "after_records_sha256": sha([]byte("record")), "before_attachments_sha256": sha([]byte("file")), "after_attachments_sha256": sha([]byte("file")), "records": 1, "attachments": 1}
-		wantError(t, h.Op(bob, "catalog.rehearse", proof), 403, dropapi.CodeForbidden)
-		h.MustOp(admin, "catalog.rehearse", proof)
-	}
 	publish := func(d, b string) {
 		ref := map[string]any{"sha256": d}
-		wantError(t, h.Op(admin, "catalog.publish", ref), 409, "rehearsal_required")
-		rehearse(d, b)
+		if b != "" {
+			ref["upgrade_from"] = []string{b}
+		}
 		h.MustOp(admin, "catalog.publish", ref)
 	}
 	crew := stage("crew", "1.0.0", 1)
@@ -217,7 +205,7 @@ func TestOfficialWorkspaceLifecycle(t *testing.T) {
 	}
 	thirdProduct := "a-completely-new-app"
 	thirdDigest := stage(thirdProduct, "1.0.0", 99)
-	rehearse(thirdDigest, "")
+
 	ref = map[string]any{"sha256": thirdDigest}
 	wantError(t, h.Op(admin, "catalog.publish", ref), 400, dropapi.CodeInvalidInput)
 	ref["prefix"] = "dev"
@@ -235,6 +223,12 @@ func TestOfficialWorkspaceLifecycle(t *testing.T) {
 	if !strings.HasPrefix(thirdApp["slug"].(string), "notes-") || thirdApp["official_product"] != thirdProduct {
 		t.Fatal(thirdApp)
 	}
+	// A release with no selected upgrade sources is available for new apps only.
+	reportApp(thirdApp, "running")
+	next := stage(thirdProduct, "1.1.0", 100)
+	wantError(t, h.Op(admin, "catalog.publish", map[string]any{"sha256": next, "upgrade_from": []string{crew}}), 400, dropapi.CodeInvalidInput)
+	publish(next, "")
+	wantError(t, h.Op(bob, "workspace.upgrade", map[string]any{"app": thirdApp["id"], "sha256": next}), 409, "upgrade_unavailable")
 	wantError(t, h.Op(alice, "user.directory", nil), 403, dropapi.CodeForbidden)
 	if users := h.MustOp(admin, "user.directory", map[string]any{"search": "alice", "status": "active", "workspaces": "yes", "credits": "no"})["users"].([]any); len(users) != 1 {
 		t.Fatal(users)

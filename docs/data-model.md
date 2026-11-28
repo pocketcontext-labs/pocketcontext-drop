@@ -102,9 +102,7 @@ What the node needs to run a release (M7 and M9) is `sha256`, `s3_key` and `size
 
 ### Catalog submissions
 
-`drop_catalog_submissions` stores one review request per private release. It records the immutable release ID, submitting account, product and version from the executable’s inspected manifest, plaintext SHA-256, submission time, the admin who authorized copying the verified executable into catalog storage, and acceptance status. The release and account are foreign keys with cascading deletion. Only the developer who owns the app can submit its currently deployed executable. Admins review pending requests through `catalog.submissions`; this table has no records endpoint or SQL reader entry.
-
-Submission keeps the artifact encrypted under the custom app’s key. Accepting an exact digest verifies the decrypted bytes and stages a separately addressed official release. The official artifact survives deletion of the source app. The catalog makes it available to users after an admin records the required rehearsal and publishes it.
+`drop_source_submissions` records submitted GitHub commit URLs and the submitting account. The admin queue is private. Each official upload link is bound to its admin, reviewed URL, product and version. The checked release records the commit, builder and executable digest. Previous binary submissions and receipts are historical.
 
 ## Nodes
 
@@ -207,9 +205,9 @@ The shared buffer migration preserves exhausted billing holds and initializes al
 ### Official app releases
 
 Private tables `drop_official_releases`, `drop_official_uploads`,
-`drop_official_rehearsals` and `drop_official_config` hold the immutable
+`drop_upgrade_sources` and `drop_official_config` hold the immutable
 product/version-to-digest mapping, short-lived hashed admin upload links,
-per-baseline rehearsal receipts and the cutover flag. Ordinary app
+per-baseline upgrade permissions and the cutover flag. Ordinary app
 release records share content-addressed bytes with the catalog. Per-app
 deletion retains every catalog digest. The app's `official_product` marks an
 official app, `official_target` pins its desired binary, and

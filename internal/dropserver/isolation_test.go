@@ -38,9 +38,8 @@ import (
 //	             deletion receipts scoped by account and immutable app ID     TestDeletionReceiptAfterNodeConfirmationAndRetry
 //	Beta         admission and probe completion require admin, uploads and   TestBetaProbeLeasesAndDeployment
 //	             deployment scoped to approved bytes and app owner; legacy APIs blocked
-//	Catalog      Only a developer can submit their own currently deployed     TestPrivateDeveloperRelease
-//	             private release; only an admin can review and accept the
-//	             exact digest; users see it only after rehearsal/publication
+//	Catalog      Developers submit commit URLs. Admins review the queue      TestCommitSubmission, TestOfficialWorkspaceLifecycle
+//	             and upload their build. Customers see published releases.
 //	Upload       a link is scoped to one app by its token; A cannot mint one  TestIsolationMatrix, TestUploadLink* (releases_test.go)
 //	             for B's app; per-address limiter                             TestUploadRateLimit (releases_test.go)
 //	Agent routes anonymous 401, users' tokens (owner included) 403            TestNodeIsolation

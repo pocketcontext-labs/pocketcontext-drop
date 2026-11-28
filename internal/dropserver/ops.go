@@ -252,28 +252,6 @@ func serveOp(re *core.RequestEvent, keys *sync.Map) error {
 		}
 		defer unlock()
 	}
-	if spec.Name == "catalog.accept" {
-		// Serialize artifact copies with uploads and deletion, independently
-		// of SQLite. Only short authorization and catalog updates need a writer.
-		releaseBlobMu.Lock()
-		defer releaseBlobMu.Unlock()
-		c, err = authorizeOp(re.App, re, spec)
-		if err != nil {
-			return writeError(re, err)
-		}
-		if key != nil {
-			stored, found, err := key.lookup(re.App)
-			if err != nil {
-				return writeError(re, err)
-			}
-			if found {
-				return writeResult(re, stored, true)
-			}
-		}
-		if err := prepareCatalogAcceptance(re, spec, input.(*dropapi.AcceptSubmission)); err != nil {
-			return writeError(re, err)
-		}
-	}
 	var encoded json.RawMessage
 	replayed := false
 	err = re.App.RunInTransaction(func(tx core.App) error {

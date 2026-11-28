@@ -1,18 +1,19 @@
 package dropapi
 
+type CommitSubmission struct {
+	CommitURL string `json:"commit_url"`
+}
+
 type OfficialPublish struct {
-	SHA256 string `json:"sha256"`
-	Prefix string `json:"prefix,omitempty"`
+	UpgradeFrom []string `json:"upgrade_from,omitempty"`
+	SHA256      string   `json:"sha256"`
+	Prefix      string   `json:"prefix,omitempty"`
 }
 
 type OfficialUpload struct {
-	Product string `json:"product"`
-	Version string `json:"version"`
-}
-type OfficialImportURL struct {
-	Product string `json:"product"`
-	Version string `json:"version"`
-	URL     string `json:"url"`
+	CommitURL string `json:"commit_url"`
+	Product   string `json:"product"`
+	Version   string `json:"version"`
 }
 type CatalogListInput struct {
 	AllVersions     bool `json:"all_versions,omitempty"`
@@ -41,25 +42,4 @@ type DirectoryInput struct {
 	Credits    string `json:"credits,omitempty"`
 	Limit      int    `json:"limit,omitempty"`
 	Offset     int    `json:"offset,omitempty"`
-}
-
-// A rehearsal binds observable data invariants to the precise binaries and
-// the immutable evidence artifact retained by the release operator.
-type OfficialRehearsal struct {
-	SHA256         string `json:"sha256"`
-	Baseline       string `json:"baseline_sha256"`
-	EvidenceURL    string `json:"evidence_url"`
-	EvidenceSHA256 string `json:"evidence_sha256"`
-	BeforeRecords  string `json:"before_records_sha256"`
-	AfterRecords   string `json:"after_records_sha256"`
-	BeforeFiles    string `json:"before_attachments_sha256"`
-	AfterFiles     string `json:"after_attachments_sha256"`
-	Records        int    `json:"records"`
-	Attachments    int    `json:"attachments"`
-}
-
-type AcceptSubmission struct {
-	App     string `json:"app"`
-	Release string `json:"release"`
-	SHA256  string `json:"sha256"`
 }

@@ -1,7 +1,6 @@
 package dropserver
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -16,14 +15,15 @@ import (
 )
 
 type candidateLink struct {
-	Owner   string `db:"owner"`
-	Product string `db:"product"`
-	Version string `db:"version"`
+	CommitURL string `db:"commit_url"`
+	Owner     string `db:"owner"`
+	Product   string `db:"product"`
+	Version   string `db:"version"`
 }
 
 func loadCandidateLink(app core.App, hash string) (candidateLink, error) {
 	var link candidateLink
-	err := app.DB().NewQuery(`SELECT l.owner,l.product,l.version FROM drop_official_uploads l JOIN users u ON u.id=l.owner
+	err := app.DB().NewQuery(`SELECT l.owner,l.product,l.version,l.commit_url FROM drop_official_uploads l JOIN users u ON u.id=l.owner
 	WHERE token_hash={:hash} AND expires_at>unixepoch() AND u.suspended=0 AND u.role='admin'`).Bind(dbx.Params{"hash": hash}).One(&link)
 	return link, err
 }
@@ -66,28 +66,6 @@ func (u *uploader) candidateOrProbe(re *core.RequestEvent, hash string) error {
 	return re.JSON(http.StatusOK, result)
 }
 
-func officialImportURL(c *Ctx, in *dropapi.OfficialImportURL) (any, error) {
-	if err := validateCandidate(in.Product, in.Version); err != nil {
-		return nil, err
-	}
-	if servicesOf(c.App).Releases == nil {
-		return nil, releasesUnavailable()
-	}
-	link := candidateLink{Owner: c.Auth.Id, Product: in.Product, Version: in.Version}
-	return downloadReleaseURL(c, &dropapi.ImportURLInput{URL: in.URL}, func(data []byte, _ string) (any, error) {
-		return checkAndStageCandidate(c.Request.Context(), c.App, bytes.NewReader(data), link, func(tx core.App) error {
-			admin, err := tx.FindRecordById("users", link.Owner)
-			if err != nil && !errors.Is(err, sql.ErrNoRows) {
-				return err
-			}
-			if admin == nil || admin.GetBool("suspended") || admin.GetString("role") != "admin" || admin.TokenKey() != c.Auth.TokenKey() {
-				return Forbidden("An active administrator account is required.")
-			}
-			return nil
-		})
-	})
-}
-
 func checkAndStageCandidate(ctx context.Context, app core.App, body io.Reader, link candidateLink, authorize func(core.App) error) (any, error) {
 	services := servicesOf(app)
 	file, size, digest, err := spoolBuild(body, services.ReleaseMaxBytes)
@@ -109,10 +87,6 @@ func checkAndStageCandidate(ctx context.Context, app core.App, body io.Reader, l
 	if outcome != "success" || m.App != link.Product || m.Version != link.Version {
 		return nil, Invalid("manifest", "The product and version must match the executable manifest.")
 	}
-	key, err := awsx.ReleaseKey(digest)
-	if err != nil {
-		return nil, err
-	}
 	releaseBlobMu.Lock()
 	defer releaseBlobMu.Unlock()
 	err = app.RunInTransaction(func(tx core.App) error {
@@ -124,10 +98,22 @@ func checkAndStageCandidate(ctx context.Context, app core.App, body io.Reader, l
 		}
 		ctx, cancel := context.WithTimeout(ctx, uploadStoreTimeout)
 		defer cancel()
-		if _, err = services.Releases.PutIfAbsent(ctx, key, file, size, digest); err != nil {
-			return Conflict("store_unavailable", "The release store is unavailable. Retry this upload.")
+		var previous string
+		if err := tx.DB().NewQuery("SELECT commit_url FROM drop_official_releases WHERE digest={:d}").Bind(dbx.Params{"d": digest}).Row(&previous); err != nil {
+			return err
 		}
-		return WriteEvent(tx, EventRecord{Actor: link.Owner, Action: "catalog.checked", Detail: map[string]any{"product": m.App, "version": m.Version, "sha256": digest}})
+		if previous != "" && previous != link.CommitURL {
+			return Conflict("source_changed", "This executable already has a different source commit.")
+		}
+		if err := waitExec(tx, "UPDATE drop_official_releases SET commit_url={:u},built_by={:a} WHERE digest={:d}", dbx.Params{"u": link.CommitURL, "a": link.Owner, "d": digest}); err != nil {
+			return err
+		}
+		if store, ok := services.Releases.(awsx.BlobStore); !ok {
+			return releasesUnavailable()
+		} else if err := storeCatalogBlob(ctx, store, file, digest, size); err != nil {
+			return err
+		}
+		return WriteEvent(tx, EventRecord{Actor: link.Owner, Action: "catalog.checked", Detail: map[string]any{"commit_url": link.CommitURL, "product": m.App, "version": m.Version, "sha256": digest}})
 	})
 	if err != nil {
 		return nil, err

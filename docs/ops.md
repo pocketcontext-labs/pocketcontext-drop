@@ -284,42 +284,13 @@ The administrator stages and checks both binaries before switching an existing
 installation. Use **Releases** in the hosted admin reader. All transitions also
 use the authenticated operation endpoint.
 
-A developer can submit a deployed custom build with a compatible Drop manifest for review with
-`developer.submit {app,release}`. The admin reviews explicitly submitted builds
-with `catalog.submissions {}` and stages one with
-`catalog.accept {app,release,sha256}`. Drop verifies the executable against that
-digest. Continue at step 2 using the accepted bytes and digest. Other private
-releases remain visible only to their owners.
+Developers submit one full GitHub commit URL with `developer.submit {commit_url}`. They can submit before creating a private app. The administrator sees pending commits through `catalog.submissions {}`. An administrator can also enter a commit directly.
 
-1. Choose **File** or **Download URL** in **Releases**. For a file, call `catalog.upload` with its manifest product identifier and version, then PUT the release to the one-time path. For a public HTTPS release, call `catalog.import_url {product,version,url}`. Both paths stage the extracted Linux executable for rehearsal. Drop computes its digest,
-   checks the ELF, runs the existing isolated manifest probe and checks the
-   product, version, runtime requirements, and resource minimum.
-2. Exercise the actual candidate on disposable data. For a first release,
-   create records and attachments, restart it and verify their contents.
-   For an upgrade, seed the exact baseline, run the candidate against the
-   same volume and compare complete record and attachment digests. Retain
-   the test inputs, outputs and binary hashes at an immutable evidence URL.
-3. Import the JSON receipt under **Data rehearsal receipt**, or call
-   `catalog.rehearse` with these fields:
+1. Review the indicated revision, dependencies, build instructions, manifest requirements and product-specific checks. Build that revision in an isolated environment without production credentials.
+2. In **Releases**, enter the reviewed commit, product and version and upload the administrator-built executable. The API is `catalog.upload {commit_url,product,version}` followed by a PUT to its one-time path. Drop checks the bytes and manifest and records the digest, source and uploading administrator. The upload is the administrator's attestation of the build source.
+3. Publish with `catalog.publish {sha256,prefix,upgrade_from}`. The first release sets the permanent product prefix. The optional `upgrade_from` array contains exact published digests of this product whose upgrades the administrator has tested. An empty list enables new installations only. Owners choose when to install an eligible upgrade.
 
-   | Field | Value |
-   | --- | --- |
-   | `sha256`, `baseline_sha256` | Candidate and baseline executable SHA-256. Use an empty baseline for the initial release. |
-   | `evidence_url`, `evidence_sha256` | Durable HTTPS artifact URL and its SHA-256. |
-   | `records`, `attachments` | Positive fixture counts. |
-   | `before_records_sha256`, `after_records_sha256` | Canonical record content digests before and after migration. |
-   | `before_attachments_sha256`, `after_attachments_sha256` | Canonical attachment-content digests before and after migration. |
-
-   The receipt records the operator’s attestation. Drop checks the hashes and
-   exact version pair and retains the immutable receipt; the operator runs
-   the rehearsal and retains its evidence. Keep secrets and customer data
-   out of these artifacts.
-4. Publish with `catalog.publish {sha256,prefix}`. Choose a unique prefix on the first release of a new product. Later releases reuse the product’s prefix. Drop reserves `dev` for private instances and retains `crew` and `atlas` for the existing products. Publication preserves the source app’s private address and access rules. Publishing requires a matching receipt for the currently
-   published baseline. Apps several versions behind need a receipt
-   for their own installed baseline before upgrading. After publishing both
-   products, call `catalog.activate {}` to switch hosted creation to the
-   official catalog. Existing placements, volumes and addresses remain in
-   place. Old customer upload links expire at cutover.
+The source migration preserves existing publications and previously eligible published upgrade pairs. Unpublished binary submissions require a new admin build. Historical receipts remain in the database.
 
 With `catalog.list {all_versions:true}`, customers and administrators see every published version, newest first per product. Add `include_archived:true` to include archived releases. When used alone, `include_archived:true` returns the newest published release per product even if archived. The default customer list shows the latest active release per product. Administrators retain their candidate management view with an empty input.
 

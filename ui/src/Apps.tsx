@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { appURL } from "./AppAddress";
 import CopyButton from "./CopyButton";
-import { dropApi, type App } from "./dropApi";
+import { op, dropApi, type App } from "./dropApi";
 import { message } from "./errors";
 import { appHash, viewHashes } from "./routes";
 
@@ -68,6 +68,8 @@ function CreateAppAction({ hosted, developer }: { hosted: boolean; developer: bo
 export default function Apps({ beta = false, official=false, developer=false }: { beta?: boolean; official?:boolean; developer?: boolean }) {
   const [apps, setApps] = useState<App[] | null>(null);
   const [error, setError] = useState("");
+  const [commitURL,setCommitURL]=useState("");
+  const [submission,setSubmission]=useState("");
   const mounted = useRef(true);
   const reads = useRef(0);
   const load = useCallback(async () => {
@@ -105,6 +107,14 @@ export default function Apps({ beta = false, official=false, developer=false }: 
         <h2 id="apps-title">Your apps</h2>
         <CreateAppAction developer={developer} hosted={beta || official || developer} />
       </div>
+      {developer && <form onSubmit={async e => {
+        e.preventDefault();
+        try { await op("developer.submit",{commit_url:commitURL.trim()});setSubmission("Submitted for catalog review.");setError(""); }
+        catch(err){setError(message(err));setSubmission("");}
+      }}>
+        <label>GitHub commit URL <input type="url" required value={commitURL} onChange={e=>setCommitURL(e.target.value)}/></label>
+        <button>Submit for catalog review</button><span role="status">{submission}</span>
+      </form>}
       {error && (
         <p role="alert" className="error">
           {error}

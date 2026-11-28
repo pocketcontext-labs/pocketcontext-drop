@@ -19,7 +19,6 @@ import (
 func init() {
 	register("catalog.list", officialList)
 	register("catalog.upload", officialUpload)
-	register("catalog.import_url", officialImportURL)
 	register("catalog.publish", officialPublish)
 	register("catalog.archive", officialArchive)
 	register("catalog.activate", officialActivate)
@@ -29,15 +28,18 @@ func init() {
 }
 
 type officialRelease struct {
-	Prefix    string `db:"prefix" json:"prefix,omitempty"`
-	Archived  bool   `db:"archived" json:"archived"`
-	Minimum   int    `db:"min_size" json:"minimum_multiplier"`
-	Rehearsed bool   `db:"rehearsed" json:"rehearsed,omitempty"`
-	Product   string `db:"product" json:"product"`
-	Version   string `db:"version" json:"version"`
-	Digest    string `db:"digest" json:"sha256"`
-	Size      int64  `db:"size" json:"size_bytes"`
-	Published int64  `db:"published" json:"published"`
+	Baselines   string   `db:"baselines" json:"-"`
+	UpgradeFrom []string `db:"-" json:"upgrade_from,omitempty"`
+	Prefix      string   `db:"prefix" json:"prefix,omitempty"`
+	Archived    bool     `db:"archived" json:"archived"`
+	Minimum     int      `db:"min_size" json:"minimum_multiplier"`
+	CommitURL   string   `db:"commit_url" json:"commit_url,omitempty"`
+	BuiltBy     string   `db:"built_by" json:"built_by,omitempty"`
+	Product     string   `db:"product" json:"product"`
+	Version     string   `db:"version" json:"version"`
+	Digest      string   `db:"digest" json:"sha256"`
+	Size        int64    `db:"size" json:"size_bytes"`
+	Published   int64    `db:"published" json:"published"`
 }
 
 func officialEnabled(app core.App) (bool, error) {
@@ -50,13 +52,11 @@ func officialList(c *Ctx, in *dropapi.CatalogListInput) (any, error) {
 	rows := []officialRelease{}
 	// Only current published releases are public to customers. Operators also
 	// see the last 50 candidate and superseded versions.
-	const columns = "r.*,COALESCE((SELECT prefix FROM drop_official_products WHERE product=r.product),'') AS prefix"
+	const columns = "r.*,COALESCE((SELECT group_concat(baseline) FROM drop_upgrade_sources WHERE candidate=r.digest),'') AS baselines,COALESCE((SELECT prefix FROM drop_official_products WHERE product=r.product),'') AS prefix"
 	query := "SELECT " + columns + ` FROM drop_official_releases r WHERE archived=0 AND published>0 AND NOT EXISTS
 	(SELECT 1 FROM drop_official_releases n WHERE n.product=r.product AND n.archived=0 AND n.published>r.published) ORDER BY product`
 	if c.Admin {
-		query = "SELECT " + columns + `,EXISTS(SELECT 1 FROM drop_official_rehearsals h WHERE h.candidate=r.digest AND h.baseline=
-	    COALESCE((SELECT digest FROM drop_official_releases p WHERE p.product=r.product AND archived=0 AND published>0 ORDER BY published DESC LIMIT 1),'')) rehearsed
-	    FROM drop_official_releases r WHERE r.digest IN (SELECT digest FROM drop_official_releases ORDER BY rowid DESC LIMIT 50)
+		query = "SELECT " + columns + ` FROM drop_official_releases r WHERE r.digest IN (SELECT digest FROM drop_official_releases ORDER BY rowid DESC LIMIT 50)
 	    OR (r.published>0 AND NOT EXISTS(SELECT 1 FROM drop_official_releases n WHERE n.product=r.product AND n.archived=0 AND n.published>r.published)) ORDER BY r.rowid DESC`
 	}
 	if in.AllVersions || in.IncludeArchived {
@@ -68,6 +68,15 @@ func officialList(c *Ctx, in *dropapi.CatalogListInput) (any, error) {
 	}
 	if err := c.App.DB().NewQuery(query).Bind(dbx.Params{"all_versions": in.AllVersions, "include_archived": in.IncludeArchived}).All(&rows); err != nil {
 		return nil, err
+	}
+	for i := range rows {
+		if rows[i].Baselines != "" {
+			rows[i].UpgradeFrom = strings.Split(rows[i].Baselines, ",")
+		}
+		if !c.Admin {
+			rows[i].CommitURL = ""
+			rows[i].BuiltBy = ""
+		}
 	}
 	enabled, err := officialEnabled(c.App)
 	return map[string]any{"enabled": enabled, "releases": rows}, err
@@ -87,11 +96,14 @@ func officialUpload(c *Ctx, in *dropapi.OfficialUpload) (any, error) {
 	if servicesOf(c.App).Releases == nil {
 		return nil, releasesUnavailable()
 	}
+	if err := recordCommit(c, in.CommitURL); err != nil {
+		return nil, err
+	}
 	token := security.RandomString(dropapi.UploadTokenLength)
-	err := waitExec(c.App, `INSERT INTO drop_official_uploads(token_hash,owner,product,version,expires_at)
-	VALUES({:hash},{:owner},{:product},{:version},{:expires})
-	ON CONFLICT(owner) DO UPDATE SET token_hash=excluded.token_hash,product=excluded.product,version=excluded.version,expires_at=excluded.expires_at`,
-		dbx.Params{"hash": tokenHash(token), "owner": c.Auth.Id, "product": in.Product, "version": in.Version, "expires": time.Now().Add(dropapi.UploadLinkTTL).Unix()})
+	err := waitExec(c.App, `INSERT INTO drop_official_uploads(token_hash,owner,product,version,commit_url,expires_at)
+	VALUES({:hash},{:owner},{:product},{:version},{:commit},{:expires})
+	ON CONFLICT(owner) DO UPDATE SET commit_url=excluded.commit_url,token_hash=excluded.token_hash,product=excluded.product,version=excluded.version,expires_at=excluded.expires_at`,
+		dbx.Params{"commit": in.CommitURL, "hash": tokenHash(token), "owner": c.Auth.Id, "product": in.Product, "version": in.Version, "expires": time.Now().Add(dropapi.UploadLinkTTL).Unix()})
 	c.Event(Event{Detail: map[string]any{"product": in.Product, "version": in.Version}})
 	return map[string]string{"path": dropapi.UploadRoutePrefix + token}, err
 }
@@ -145,12 +157,20 @@ func officialPublish(c *Ctx, in *dropapi.OfficialPublish) (any, error) {
 	}
 	// A repeated publish of an older version never moves it ahead of newer releases.
 	if r.Published == 0 {
-		var baseline string
-		if err := c.App.DB().NewQuery("SELECT COALESCE((SELECT digest FROM drop_official_releases WHERE product={:p} AND archived=0 AND published>0 ORDER BY published DESC LIMIT 1),'')").Bind(dbx.Params{"p": r.Product}).Row(&baseline); err != nil {
-			return nil, err
+		if r.CommitURL == "" || r.BuiltBy == "" {
+			return nil, Conflict("source_required", "Upload an admin build of the reviewed commit.")
 		}
-		if err := requireRehearsal(c.App, r.Digest, baseline); err != nil {
-			return nil, err
+		for _, baseline := range in.UpgradeFrom {
+			var allowed bool
+			if err := c.App.DB().NewQuery("SELECT EXISTS(SELECT 1 FROM drop_official_releases WHERE digest={:b} AND product={:p} AND published>0)").Bind(dbx.Params{"b": baseline, "p": r.Product}).Row(&allowed); err != nil {
+				return nil, err
+			}
+			if !allowed {
+				return nil, Invalid("upgrade_from", "Select published releases of this product.")
+			}
+			if err := waitExec(c.App, "INSERT OR IGNORE INTO drop_upgrade_sources VALUES({:d},{:b})", dbx.Params{"d": r.Digest, "b": baseline}); err != nil {
+				return nil, err
+			}
 		}
 		if err := waitExec(c.App, `UPDATE drop_official_releases SET published=(SELECT MAX(COALESCE(MAX(published),0)+1,unixepoch()) FROM drop_official_releases) WHERE digest={:digest}`, p); err != nil {
 			return nil, err
@@ -406,8 +426,12 @@ func workspaceUpgrade(c *Ctx, in *dropapi.WorkspaceUpgrade) (any, error) {
 		if a.GetString("official_installed") != desired {
 			return nil, Conflict("upgrade_pending", "The current deployment must be healthy before another release can be installed.")
 		}
-		if err := requireRehearsal(c.App, r.Digest, desired); err != nil {
+		var allowed bool
+		if err := c.App.DB().NewQuery("SELECT EXISTS(SELECT 1 FROM drop_upgrade_sources WHERE candidate={:d} AND baseline={:b})").Bind(dbx.Params{"d": r.Digest, "b": desired}).Row(&allowed); err != nil {
 			return nil, err
+		}
+		if !allowed {
+			return nil, Conflict("upgrade_unavailable", "The administrator has not enabled this upgrade.")
 		}
 	}
 	m, err := betaRelease(c.App, r.Digest)

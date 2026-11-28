@@ -62,11 +62,12 @@ try {
   await admin.getByRole("heading", { name: "Releases" }).waitFor();
   for (const product of ["crew", "atlas"]) {
     await admin.getByLabel("App", { exact: true }).fill(product);
+    await admin.getByLabel("Reviewed GitHub commit").fill("https://github.com/example/"+product+"/commit/"+"a".repeat(40));
     await admin.getByLabel("Version", { exact: true }).fill("1.0.0");
     await admin
       .getByLabel("Linux executable")
       .setInputFiles(fixture.files[product]);
-    await admin.getByRole("button", { name: "Upload and check" }).click();
+    await admin.getByRole("button", { name: "Upload reviewed build" }).click();
     const row = admin.getByRole("listitem").filter({
       has: admin.getByRole("heading", {
         name: new RegExp(product + " 1.0.0", "i"),
@@ -74,10 +75,6 @@ try {
     });
     const publish = row.getByRole("button", { name: "Publish release" });
     await publish.waitFor();
-    assert.equal(await publish.isDisabled(), true);
-    await row
-      .getByLabel("Data rehearsal receipt (JSON)")
-      .setInputFiles(fixture.files[product] + ".json");
     await publish.click();
     await row.getByText(/Published/).waitFor();
   }

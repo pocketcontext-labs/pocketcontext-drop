@@ -231,26 +231,6 @@ export default function Releases({
                 {release.note && <> · {release.note}</>}
                 {release.current && <span className="badge">Current</span>}
               </p>
-              {app.developer_private && release.current && (
-                <button type="button" className="secondary" disabled={disabled}
-                  onClick={async () => {
-                    setBusy(true);
-                    setError("");
-                    setStatus("");
-                    try {
-                      const candidate = await op<{product: string; version: string; sha256: string}>(
-                        "developer.submit", { app: app.id, release: release.id },
-                      );
-                      setStatus(`Submitted ${candidate.product} ${candidate.version} (${candidate.sha256.slice(0, 12)}) for catalog review.`);
-                    } catch (e) {
-                      setError(message(e));
-                    } finally {
-                      if (mounted.current) setBusy(false);
-                    }
-                  }}>
-                  Submit for catalog review
-                </button>
-              )}
               {!release.current && (
                 <button
                   type="button"

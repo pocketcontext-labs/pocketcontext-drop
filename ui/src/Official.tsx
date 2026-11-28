@@ -16,7 +16,9 @@ import { DeleteApp } from "./AppDeletion";
 type Published = {
   prefix?: string;
   minimum_multiplier: number;
-  rehearsed?: boolean;
+  commit_url?: string;
+  built_by?: string;
+  upgrade_from?: string[];
   archived?: boolean;
   product: string;
   version: string;
@@ -24,15 +26,7 @@ type Published = {
   size_bytes: number;
   published: number;
 };
-type Submission = {
-  app: string;
-  release: string;
-  submitted_by: string;
-  product: string;
-  version: string;
-  sha256: string;
-  size_bytes: number;
-};
+type Submission = { commit_url: string; submitted_by: string };
 type Catalog = { enabled: boolean; releases: Published[] };
 export function productName(id: string) {
   return id.split("-").map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
@@ -266,7 +260,7 @@ export function OfficialReleases({
   const { catalog, error: loadError, refresh } = useCatalog();
   const [product, setProduct] = useState("crew"),
     [version, setVersion] = useState(""),
-    [source, setSource] = useState("file"),
+    [upgrades, setUpgrades] = useState<Record<string,string[]>>({}),
     [url, setURL] = useState(""),
     [file, setFile] = useState<File>(),
     [busy, setBusy] = useState(false),
@@ -311,41 +305,31 @@ export function OfficialReleases({
         onSubmit={(e) => {
           e.preventDefault();
           void act(async () => {
-            if (source === "url") {
-              await op("catalog.import_url", { product, version, url: url.trim() });
-            } else {
-              if (!file) throw new Error("Choose a release file.");
-              const { path } = await op<{ path: string }>("catalog.upload", {
-                product,
-                version,
-              });
-              const res = await fetch(path, {
-                method: "PUT",
-                body: file,
-                credentials: "omit",
-                redirect: "error",
-              });
-              if (!res.ok) {
-                const body = await res.json().catch(() => ({}));
-                throw new Error(body.message || "The release check failed.");
-              }
+            if (!file) throw new Error("Choose a release file.");
+            const { path } = await op<{ path: string }>("catalog.upload", {
+              product,
+              version,
+              commit_url: url.trim(),
+            });
+            const res = await fetch(path, {
+              method: "PUT",
+              body: file,
+              credentials: "omit",
+              redirect: "error",
+            });
+            if (!res.ok) {
+              const body = await res.json().catch(() => ({}));
+              throw new Error(body.message || "The release check failed.");
             }
-            return "Manifest checked. Attach a successful data rehearsal before publishing.";
+            setRevision(n => n+1);
+            return "Admin build checked.";
           });
         }}
       >
         <h3>Stage a release</h3>
         <label>
-          Source
-          <select value={source} onChange={e => {
-            setSource(e.target.value);
-            setFile(undefined);
-            setError("");
-            setStatus("");
-          }}>
-            <option value="file">File</option>
-            <option value="url">Download URL</option>
-          </select>
+          Reviewed GitHub commit
+          <input type="url" required value={url} onChange={e => setURL(e.target.value)} />
         </label>
         <label>
           App
@@ -361,10 +345,7 @@ export function OfficialReleases({
             maxLength={80}
           />
         </label>
-        {source === "url" ? <label>
-          Release URL
-          <input type="url" placeholder="https://" required value={url} onChange={e => setURL(e.target.value)} />
-        </label> : <label>
+        <label>
           Linux executable or archive
           <span className="release-file">
             <span className="release-file-button" aria-hidden="true">
@@ -384,9 +365,9 @@ export function OfficialReleases({
               onChange={(e) => setFile(e.target.files?.[0])}
             />
           </span>
-        </label>}
+        </label>
         <button className="primary" disabled={busy}>
-          {source === "url" ? "Download and check" : "Upload and check"}
+          Upload reviewed build
         </button>
       </form>
       {(error || loadError) && <p role="alert">{error || loadError}</p>}
@@ -398,17 +379,9 @@ export function OfficialReleases({
         <h3 id="submitted-title">Submitted for review</h3>
         <ul className="release-list">
           {submissions.map(candidate => (
-            <li className="release-card" key={candidate.release}>
-              <div className="release-info">
-                <strong>{productName(candidate.product)} {candidate.version}</strong>
-                <p className="release-meta">Submitted by {candidate.submitted_by} · {(candidate.size_bytes / 1048576).toFixed(1)} MiB</p>
-                <code className="candidate-digest">sha256: {candidate.sha256}</code>
-              </div>
-              <button className="secondary" disabled={busy} onClick={() => void act(async () => {
-                await op("catalog.accept", { app: candidate.app, release: candidate.release, sha256: candidate.sha256 });
-                setRevision(n => n + 1);
-                return "Candidate accepted. Attach a successful data rehearsal before publishing.";
-              })}>Accept for rehearsal</button>
+            <li className="release-card" key={candidate.commit_url}>
+              <a href={candidate.commit_url}>{candidate.commit_url}</a>
+              <button onClick={() => setURL(candidate.commit_url)}>Use reviewed commit</button>
             </li>
           ))}
         </ul>
@@ -432,9 +405,7 @@ export function OfficialReleases({
                     ? "Archived"
                     : r.published
                       ? "Published"
-                      : r.rehearsed
-                        ? "Rehearsal recorded"
-                        : "Manifest checked"}
+                      : "Manifest checked"}
                 </span>
                 {(r.size_bytes / 1048576).toFixed(1)} MiB
               </p>
@@ -450,34 +421,11 @@ export function OfficialReleases({
               </div>
             </div>
             <div className="release-actions">
-              {!r.published && (
-                <label>
-                  Data rehearsal receipt (JSON)
-                  <input
-                    type="file"
-                    accept="application/json,.json"
-                    disabled={busy}
-                    onChange={(e) => {
-                      const receipt = e.target.files?.[0];
-                      e.target.value = "";
-                      if (!receipt) return;
-                      void act(async () => {
-                        if (receipt.size > 16000)
-                          throw new Error(
-                            "Choose a rehearsal receipt under 16 KB.",
-                          );
-                        const report = JSON.parse(await receipt.text());
-                        if (report.sha256 !== r.sha256)
-                          throw new Error(
-                            "This receipt belongs to another executable.",
-                          );
-                        await op("catalog.rehearse", report);
-                        return "Rehearsal evidence recorded.";
-                      });
-                    }}
-                  />
-                </label>
-              )}
+              {r.commit_url && <a href={r.commit_url}>Reviewed commit</a>}
+              {!r.published && catalog.releases.filter(old => old.product===r.product && old.published).map(old =>
+                <label key={old.sha256}><input type="checkbox" checked={(upgrades[r.sha256] ?? []).includes(old.sha256)}
+                  onChange={e => setUpgrades({...upgrades,[r.sha256]: e.target.checked ? [...(upgrades[r.sha256] ?? []),old.sha256] : (upgrades[r.sha256] ?? []).filter(d=>d!==old.sha256)})}/>
+                  Allow upgrades from {old.version}</label>)}
               {!!r.published && !r.archived && (
                 <button
                   className="secondary release-archive"
@@ -504,10 +452,10 @@ export function OfficialReleases({
                 <p>
                   <button
                     className="primary"
-                    disabled={busy || !r.rehearsed || (!r.prefix && !validCatalogPrefix(prefixes[r.product] ?? r.product))}
+                    disabled={busy || !r.commit_url || (!r.prefix && !validCatalogPrefix(prefixes[r.product] ?? r.product))}
                     onClick={() =>
                       void act(async () => {
-                        await op("catalog.publish", { sha256: r.sha256, ...(!r.prefix && {prefix: prefixes[r.product] ?? r.product}) });
+                        await op("catalog.publish", { sha256: r.sha256, upgrade_from: upgrades[r.sha256] ?? [], ...(!r.prefix && {prefix: prefixes[r.product] ?? r.product}) });
                         return "Release published. Existing apps keep their installed versions.";
                       })
                     }
@@ -601,7 +549,7 @@ export function WorkspaceDetail({ app, reload, latest, loadError, children }: {
           </> : "Upload a release to run this app."}
         </p>
         {latest &&
-          latest.sha256 !== app.beta_sha256 && !resizing &&
+          latest.upgrade_from?.includes(app.beta_sha256 ?? "") && !resizing &&
           (!review ? (
             <button className="secondary" onClick={() => setReview(true)}>
               Review upgrade to {latest.version}
