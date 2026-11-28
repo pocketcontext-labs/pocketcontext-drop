@@ -111,7 +111,7 @@ export function CreateWorkspace({ catalog, loadError, releaseSelection = true, p
     setKey(crypto.randomUUID());
   }
   return (
-    <section className={privateBuild ? "wide official-page private-create" : "panel wide official-page"}>
+    <section className={privateBuild ? "wide official-page private-create" : product ? "panel wide official-page" : "wide official-page catalog-page"}>
       {privateBuild && <a className="private-back" href="#/apps">← Your apps</a>}
       <h2>
         {privateBuild ? "Create custom app" : product ? (`Create ${/^[aeiou]/i.test(product) ? "an" : "a"} ${productName(product)} app`) : "Catalog"}
