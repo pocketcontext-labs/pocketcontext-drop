@@ -3,8 +3,8 @@ import type { Role } from "./dropApi";
 
 export const accountRoles = ["user", "developer", "admin"] as const satisfies readonly Role[];
 
-export function RoleOptions() {
-  return accountRoles.map(role => <option key={role} value={role}>
+export function RoleOptions({ includeAdmin = true }: { includeAdmin?: boolean }) {
+  return accountRoles.filter(role => includeAdmin || role !== "admin").map(role => <option key={role} value={role}>
     {role[0].toUpperCase() + role.slice(1)}
   </option>);
 }

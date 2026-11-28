@@ -25,7 +25,22 @@ type waitJob struct {
 func waitMessage(app core.App, j waitJob) (*mailer.Message, error) {
 	base := strings.TrimRight(app.Settings().Meta.AppURL, "/")
 	var email, subject, body string
-	if j.Kind == "restore" {
+	if j.Kind == "admin_invite" {
+		r, err := app.FindRecordById("invites", j.Entry)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		open, err := waitInviteOpen(app, r)
+		if !open || err != nil {
+			return nil, err
+		}
+		email = r.GetString("email")
+		subject = "Your Drop administrator invitation"
+		body = "You have been invited to administer Drop. Sign in with this email address at " + SignInURL(base, email) + ". Your invitation expires " + inviteOut(r).ExpiresAt + "."
+	} else if j.Kind == "restore" {
 		u, err := app.FindRecordById("users", j.Entry)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil

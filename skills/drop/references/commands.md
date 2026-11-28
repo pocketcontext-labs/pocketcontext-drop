@@ -90,10 +90,10 @@ drop invite create friend@example.com [--role user|developer|admin] [--quota N] 
 drop invite list [--state all|open] [--limit N]
 drop invite revoke INVITE_ID
 drop user list [--limit N]
-drop user set USER_ID|EMAIL [--role user|developer|admin] [--quota N] [--suspend | --unsuspend]
+drop user set USER_ID|EMAIL [--role user|developer] [--quota N] [--suspend | --unsuspend]
 ```
 
-- `invite create` lower-cases the address (plain ASCII, at most 254 characters); role `user` by default, legacy app_quota metadata (default 3, range 0–100), valid 7 days (1-30). Prints `{"invite", "sign_in_url"}`; no email is sent, so the sign-in URL is shared by hand. An address with an account (`account_exists`) or an open invite (`invite_exists`) exits 4.
+- `invite create` lower-cases the address (plain ASCII, at most 254 characters); role `user` by default, legacy app_quota metadata (default 3, range 0–100), valid 7 days (1-30). Prints `{"invite", "sign_in_url"}`; Drop emails admin invitations. Share customer invitation links directly. An address with an account (`account_exists`) or an open invite (`invite_exists`) exits 4.
 - An invite has `id`, `email`, `role`, `app_quota`, `state` (`open`, `used`, `revoked` or `expired`), `invited_by`, `expires_at`, `used_at`, `used_by`, `revoked_at`, `created`. `invite list` prints `{"invites", "has_more"}`, newest first. `invite revoke` closes an open invite (`invite_closed`, exit 4, otherwise).
 - An account has `id`, `email`, `role`, `app_quota`, `suspended`, `owner`, `signed_in`, `invited_by`, `created`. `user list` prints `{"users", "has_more"}`; `user set` prints `{"user"}`. Suspending ends the account's sessions at once. Nobody changes their own role or suspension, and the owner is always an unsuspended admin (HTTP 403, exit 1).
 - These commands need an admin. Against a hosted server on this machine they act as its owner through its private socket.

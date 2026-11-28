@@ -361,7 +361,7 @@ func TestAuthorizationAtCommit(t *testing.T) {
 		change                map[string]any
 		status                int
 	}{
-		{http.MethodPost, dropapi.Route, "application/json", strings.NewReader(`{"op":"invite.create","input":{"email":"new@example.test"}}`), map[string]any{"role": "user"}, 403},
+		{http.MethodPost, dropapi.Route, "application/json", strings.NewReader(`{"op":"invite.create","input":{"email":"new@example.test"}}`), map[string]any{"suspended": true}, 401},
 		{http.MethodPut, path, "application/octet-stream", bytes.NewReader(droptest.ELF(4096, 1)), map[string]any{"suspended": true}, 404},
 	} {
 		tc.change["user"] = user.Id

@@ -173,15 +173,8 @@ func userSet(c *Ctx, in *dropapi.UserSetInput) (any, error) {
 			if owner {
 				return nil, Forbidden("The owner is always an admin.")
 			}
-			if *in.Role == dropapi.RoleAdmin {
-				var owned bool
-				err := c.App.DB().NewQuery("SELECT EXISTS(SELECT 1 FROM apps WHERE owner={:owner})").Bind(dbx.Params{"owner": target.Id}).Row(&owned)
-				if err != nil {
-					return nil, err
-				}
-				if owned {
-					return nil, Conflict("account_owns_apps", "Use a separate admin account. This account owns apps.")
-				}
+			if from == dropapi.RoleAdmin || *in.Role == dropapi.RoleAdmin {
+				return nil, Forbidden("Admin access requires a separate invited email address.")
 			}
 			target.Set("role", string(*in.Role))
 			changes["role"] = map[string]any{"from": from, "to": *in.Role}
@@ -286,6 +279,10 @@ func SignInURL(base, email string) string {
 }
 
 func inviteCreate(c *Ctx, in *dropapi.InviteCreateInput) (any, error) {
+	return createInvitation(c, in, true)
+}
+
+func createInvitation(c *Ctx, in *dropapi.InviteCreateInput, direct bool) (any, error) {
 	email, err := canonicalEmail(in.Email)
 	if err != nil {
 		return nil, err
@@ -345,6 +342,11 @@ func inviteCreate(c *Ctx, in *dropapi.InviteCreateInput) (any, error) {
 	invite.Set("expires_at", time.Now().UTC().Add(time.Duration(days)*24*time.Hour))
 	if err := c.App.Save(invite); err != nil {
 		return nil, err
+	}
+	if direct && role == dropapi.RoleAdmin {
+		if err := waitQueue(c.App, invite.Id, "admin_invite", time.Now().Unix()); err != nil {
+			return nil, err
+		}
 	}
 	out := inviteOut(invite)
 	c.Event(Event{Detail: map[string]any{"invite": invite.Id, "email": email, "role": role, "app_quota": quota, "expires_at": out.ExpiresAt}})

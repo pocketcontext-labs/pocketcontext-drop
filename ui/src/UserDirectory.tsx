@@ -38,7 +38,7 @@ function CreditCell({ user, editable, refresh }: { user: DirectoryUser; editable
   const [error, setError] = useState("");
   const [key, setKey] = useState("");
   const balance = user.microcredits / 1e6;
-  if (!user.account) return <>—</>;
+  if (!user.account || user.role === "admin") return <>—</>;
   if (!editable) return <>{balance.toLocaleString(undefined, { maximumFractionDigits: 2 })}</>;
   if (draft === null) return <button className="link" aria-label={`Edit credits for ${user.email}: ${balance}`}
     onClick={() => { setDraft(String(balance)); setError(""); setKey(crypto.randomUUID()); }}>
@@ -288,7 +288,7 @@ export default function UserDirectory({
                 Account role
                 <select
                   value={detail.role}
-                  disabled={busy}
+                  disabled={detail.role === "admin" || busy}
                   onChange={(e) =>
                     void change(() =>
                       dropApi.setUser(detail.account, {
@@ -297,7 +297,7 @@ export default function UserDirectory({
                     )
                   }
                 >
-                  <RoleOptions />
+                  <RoleOptions includeAdmin={detail.role === "admin"} />
                 </select>
               </label>
               <button

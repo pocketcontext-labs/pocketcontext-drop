@@ -72,7 +72,7 @@ func TestDataHelpDocumentsShapes(t *testing.T) {
 		"app":    {`"apps"`, `"quota"`, `"app"`, `"secrets"`, `"deployment_bumped"`, "80", "quota_exceeded", "exit 4"},
 		"secret": {`"secret"`, `"secrets"`, "standard input", "never", "secrets_unavailable"},
 		"search": {`"generation"`, `"apps"`, `"nextOffset"`, "exit 4"},
-		"invite": {`"invite"`, `"sign_in_url"`, `"invites"`, "no email is sent", "exit 4"},
+		"invite": {`"invite"`, `"sign_in_url"`, `"invites"`, "Drop emails admin invitations", "exit 4"},
 		"user":   {`"users"`, "app_quota", "suspended"},
 		"op":     {"--idempotency-key", "exit 4", "docs/ops.md"},
 	} {

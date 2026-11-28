@@ -73,8 +73,7 @@ function InviteForm({ onCreated }: { onCreated: () => void }) {
           </button>
         </div>
         <p className="quiet">
-          Drop sends no invite email: share the sign-in link yourself. It is
-          valid for 7 days.
+          Drop emails admin invitations. Share the sign-in link for user and developer invitations. Invitations expire after 7 days.
         </p>
       </form>
       {error && (
@@ -208,12 +207,12 @@ function Users({
                 Role
                 <select
                   value={user.role}
-                  disabled={locked || busy === user.id}
+                  disabled={user.role === "admin" || locked || busy === user.id}
                   onChange={(event) =>
                     void change(user, { role: event.target.value as Role })
                   }
                 >
-                  <RoleOptions />
+                  <RoleOptions includeAdmin={user.role === "admin"} />
                 </select>
               </label>
               <button

@@ -81,7 +81,7 @@ func waitAction(c *Ctx, id, action string, role dropapi.Role) (any, error) {
 				return map[string]bool{"ok": true}, nil
 			}
 		}
-		result, err := inviteCreate(c, &dropapi.InviteCreateInput{Email: w.Email, Role: role})
+		result, err := createInvitation(c, &dropapi.InviteCreateInput{Email: w.Email, Role: role}, false)
 		if err != nil {
 			return nil, err
 		}

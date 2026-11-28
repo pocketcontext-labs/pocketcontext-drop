@@ -86,9 +86,13 @@ func backupList(c *Ctx, _ *dropapi.MeInput) (any, error) {
 			return nil, err
 		}
 	}
-	pricing, err := backupPricing(c.App, c.Auth.Id)
-	if err != nil {
-		return nil, err
+	var pricing backupQuote
+	if !hostedAdmin(c.App, c.Auth) {
+		var err error
+		pricing, err = backupPricing(c.App, c.Auth.Id)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return map[string]any{"pricing": pricing, "eligible_apps": eligible, "backups": backups, "policies": policies, "jobs": jobs}, nil
 }

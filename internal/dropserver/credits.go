@@ -69,7 +69,7 @@ func creditsGet(c *Ctx, in *dropapi.CreditViewInput) (any, error) {
 	if owner != c.Auth.Id && !c.Admin {
 		return nil, NotFound("Account")
 	}
-	if _, err := c.App.FindRecordById("users", owner); err != nil {
+	if account, err := c.App.FindRecordById("users", owner); err != nil || hostedAdmin(c.App, account) {
 		return nil, NotFound("Account")
 	}
 	state, err := balanceOf(c.App, owner)
@@ -133,7 +133,7 @@ func creditsBuy(c *Ctx, _ *dropapi.MeInput) (any, error) {
 	return creditChange(c, c.Auth.Id, "purchase", s.Pack*microcredits, s.Cap*microcredits)
 }
 func creditsAdjust(c *Ctx, in *dropapi.CreditAdjustment) (any, error) {
-	if _, err := c.App.FindRecordById("users", in.Account); err != nil {
+	if account, err := c.App.FindRecordById("users", in.Account); err != nil || hostedAdmin(c.App, account) {
 		return nil, NotFound("Account")
 	}
 	s, err := creditSettings(c.App)
@@ -222,7 +222,7 @@ func creditsAccounts(c *Ctx, in *dropapi.CreditAccountListInput) (any, error) {
 	err = c.App.DB().NewQuery(`SELECT p.id,p.email,p.balance,COALESCE((SELECT sum(l.delta) FROM drop_credit_ledger l
 	 WHERE l.owner=p.id AND l.kind='purchase'),0) AS purchases
 	 FROM (SELECT u.id,u.email,c.balance FROM users u JOIN drop_credit_accounts c ON c.owner=u.id
-	 WHERE {:q}='' OR instr(lower(u.email),{:q})>0 OR instr(lower(u.id),{:q})>0
+	 WHERE u.role!='admin' AND ({:q}='' OR instr(lower(u.email),{:q})>0 OR instr(lower(u.id),{:q})>0)
 	 ORDER BY u.email,u.id LIMIT {:l} OFFSET {:o}) p ORDER BY p.email,p.id`).Bind(dbx.Params{"l": limit + 1, "o": offset, "q": query}).All(&rows)
 	if err != nil {
 		return nil, err

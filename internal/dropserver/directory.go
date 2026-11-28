@@ -50,7 +50,7 @@ func userDirectory(c *Ctx, in *dropapi.DirectoryInput) (any, error) {
 	LEFT JOIN users u ON u.email=e.email COLLATE NOCASE AND u.verified=1
 	LEFT JOIN drop_waitlist w ON w.email=e.email AND w.verified_at!=''
 	LEFT JOIN latest i ON i.email_lower=e.email AND i.n=1
-	LEFT JOIN workspaces s ON s.owner=u.id LEFT JOIN drop_credit_accounts wallet ON wallet.owner=u.id)
+	LEFT JOIN workspaces s ON s.owner=u.id LEFT JOIN drop_credit_accounts wallet ON wallet.owner=u.id AND u.role!='admin')
 	SELECT *,email={:ownerEmail} owner,COUNT(*) OVER() total FROM directory WHERE (instr(email,{:search}) OR instr(account,{:search}))
 	AND (status={:status} OR {:status}='') AND (role={:role} OR {:role}='')
 	AND ({:spaces}='' OR (spaces>0)=({:spaces}='yes')) AND ({:funds}='' OR (credits>0)=({:funds}='yes'))

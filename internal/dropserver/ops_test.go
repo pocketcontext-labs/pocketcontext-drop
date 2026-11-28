@@ -154,8 +154,10 @@ func TestUserOperations(t *testing.T) {
 	if byEmail[droptest.OwnerEmail]["owner"] != true || byEmail["deputy@example.test"]["role"] != "admin" || byEmail["member@example.test"]["signed_in"] != true {
 		t.Fatalf("user list: %v", byEmail)
 	}
-	set := h.MustOp(deputyToken, "user.set", map[string]any{"user": member.Id, "role": "admin", "app_quota": 9})["user"].(map[string]any)
-	if set["role"] != "admin" || set["app_quota"] != float64(9) {
+	wantError(t, h.Op(owner, "user.set", map[string]any{"user": deputy.Id, "role": "developer"}), 403, "forbidden")
+	wantError(t, h.Op(deputyToken, "user.set", map[string]any{"user": member.Id, "role": "admin"}), 403, "forbidden")
+	set := h.MustOp(deputyToken, "user.set", map[string]any{"user": member.Id, "role": "developer", "app_quota": 9})["user"].(map[string]any)
+	if set["role"] != "developer" || set["app_quota"] != float64(9) {
 		t.Fatalf("set: %v", set)
 	}
 	wantError(t, h.Op(deputyToken, "user.set", map[string]any{"user": deputy.Id, "role": "user"}), 403, "forbidden")
@@ -235,7 +237,7 @@ func TestAccountWithWorkspacesCannotBecomeAdmin(t *testing.T) {
 	id := newApp(t, h, dev, "existing-app")
 	link := uploadLink(t, h, dev, id, nil)
 	admin := h.Token(h.Owner())
-	wantError(t, h.Op(admin, "user.set", map[string]any{"user": account.Id, "role": "admin"}), 409, "account_owns_apps")
+	wantError(t, h.Op(admin, "user.set", map[string]any{"user": account.Id, "role": "admin"}), 403, "forbidden")
 	h.MustOp(admin, "user.set", map[string]any{"user": account.Id, "role": "user"})
 	wantUploadError(t, upload(t, h, link, droptest.ELF(4096, 1)), 404, "upload_link_invalid")
 	h.MustOp(admin, "user.set", map[string]any{"user": account.Id, "role": "developer"})

@@ -51,6 +51,7 @@ export default function Credits({ admin, onPurchase }: { admin: boolean; onPurch
   }, [admin, query, offset, version]);
   useEffect(() => {
     let active = true;
+    if (admin && !account) return;
     async function load() {
       let result: Ledger;
       if (supportsHistoryFilters.current === true) {
@@ -80,7 +81,7 @@ export default function Credits({ admin, onPurchase }: { admin: boolean; onPurch
     const loadTimer = window.setTimeout(() => void load().catch(e => { if (active) { setHistoryLoading(false); setError(message(e)); } }), 150);
     const timer = window.setInterval(refresh, 30_000);
     return () => { active = false; window.clearTimeout(loadTimer); window.clearInterval(timer); };
-  }, [account, before, historyQuery, kind, refresh, version]);
+  }, [admin, account, before, historyQuery, kind, refresh, version]);
 
   async function submit() {
     if (!data || busy) return;
@@ -116,7 +117,7 @@ export default function Credits({ admin, onPurchase }: { admin: boolean; onPurch
       <label>View balance <select value={account} onChange={e => {
         setData(null); setCursors([0]); setSelected(accounts.find(a => a.id === e.target.value) ?? null);
       }}>
-        <option value="">My account</option>
+        <option value="">Select a customer account</option>
         {selected && !accounts.some(a => a.id === selected.id) && <option value={selected.id}>{selected.email}</option>}
         {accounts.map(a => <option key={a.id} value={a.id}>{a.email} · {credits(a.balance)} credits · purchased {credits(a.purchases)}</option>)}
       </select></label>

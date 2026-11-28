@@ -277,3 +277,53 @@ func TestLoginAccessRequiresOnlyApplicableConsent(t *testing.T) {
 		t.Fatal(count, err)
 	}
 }
+
+func TestDirectAdminInvitationAndCustomerCredits(t *testing.T) {
+	h := droptest.NewHosted(t, droptest.Options{})
+	mail := make(chan string, 1)
+	h.App.OnMailerSend().BindFunc(func(e *core.MailerEvent) error {
+		if e.Message.Subject == "Your Drop administrator invitation" {
+			mail <- e.Message.To[0].Address + " " + e.Message.Text
+			return nil
+		}
+		return e.Next()
+	})
+	owner := h.Token(h.Owner())
+	const email = "admin-invite@example.test"
+	h.MustOp(owner, "invite.create", map[string]any{"email": email, "role": "admin"})
+	ctx, cancel := context.WithCancel(context.Background())
+	finished := make(chan struct{})
+	go func() { defer close(finished); dropserver.Hooks().Background(ctx, h.App) }()
+	defer func() { cancel(); <-finished }()
+	select {
+	case msg := <-mail:
+		if !strings.HasPrefix(msg, email+" ") || !strings.Contains(msg, "/#/invite?email=admin-invite%40example.test") {
+			t.Fatal("incorrect admin invitation")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("admin invitation was not delivered")
+	}
+	admin := h.SignIn(email).Token
+	adminID := h.MustOp(admin, "me", nil)["id"]
+	wantError(t, h.Op(admin, "credits.get", nil), 404, "not_found")
+	wantError(t, h.Op(admin, "credits.buy", nil, "admin-buy"), 403, "forbidden")
+	wantError(t, h.Op(owner, "credits.adjust", map[string]any{"account": adminID, "microcredits": 1}, "adjust-admin"), 404, "not_found")
+	wantError(t, h.Op(admin, "app.start", map[string]any{"app": "example"}), 403, "forbidden")
+	for _, role := range []string{"user", "developer"} {
+		account, token := h.User(role+"@example.test", role)
+		if r := h.Op(token, "credits.buy", nil, "pack"); r.Status != 200 {
+			t.Fatal(r.Raw)
+		}
+		state := h.MustOp(owner, "credits.get", map[string]any{"account": account.Id})["state"].(map[string]any)
+		if num(state["balance"]) <= 0 {
+			t.Fatal("missing customer balance")
+		}
+	}
+	if len(h.MustOp(owner, "credits.accounts", nil)["accounts"].([]any)) != 2 {
+		t.Fatal("unexpected number of customer accounts")
+	}
+	var n int
+	if err := h.App.DB().NewQuery("SELECT count(*) FROM drop_credit_accounts").Row(&n); err != nil || n != 2 {
+		t.Fatalf("credit accounts: %d, %v", n, err)
+	}
+}

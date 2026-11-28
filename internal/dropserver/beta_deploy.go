@@ -63,9 +63,12 @@ func betaInspect(c *Ctx, in *dropapi.BetaDigest) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	needs, err := storageNeedsCredits(c.App, c.Auth.Id, m)
-	if err != nil {
-		return nil, err
+	needs := false
+	if !hostedAdmin(c.App, c.Auth) {
+		needs, err = storageNeedsCredits(c.App, c.Auth.Id, m)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return map[string]any{"needs_storage_credits": needs, "name": betaDisplayName(m), "generic": m.Schema == "", "version": m.Version, "requires": m.Requires, "optional": m.Optional, "http_port": m.HTTPPort, "multipliers": crewBetaSizes, "suggested_multiplier": suggestedCrewSize(m)}, nil
 }

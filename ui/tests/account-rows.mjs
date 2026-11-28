@@ -57,14 +57,15 @@ export async function checkAccountRows(page, viewport, record) {
       assert.ok(email.y + email.height <= role.y);
     }
   }
-  await member.getByLabel("Role").selectOption("admin");
+  assert.equal(await member.getByRole("option", { name: "Admin", exact: true }).count(), 0);
+  await member.getByLabel("Role").selectOption("developer");
   page.once("dialog", (dialog) => dialog.accept());
   await member.getByRole("button", { name: "Suspend" }).click();
   page.once("dialog", (dialog) => dialog.accept());
   await member.getByRole("button", { name: "Restore access" }).click();
   await member.getByRole("button", { name: "Suspend" }).waitFor();
   assert.deepEqual(changes, [
-    { role: "admin" },
+    { role: "developer" },
     { suspended: true },
     { suspended: false },
   ]);
