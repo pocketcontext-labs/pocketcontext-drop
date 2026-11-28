@@ -53,6 +53,8 @@ max_concurrent_vm_starts = 1
 [cron]
 max_jobs_per_app = 1
 time_zone = "UTC"
+[host_security]
+allow_active_smt = true
 [paths]
 state_dir = "{root}/state"
 runtime_dir = "{root}/runtime"
