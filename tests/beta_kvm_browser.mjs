@@ -115,8 +115,8 @@ try {
       const apps = page.getByRole('list', {name:'Apps, newest first'});
       await apps.getByRole('listitem').first().waitFor();
       assert.equal(await apps.getByRole('listitem').count(), 1);
-      const address = apps.getByRole('link', {name:/^https:\/\//});
-      assert.equal(await address.innerText(), await address.getAttribute('href'));
+      const open = apps.getByRole('link', {name:/^Open/});
+      assert.match(await open.getAttribute('href'), /^https:\/\/[a-z0-9-]+\./);
       await apps.getByRole('button', {name:'Copy app URL'}).waitFor();
       await apps.locator('a[href*="#/apps/"]').click();
       await page.getByRole('heading', {name:'Resume deployment'}).waitFor();
