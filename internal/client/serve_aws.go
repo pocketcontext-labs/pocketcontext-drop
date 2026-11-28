@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -67,6 +68,22 @@ func serveServices(a *args, hosted bool, listenAddr string, getenv func(string) 
 		return s, err
 	}
 	s.Secrets, s.SSMPrefix, s.Releases = stores.Secrets, stores.SSMPrefix, stores.Blobs
+	if stores.Fake {
+		s.Backups, err = awsx.NewDirBlobStore(filepath.Join(a.flags["fake-aws"], "backups"))
+	} else if bucket := getenv("DROP_BACKUP_BUCKET"); bucket != "" {
+		if bucket == getenv(awsx.EnvBucket) || bucket == s.CrewReplicaBucket {
+			return s, fail(2, "DROP_BACKUP_BUCKET must be a dedicated control-plane bucket")
+		}
+		cfg := awsx.Config{Region: s.AWSRegion, Bucket: bucket, SSMPrefix: s.SSMPrefix}
+		var bs *awsx.Stores
+		bs, err = awsx.OpenAWS(context.Background(), cfg)
+		if err == nil {
+			s.Backups = bs.Blobs.(*awsx.S3BlobStore)
+		}
+	}
+	if err != nil {
+		return s, err
+	}
 	if usageCfg.Enabled() {
 		s.UsageConfig = usageCfg
 		if stores.Fake {

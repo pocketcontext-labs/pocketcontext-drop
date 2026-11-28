@@ -153,6 +153,7 @@ func NewHosted(t *testing.T, opts Options) *Hosted {
 		h.Releases = awsx.NewMemBlobStore()
 		services.Releases = h.Releases
 	}
+	services.Backups = awsx.NewMemBlobStore()
 	services.ReleaseMaxBytes = opts.ReleaseMaxBytes
 	services.ProbeSocket = opts.ProbeSocket
 	if opts.Usage {

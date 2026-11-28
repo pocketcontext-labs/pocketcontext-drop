@@ -30,6 +30,7 @@ type Services struct {
 	// store (plain local serve), and upload links answer 503
 	// releases_unavailable.
 	Releases awsx.BlobWriter
+	Backups  awsx.BackupStore
 	// ReleaseMaxBytes caps one release upload: dropapi.MaxReleaseBytes when
 	// zero, and never more (DROP_RELEASE_MAX_BYTES may only lower it).
 	ReleaseMaxBytes int64

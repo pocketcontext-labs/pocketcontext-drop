@@ -14,7 +14,7 @@ import (
 
 // nibReported is the part of nibrunner's reported.json the agent reads.
 // Everything else (cron with its tenant environment, checkpoints, exports,
-// guest addresses, restart details) is never decoded, so it can
+// restart details) is never decoded, so it can
 // never reach a report.
 type nibReported struct {
 	HostID           string          `json:"hostId"`
@@ -43,6 +43,7 @@ type guestCompute struct {
 }
 
 type nibInstance struct {
+	GuestIPv4    string                `json:"guestIpv4"` // Local backup transport only.
 	Compute      *guestCompute         `json:"compute"`
 	AwakeCounter *dropapi.AwakeCounter `json:"awakeCounter"`
 	LastHook     *dropapi.HookResult   `json:"lastHook"`

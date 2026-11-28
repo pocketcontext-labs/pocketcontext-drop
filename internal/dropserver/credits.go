@@ -58,6 +58,7 @@ type creditApp struct {
 	Rate    int64  `db:"rate" json:"rate"`
 	Compute int64  `db:"compute" json:"compute"`
 	S3      int64  `db:"s3" json:"s3"`
+	Backup  int64  `db:"backup_storage" json:"backup_storage"`
 }
 
 func creditsGet(c *Ctx, in *dropapi.CreditViewInput) (any, error) {
@@ -95,7 +96,7 @@ func creditsGet(c *Ctx, in *dropapi.CreditViewInput) (any, error) {
  created FROM drop_credit_ledger l WHERE owner={:o} AND ({:before}=0 OR id<{:before}) AND ({:kind}='' OR kind={:kind}))
  SELECT v.* FROM visible v LEFT JOIN apps a ON a.id=v.app
  WHERE {:q}='' OR instr(lower(v.app),{:q})>0 OR instr(lower(a.name),{:q})>0 OR instr(lower(v.kind),{:q})>0
- OR instr(CASE v.kind WHEN 's3' THEN 'storage' WHEN 'compute' THEN 'app runtime' ELSE '' END,{:q})>0
+ OR instr(CASE v.kind WHEN 's3' THEN 'storage' WHEN 'backup_storage' THEN 'backup storage' WHEN 'compute' THEN 'app runtime' ELSE '' END,{:q})>0
  ORDER BY v.id DESC LIMIT {:limit}`).Bind(params).All(&entries)
 	if err != nil {
 		return nil, err
@@ -108,7 +109,8 @@ func creditsGet(c *Ctx, in *dropapi.CreditViewInput) (any, error) {
 	err = c.App.DB().NewQuery(`SELECT a.id,a.name,
  CASE WHEN m.awake=1 AND a.archived=0 AND a.desired_state<>'stopped' THEN m.units ELSE 0 END AS rate,
  COALESCE(-SUM(CASE WHEN l.kind='compute' THEN l.delta END),0) AS compute,
- COALESCE(-SUM(CASE WHEN l.kind='s3' THEN l.delta END),0) AS s3
+ COALESCE(-SUM(CASE WHEN l.kind='s3' THEN l.delta END),0) AS s3,
+ COALESCE(-SUM(CASE WHEN l.kind='backup_storage' THEN l.delta END),0) AS backup_storage
  FROM apps a LEFT JOIN placements p ON p.app=a.id LEFT JOIN drop_credit_meter m ON m.app=a.id AND m.node=p.node AND m.deployment=a.nib_app_id||'-dep-'||CAST(a.deployment_seq AS INTEGER) LEFT JOIN drop_credit_ledger l ON l.app=a.id AND l.owner=a.owner
  WHERE a.owner={:o} AND ({:self} OR a.developer_private=0) GROUP BY a.id ORDER BY a.name,a.id`).Bind(dbx.Params{"o": owner, "self": owner == c.Auth.Id}).All(&apps)
 	if err != nil {

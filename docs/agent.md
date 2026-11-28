@@ -179,3 +179,9 @@ SHA-256 before publishing the executable to the host's private artifact
 directory. The control plane stores ciphertext under its own SHA-256; the
 public release catalog and its digest-based inspection cache never participate
 in a developer upload.
+
+## Workspace backup transport
+
+The node polls the control plane for backup and restore jobs every 15 seconds. For each job it checks the local desired deployment, then reads the running guest address from NibRunner's current report and the matching deployment's lifecycle binding from its VM directory. For an on-request workspace the node can wake the guest by sending a HEAD request through the local ingress.
+
+Before sending a bearer token or workspace bytes, the node challenges the guest on its hook port with a fresh nonce. It verifies the guest’s HMAC with the locally staged lifecycle token and sends the authenticated request over that same TCP connection. A closed connection requires a new challenge. ZIP transfers are limited to 90 MiB. The node stages bytes in an immediately unlinked temporary file and verifies the control plane’s byte count and SHA-256 before restore. A restore completes only after the guest acknowledges the same job ID as applied.

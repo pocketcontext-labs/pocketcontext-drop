@@ -19,6 +19,16 @@ func InvalidateNodeTokens(app core.App) error {
 		if err := waitExec(tx, "UPDATE drop_private_keys SET seed=randomblob(32)", nil); err != nil {
 			return err
 		}
+		// Restoring the control plane must never replay an older restore intent into a live guest.
+		if err := waitExec(tx, "UPDATE drop_backup_jobs SET state='failed' WHERE state='pending'", nil); err != nil {
+			return err
+		}
+		if err := waitExec(tx, "UPDATE drop_backups SET state='failed' WHERE state='pending'", nil); err != nil {
+			return err
+		}
+		if err := waitExec(tx, "DELETE FROM drop_backup_policies", nil); err != nil {
+			return err
+		}
 		nodes, err := tx.FindAllRecords(dropapi.NodeCollection)
 		if err != nil {
 			return err

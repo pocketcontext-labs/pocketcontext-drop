@@ -47,6 +47,7 @@ var routePaths = []string{
 	"/api/collections/_superusers/records", "/api/collections/_superusers/auth-with-password",
 	"/api/collections/nodes/auth-with-password", "/api/collections/nodes/auth-refresh",
 	"/api/drop/waitlist/request", "/api/drop/waitlist/verify", "/api/drop/waitlist/leave",
+	"/api/drop/agent/backup-jobs", "/api/drop/agent/backup-jobs/aaaaaaaaaaaaaaa/archive", "/api/drop/agent/backup-jobs/aaaaaaaaaaaaaaa/result", "/api/drop/backups/aaaaaaaaaaaaaaa/download",
 	"/api/drop/me", "/api/drop/op", "/api/drop/agent/desired", "/api/drop/agent/report",
 	"/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz012345",
 	"/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz01234", "/api/drop/upload/AbCdEfGhIjKlMnOpQrStUvWxYz0123456",
@@ -151,6 +152,7 @@ var frozenAllowed = []string{
 	// The node agent (node tokens only; Drop's per-address limiter).
 	"POST /api/collections/nodes/auth-with-password", "POST /api/collections/nodes/auth-refresh",
 	"POST /api/drop/waitlist/request", "POST /api/drop/waitlist/verify", "POST /api/drop/waitlist/leave",
+	"GET /api/drop/agent/backup-jobs", "GET /api/drop/agent/backup-jobs/aaaaaaaaaaaaaaa/archive", "PUT /api/drop/agent/backup-jobs/aaaaaaaaaaaaaaa/archive", "POST /api/drop/agent/backup-jobs/aaaaaaaaaaaaaaa/result", "GET /api/drop/backups/aaaaaaaaaaaaaaa/download",
 	"GET /api/drop/me", "HEAD /api/drop/me",
 	"POST /api/drop/op",
 	"GET /api/drop/agent/desired", "HEAD /api/drop/agent/desired",

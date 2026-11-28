@@ -214,6 +214,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	wakes := make(chan Wake, 16)
 	rtCtx, stopRealtime := context.WithCancel(ctx)
 	defer stopRealtime()
+	go a.backupLoop(rtCtx)
 	go (&Realtime{client: a.client, logf: a.logf, min: time.Second, max: 30 * time.Second}).Run(rtCtx, wakes)
 
 	pull := time.NewTicker(a.cfg.PullInterval)

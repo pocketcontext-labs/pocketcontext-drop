@@ -37,6 +37,7 @@ func Hooks() appserver.Hooks {
 				registerOpRoutes(e)
 				registerUploadRoute(e)
 				registerAgentRoutes(e)
+				registerBackupRoutes(e)
 				return e.Next()
 			})
 			return nil
@@ -47,6 +48,7 @@ func Hooks() appserver.Hooks {
 		},
 		Background: func(ctx context.Context, app core.App) {
 			var workers sync.WaitGroup
+			workers.Go(func() { runBackupMaintenance(ctx, app) })
 			workers.Go(func() { runAppCleanup(ctx, app) })
 			workers.Go(func() { runSecretCleanup(ctx, app) })
 			workers.Go(func() { runUploadLinkPruning(ctx, app) })

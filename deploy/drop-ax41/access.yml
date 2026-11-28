@@ -34,6 +34,40 @@ Resources:
             Status: Enabled
             NoncurrentVersionExpiration: {NoncurrentDays: 30}
             AbortIncompleteMultipartUpload: {DaysAfterInitiation: 1}
+  WorkspaceBackups:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub 'pocketcontext-drop-backups-ax41-${AWS::AccountId}'
+      VersioningConfiguration: {Status: Enabled}
+      OwnershipControls:
+        Rules: [{ObjectOwnership: BucketOwnerEnforced}]
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+  ServerWorkspaceBackups:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: DropWorkspaceBackups
+      Users: [!Ref ServerUser]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: s3:ListBucketVersions
+            Resource: !GetAtt WorkspaceBackups.Arn
+            Condition:
+              StringLike:
+                s3:prefix: ['backups/???????????????/???????????????']
+          - Effect: Allow
+            Action: [s3:GetObject, s3:PutObject, s3:DeleteObjectVersion, s3:DeleteObject]
+            Resource: !Sub '${WorkspaceBackups.Arn}/backups/???????????????/???????????????'
   ServerControlReplica:
     Type: AWS::IAM::Policy
     Properties:
@@ -206,6 +240,7 @@ Resources:
             Action: [cloudwatch:GetMetricData, cloudwatch:GetMetricStatistics]
             Resource: '*'
 Outputs:
+  WorkspaceBackupBucket: {Value: !Ref WorkspaceBackups}
   WorkloadBoundary: {Value: !Ref WorkloadBoundary}
   CfnRole: {Value: !GetAtt CfnRole.Arn}
   DeployUser: {Value: !Ref DeployUser}

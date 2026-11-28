@@ -26,6 +26,17 @@ var recordID = regexp.MustCompile(`^[a-z0-9]{15}$`)
 // email routes, /up and, with --mcp, /oauth/*, /mcp and /.well-known/*
 // itself. testdata/public_routes.json is its golden table.
 func PublicRoute(method, p string) bool {
+	if p == dropapi.AgentBackupJobsRoute {
+		return method == http.MethodGet
+	}
+	if rest, ok := strings.CutPrefix(p, dropapi.AgentBackupJobsRoute+"/"); ok {
+		id, action, ok := strings.Cut(rest, "/")
+		return ok && recordID.MatchString(id) && ((action == "archive" && (method == http.MethodGet || method == http.MethodPut)) || (action == "result" && method == http.MethodPost))
+	}
+	if rest, ok := strings.CutPrefix(p, dropapi.BackupDownloadPrefix); ok {
+		id, action, ok := strings.Cut(rest, "/")
+		return ok && recordID.MatchString(id) && action == "download" && method == http.MethodGet
+	}
 	read := method == http.MethodGet || method == http.MethodHead
 	if read {
 		switch p {

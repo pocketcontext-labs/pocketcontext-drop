@@ -141,7 +141,7 @@ func parseBetaManifest(raw []byte) (dropapi.BetaManifest, error) {
 	}
 	seen := make(map[string]bool)
 	for _, feature := range slices.Concat(m.Requires, m.Optional) {
-		if seen[feature] || !slices.Contains([]string{"persistent_volume", "s3_replica", "sign_in_email", "verified_owner_email"}, feature) {
+		if seen[feature] || !slices.Contains([]string{"persistent_volume", "s3_replica", "sign_in_email", "verified_owner_email", "platform_backup_v1"}, feature) {
 			return m, Invalid("manifest", "Unsupported or duplicate runtime feature.")
 		}
 		seen[feature] = true

@@ -340,3 +340,17 @@ Hosted admins use `user.directory` to page a combined directory of signed-in
 accounts, verified waitlist entries and invitations. Search accepts an email
 substring or account ID. Filters cover account status, role, presence of
 workspaces, and positive credit balance. Waiting is a directory status.
+
+## Crew workspace backups
+
+Owners can enable daily backups for a published Crew build whose manifest includes the optional `platform_backup_v1` capability. A backup includes notes and their attachment bytes. An archive may occupy up to 90 MiB. The platform retains it for seven days from capture. Deleting the source app leaves its backups available until expiry.
+
+| Operation | Input | Result |
+| --- | --- | --- |
+| `backup.list` | `{}` | Owner's eligible apps, current policies, backups, transfer jobs and storage price. Timestamps are Unix seconds. |
+| `backup.configure` | `app`, `enabled` | Enables or disables daily capture. The first scheduled capture is due one day after enrollment. |
+| `backup.create` | `app` | Queues an immediate capture for an enrolled workspace. |
+| `backup.restore` | `backup`, `new_name` | Creates a new workspace at the captured release and compute size, then queues import. |
+| `backup.restore` | `backup`, `same_app` | Replaces the original workspace's content. Supply its exact slug as confirmation. The installed target release must match the captured release. |
+
+For a queued capture or restore, the response includes `app`, `backup` and `job`. Supply an idempotency key when retrying these operations. Follow the job in `backup.list`; restoration completes after the guest confirms the restored data is live. To export a ready copy, GET `/api/drop/backups/{backup}/download` with the owning account's authorization header. The response is a ZIP attachment. A failed capture never becomes downloadable.

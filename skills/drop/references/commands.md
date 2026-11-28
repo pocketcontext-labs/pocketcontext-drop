@@ -122,3 +122,7 @@ Calls one operation (`POST /api/drop/op`) with a JSON object as input and prints
 - Local only: `ensure-running` (alias `start`), `stop`, `flush`, `recover --keep local|synced` (only on the user's decision), `login-code`, `password`, `init`, `serve`. `serve --hosted --headless --domain HOST --mcp` is the hosted service (`docs/hosting.md`), only when the user asks; `search` and `sql` cannot reach a hosted server; the `app`, `secret`, `invite`, `user` and `op` commands reach one on this machine through its private socket.
 - Remote only: `login --url URL --code-stdin` (or the user's own `login --url URL` with the password), `logout --url URL`.
 - `skill [--agent claude-code|codex|antigravity|all] [--dir DIR]` reinstalls this skill with the current paths.
+
+### Workspace backups
+
+Use `drop_read` with `what: "backups"` for eligible Crew apps, enrolled schedules, backup archives and restore progress. Use `drop_write` with `backup.configure`, `backup.create` or `backup.restore`. A new-workspace restore takes `backup` and `new_name`. An in-place restore takes `backup` and `same_app` equal to the original app slug and replaces that app's data. Obtain explicit user direction before an in-place restore.

@@ -63,6 +63,9 @@ func TestOfficialWorkspaceLifecycle(t *testing.T) {
 			}
 			if err == nil {
 				m := strings.NewReplacer(`"app":"crew"`, fmt.Sprintf(`"app":%q`, product), `"version":"0.45.4-drop.4"`, fmt.Sprintf(`"version":%q`, version), `"s3_replica",`, ``, `"minimum":`, `"optional":["s3_replica"],"minimum":`).Replace(validCrewManifest)
+				if product == "crew" {
+					m = strings.Replace(m, `"optional":["s3_replica"]`, `"optional":["s3_replica","platform_backup_v1"]`, 1)
+				}
 				if product == "a-completely-new-app" {
 					m = fmt.Sprintf(`{"schema":"drop.manifest/v1","app":%q,"version":%q,"http_port":8181,"health":"tcp","minimum":{"memory_mib":256,"cpu_quarters":1,"disk_mib":1024}}`, product, version)
 				}
@@ -236,4 +239,9 @@ func TestOfficialWorkspaceLifecycle(t *testing.T) {
 	if users := h.MustOp(admin, "user.directory", map[string]any{"search": "alice", "status": "active", "workspaces": "yes", "credits": "no"})["users"].([]any); len(users) != 1 {
 		t.Fatal(users)
 	}
+	t.Run("platform backups", func(t *testing.T) {
+		reportApp(resized, "running")
+		checkBackupRoundTrip(t, h, alice, bob, nodeToken, resized)
+	})
+
 }

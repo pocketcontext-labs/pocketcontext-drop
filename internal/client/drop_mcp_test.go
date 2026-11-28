@@ -33,9 +33,9 @@ import (
 // expected once they are: TestMCPWriteOpsFollowTicket then asks for MCP: true
 // on their specs.
 var (
-	ticketUserWrites  = []string{"workspace.create", "workspace.resize", "workspace.upgrade", "app.set", "app.start", "app.stop", "secret.set", "secret.delete"}
+	ticketUserWrites  = []string{"backup.configure", "backup.create", "backup.restore", "workspace.create", "workspace.resize", "workspace.upgrade", "app.set", "app.start", "app.stop", "secret.set", "secret.delete"}
 	ticketAdminWrites = []string{"invite.create", "invite.revoke", "user.set", "node.create", "node.rotate_secret", "node.set_state", "placement.set", "placement.clear"}
-	ticketUserReads   = []string{"me", "apps", "app", "releases", "secrets", "status", "usage", "events", "catalog"} // usage: owner decision 6 of S3 metering (Phase 1)
+	ticketUserReads   = []string{"me", "apps", "app", "releases", "secrets", "status", "usage", "events", "backups", "catalog"} // usage: owner decision 6 of S3 metering (Phase 1)
 	ticketAdminReads  = []string{"users", "invites", "nodes"}
 )
 
@@ -451,13 +451,25 @@ func TestMCPIsolation(t *testing.T) {
 		t.Errorf("admin events %v", all)
 	}
 
+	// Account archive ownership is independent of ordinary administrative app visibility.
+	_, err := h.App.DB().NewQuery(`INSERT INTO drop_backups(id,owner,app,source_app,name,release_sha,multiplier,state,created)
+	  SELECT 'bbbbbbbbbbbbbbb',owner,id,nib_app_id,name,'synthetic-digest',1,'pending',unixepoch() FROM apps WHERE id={:a}`).Bind(dbx.Params{"a": appB}).Execute()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for bearer, want := range map[string]int{a: 0, b: 1, o: 0} {
+		copies := mustTool(t, h, bearer, "drop_read", map[string]any{"what": "backups"})["backups"].([]any)
+		if len(copies) != want {
+			t.Fatalf("visible backups %v, want %d", copies, want)
+		}
+	}
 	// Every read and write on B's app, by id and by slug: 404 for A.
 	for _, ref := range []string{appB, "app-of-b"} {
 		for _, what := range []string{"app", "secrets", "events", "usage"} {
 			wantToolError(t, callTool(t, h, a, "drop_read", map[string]any{"what": what, "app": ref}), 404, "not_found")
 		}
 		for op, input := range map[string]map[string]any{
-			"app.set": {"name": "Hijacked"}, "app.start": {}, "app.stop": {},
+			"app.set": {"name": "Hijacked"}, "app.start": {}, "app.stop": {}, "backup.create": {}, "backup.configure": {"enabled": true},
 			"secret.set": {"name": "TOKEN", "value": "x"}, "secret.delete": {"name": "TOKEN"},
 		} {
 			input["app"] = ref

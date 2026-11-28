@@ -204,3 +204,11 @@ Run `deploy/drop-ax41/test-control-replica.py` after `make build` with Python, `
 ### Private Beta S3 pricing
 
 The S3 collector settles billable usage within the transaction that records each access-log object or inventory. Storage includes current and noncurrent bytes, priced per UTC inventory day using the number of days in that calendar month. S3 Standard Stockholm inputs are USD 0.005 per thousand class A requests, 0.0004 per thousand class B, 0.023 per GiB-month and 0.09 per GiB of outbound data. The server applies the configured USD-to-EUR rate and markup, carries sub-microcredit fractions, and limits deductions to remaining funds. The source for request and storage rates is the [AWS eu-north-1 S3 offer](https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonS3/current/eu-north-1/index.json).
+
+### Workspace backup storage
+
+Set `DROP_BACKUP_BUCKET` on the control plane to the dedicated encrypted, versioned bucket for downloadable workspace backups. The AX41 access stack defines this bucket and exports its name as `WorkspaceBackupBucket`. Deploy the updated access stack before configuring the variable. The node uses its authenticated connection to Drop to transfer archives. Guest workload roles need no access to the backup bucket. Keep the bucket separate from guest replicas, application releases, and the control database replica.
+
+A verified Crew archive accrues charges for its stored byte-seconds until the end of its seven-day retention period. Drop fixes the storage price, currency conversion and markup when the archive becomes available. It uses the actual days in each UTC calendar month, carries fractional microcredits per account and settles daily plus a final partial day. Credits lists these debits under **Backup storage**. Replica inventory meters app-prefixed objects separately. The dedicated backup bucket uses the `backups/` prefix.
+
+Enabling backups and starting a capture require spendable credits. Disabling the policy cancels pending captures. A ready archive remains downloadable through its original expiry even if the source workspace is deleted or the balance runs out. Charges are capped at spendable credits, and adding funds resumes billing from the top-up time.

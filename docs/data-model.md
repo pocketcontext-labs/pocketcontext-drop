@@ -255,3 +255,11 @@ If any rows appear, identify a separate developer account with the owner before 
 Drop keeps one pending upload link per developer in `drop_private_build_links`. A successful file upload or URL import runs the manifest probe and temporarily retains the inspected executable for that developer. The staging file expires and a server restart clears it. Creating the workspace binds the inspected digest to its private release and assigns a generated `dev-` hostname.
 
 `drop_official_products` maps each published product to its unique hostname prefix. Crew and Atlas have existing mappings. The administrator assigns a new product’s prefix when publishing its first release. Future catalog instances use that prefix. Publication preserves the hostname and access rules of the developer’s original workspace.
+
+## Workspace backups
+
+Migration `1820002810_platform_backups.js` creates three private tables. `drop_backup_policies` holds one next capture time per enrolled app. `drop_backups` records the captured account, app identity, release digest, tier and final archive receipt. Its source ID survives deletion of the app. `drop_backup_jobs` binds each capture or restore to a destination app, placement node and exact deployment. Each app has at most one pending job. The control database holds metadata. Immutable archive bytes are stored under `backups/<owner>/<backup>` in the dedicated backup bucket.
+
+Retention marks expired rows before removing all object versions, then removes the metadata. A pending restore holds its archive until completion or timeout. A hosted control-plane restore cancels previously pending jobs and disables restored backup schedules.
+
+Migration `1820002820_backup_billing.js` initializes `drop_backup_meter` when an archive becomes ready. Each meter records the start of retention, the last billed second and the storage rate in effect at capture. `drop_backup_carry` keeps fractional microcredits per owner. A single transaction advances the meter and writes any whole-microcredit debit to `drop_credit_ledger` with kind `backup_storage`. Expiry removes the meter with the archive. The wallet and ledger retain the charge history.

@@ -2,6 +2,8 @@
 
 PocketContext Drop: a private, invite-only service that runs people's apps (one Linux executable each) on a PocketContext-managed host. It builds on the shared library [pocketcontext-core](https://github.com/pocketcontext-labs/pocketcontext-core), pinned to an exact release in `go.mod`, and is one Go executable with nothing else needed at run time: a server on PocketBase with hosted multi-account mode (email sign-in, remote MCP with OAuth) behind a TLS-terminating proxy, a browser reader, a command-line client and an agent skill for Claude Code, Codex and Antigravity.
 
+The development build supports optional, paid backups for Crew releases that declare `platform_backup_v1`. Owners can schedule a daily copy, download it as a ZIP, or restore it to the original app or a new one. [Workspace backup operations](docs/ops.md#crew-workspace-backups) · [SR24 restore drill](docs/rehearsals/crew-backup-sr24.md).
+
 **[Drop 0.9.0](docs/releases/0.9.0.md)** hosts official Crew and Atlas workspaces, with owner-selected upgrades, a shared awake-time buffer and funded storage enforcement.
 
 **[Drop 0.8.0](docs/releases/0.8.0.md)** adds shareable deployment links, verified archive imports, PocketBase and ZeroClaw recipes, an email-first login, and deletion receipts.

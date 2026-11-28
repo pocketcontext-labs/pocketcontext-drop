@@ -82,3 +82,5 @@ to see the published releases. Customer writes offer
 `workspace.create`, `workspace.resize` and `workspace.upgrade`. Creating a workspace needs a product, a name and a 1–8
 multiplier. Upgrading needs the workspace and exact reviewed digest. Use a
 stable idempotency key when retrying an operation.
+
+Use `drop_read` with `what: "backups"` to list your portable Crew archives, schedules and recent jobs. `drop_write` offers `backup.configure`, `backup.create` and `backup.restore` to customer accounts. Follow a restore job until it reports completion. The authenticated download route delivers archive bytes directly to the owner.

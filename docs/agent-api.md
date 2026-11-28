@@ -150,3 +150,15 @@ The proxy supplies its own request marker in S3 access logs. On a known response
 ### Node guest memory history
 
 An agent can include `nibrunner.guestMemory` in its node report. `used_mib` is the sum of guest memory used by simultaneously active microVMs, rounded up to MiB after addition. `running_vms` counts the guests contributing to that measurement and `at` is their common NibRunner sampling time in Unix seconds. An idle node reports zero. Missing, stale or incomplete measurements leave a gap. Drop keeps the last 24 hours and includes the peak measurement in each UTC hour in the admin-only `node.list` response. This measures guest RAM, excluding host services and virtualization overhead. Upgrade the control plane before the agents to enable the new report field.
+
+## Workspace backup jobs
+
+An enabled node polls `GET /api/drop/agent/backup-jobs`. Each pending job names its kind, capture source, target app, exact deployment, backup ID, and (for restore) byte count and SHA-256. The control plane fences every transfer to the current owner, placement and deployment. The node authenticates the correct guest before transferring any data.
+
+| Node request | Purpose |
+| --- | --- |
+| `PUT /api/drop/agent/backup-jobs/{job}/archive` | Upload an immutable capture of at most 90 MiB. A successful upload completes the capture. |
+| `GET /api/drop/agent/backup-jobs/{job}/archive` | Read the approved archive for this restore. Verify byte count and digest before sending it to the target. |
+| `POST /api/drop/agent/backup-jobs/{job}/result` | Report guest rejection or successful restoration after the guest's durable receipt. |
+
+The node transfers ZIP bytes to and from the authenticated guest hooks. Only the control plane accesses the backup bucket.

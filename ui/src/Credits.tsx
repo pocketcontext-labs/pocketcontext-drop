@@ -10,8 +10,9 @@ interface Ledger {
   settings: { pack: number; euro_micros_per_credit: number };
   has_more: boolean;
   entries: { id: number; kind: string; delta: number; app: string; created: number }[];
-  apps: { id: string; name: string; rate: number; compute: number; s3: number }[];
+  apps: { id: string; name: string; rate: number; compute: number; s3: number; backup_storage?: number }[];
 }
+const entryLabel = (kind: string) => ({ compute: "App runtime", s3: "Storage", backup_storage: "Backup storage" }[kind] ?? kind);
 const credits = (micro: number) => (micro / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 6 });
 
 export default function Credits({ admin, onPurchase }: { admin: boolean; onPurchase?: () => void }) {
@@ -65,7 +66,7 @@ export default function Credits({ admin, onPurchase }: { admin: boolean; onPurch
         let chunk = result;
         while (active) {
           for (const entry of chunk.entries) {
-            const label = entry.kind === "compute" ? "App runtime" : entry.kind === "s3" ? "Storage" : entry.kind;
+            const label = entryLabel(entry.kind);
             if ((!kind || entry.kind === kind) && [entry.app, names.get(entry.app), entry.kind, label]
               .some(value => (value || "").toLowerCase().includes(search))) matches.push(entry);
           }
@@ -136,8 +137,8 @@ export default function Credits({ admin, onPurchase }: { admin: boolean; onPurch
         <p>Simulated purchase. No payment is collected.</p>}
       <button className="primary" disabled={busy || (admin && !Number(delta))} onClick={() => void submit()}>{admin ? "Apply adjustment" :
         `Buy ${data.settings.pack} credits (€${(data.settings.pack * data.settings.euro_micros_per_credit / 1_000_000).toFixed(2)})`}</button>
-      {data.apps.length > 0 && <><h3>App usage <HelpTip topic="app usage">Credits/hour shows each app’s current compute rate. Running costs are credits used for time already spent awake. Storage costs cover S3 usage and can continue while the app is suspended.</HelpTip></h3><div className="credit-table credit-usage"><table><thead><tr><th>App</th><th>Credits/hour</th><th>Running costs (credits)</th><th>Storage costs (credits)</th></tr></thead><tbody>
-        {data.apps.map(a => <tr key={a.id}><td>{a.name}</td><td data-label="Credits/hour">{a.rate} <small>({euro(a.rate * 1e6)}/h)</small></td><td data-label="Running costs (credits)">{credits(a.compute)} <small>({euro(a.compute)})</small></td><td data-label="Storage costs (credits)">{credits(a.s3)} <small>({euro(a.s3)})</small></td></tr>)}
+      {data.apps.length > 0 && <><h3>App usage <HelpTip topic="app usage">Credits/hour shows each app’s current compute rate. Running costs are credits used for time already spent awake. Storage costs cover S3 usage and can continue while the app is suspended.</HelpTip></h3><div className="credit-table credit-usage"><table><thead><tr><th>App</th><th>Credits/hour</th><th>Running costs (credits)</th><th>Storage costs (credits)</th><th>Backup storage (credits)</th></tr></thead><tbody>
+        {data.apps.map(a => <tr key={a.id}><td>{a.name}</td><td data-label="Credits/hour">{a.rate} <small>({euro(a.rate * 1e6)}/h)</small></td><td data-label="Running costs (credits)">{credits(a.compute)} <small>({euro(a.compute)})</small></td><td data-label="Storage costs (credits)">{credits(a.s3)} <small>({euro(a.s3)})</small></td><td data-label="Backup storage (credits)">{credits(a.backup_storage ?? 0)} <small>({euro(a.backup_storage ?? 0)})</small></td></tr>)}
       </tbody></table></div></>}
       <details className="credit-history"><summary>Transaction history</summary>
       <div className="row">
@@ -146,10 +147,10 @@ export default function Credits({ admin, onPurchase }: { admin: boolean; onPurch
         }} /></label>
         <label>Entry type <select value={kind} onChange={e => {
           setHistoryLoading(true); setKind(e.target.value); setCursors([0]);
-        }}><option value="">All types</option><option value="compute">App runtime</option><option value="s3">Storage</option><option value="purchase">Purchase</option><option value="adjustment">Adjustment</option></select></label>
+        }}><option value="">All types</option><option value="compute">App runtime</option><option value="s3">Storage</option><option value="backup_storage">Backup storage</option><option value="purchase">Purchase</option><option value="adjustment">Adjustment</option></select></label>
       </div>
       {historyLoading ? <p role="status">Loading transactions…</p> : data.entries.length ? <div className="credit-table"><table><thead><tr><th>Time</th><th>App</th><th>Entry</th><th>Credits</th></tr></thead><tbody>{data.entries.map(e => <tr key={e.id}>
-        <td>{new Date(e.created * 1000).toLocaleString()}</td><td>{data.apps.find(a => a.id === e.app)?.name || e.app || "—"}</td><td>{e.kind === "s3" ? "Storage" : e.kind === "compute" ? "App runtime" : e.kind}</td><td>{credits(e.delta)} <small>({euro(e.delta)})</small></td></tr>)}</tbody></table></div> : <p>No matching transactions.</p>}
+        <td>{new Date(e.created * 1000).toLocaleString()}</td><td>{data.apps.find(a => a.id === e.app)?.name || e.app || "—"}</td><td>{entryLabel(e.kind)}</td><td>{credits(e.delta)} <small>({euro(e.delta)})</small></td></tr>)}</tbody></table></div> : <p>No matching transactions.</p>}
       {data.has_more && <button className="secondary" disabled={historyLoading} onClick={() => {
         setHistoryLoading(true); setCursors([...cursors, data.entries[data.entries.length - 1].id]);
       }}>Older transactions</button>}

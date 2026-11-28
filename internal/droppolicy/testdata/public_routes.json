@@ -2311,6 +2311,146 @@
  },
  {
   "method": "DELETE",
+  "path": "/api/drop/agent/backup-jobs",
+  "allow": false
+ },
+ {
+  "method": "GET",
+  "path": "/api/drop/agent/backup-jobs",
+  "allow": true
+ },
+ {
+  "method": "HEAD",
+  "path": "/api/drop/agent/backup-jobs",
+  "allow": false
+ },
+ {
+  "method": "OPTIONS",
+  "path": "/api/drop/agent/backup-jobs",
+  "allow": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/api/drop/agent/backup-jobs",
+  "allow": false
+ },
+ {
+  "method": "POST",
+  "path": "/api/drop/agent/backup-jobs",
+  "allow": false
+ },
+ {
+  "method": "PUT",
+  "path": "/api/drop/agent/backup-jobs",
+  "allow": false
+ },
+ {
+  "method": "DELETE",
+  "path": "/api/drop/agent/backup-jobs/aaaaaaaaaaaaaaa/archive",
+  "allow": false
+ },
+ {
+  "method": "GET",
+  "path": "/api/drop/agent/backup-jobs/aaaaaaaaaaaaaaa/archive",
+  "allow": true
+ },
+ {
+  "method": "HEAD",
+  "path": "/api/drop/agent/backup-jobs/aaaaaaaaaaaaaaa/archive",
+  "allow": false
+ },
+ {
+  "method": "OPTIONS",
+  "path": "/api/drop/agent/backup-jobs/aaaaaaaaaaaaaaa/archive",
+  "allow": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/api/drop/agent/backup-jobs/aaaaaaaaaaaaaaa/archive",
+  "allow": false
+ },
+ {
+  "method": "POST",
+  "path": "/api/drop/agent/backup-jobs/aaaaaaaaaaaaaaa/archive",
+  "allow": false
+ },
+ {
+  "method": "PUT",
+  "path": "/api/drop/agent/backup-jobs/aaaaaaaaaaaaaaa/archive",
+  "allow": true
+ },
+ {
+  "method": "DELETE",
+  "path": "/api/drop/agent/backup-jobs/aaaaaaaaaaaaaaa/result",
+  "allow": false
+ },
+ {
+  "method": "GET",
+  "path": "/api/drop/agent/backup-jobs/aaaaaaaaaaaaaaa/result",
+  "allow": false
+ },
+ {
+  "method": "HEAD",
+  "path": "/api/drop/agent/backup-jobs/aaaaaaaaaaaaaaa/result",
+  "allow": false
+ },
+ {
+  "method": "OPTIONS",
+  "path": "/api/drop/agent/backup-jobs/aaaaaaaaaaaaaaa/result",
+  "allow": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/api/drop/agent/backup-jobs/aaaaaaaaaaaaaaa/result",
+  "allow": false
+ },
+ {
+  "method": "POST",
+  "path": "/api/drop/agent/backup-jobs/aaaaaaaaaaaaaaa/result",
+  "allow": true
+ },
+ {
+  "method": "PUT",
+  "path": "/api/drop/agent/backup-jobs/aaaaaaaaaaaaaaa/result",
+  "allow": false
+ },
+ {
+  "method": "DELETE",
+  "path": "/api/drop/backups/aaaaaaaaaaaaaaa/download",
+  "allow": false
+ },
+ {
+  "method": "GET",
+  "path": "/api/drop/backups/aaaaaaaaaaaaaaa/download",
+  "allow": true
+ },
+ {
+  "method": "HEAD",
+  "path": "/api/drop/backups/aaaaaaaaaaaaaaa/download",
+  "allow": false
+ },
+ {
+  "method": "OPTIONS",
+  "path": "/api/drop/backups/aaaaaaaaaaaaaaa/download",
+  "allow": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/api/drop/backups/aaaaaaaaaaaaaaa/download",
+  "allow": false
+ },
+ {
+  "method": "POST",
+  "path": "/api/drop/backups/aaaaaaaaaaaaaaa/download",
+  "allow": false
+ },
+ {
+  "method": "PUT",
+  "path": "/api/drop/backups/aaaaaaaaaaaaaaa/download",
+  "allow": false
+ },
+ {
+  "method": "DELETE",
   "path": "/api/drop/me",
   "allow": false
  },

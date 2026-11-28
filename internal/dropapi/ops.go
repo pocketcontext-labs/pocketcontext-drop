@@ -91,6 +91,10 @@ var opName = regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`)
 // Later milestones add their operations here (and their handlers in
 // internal/dropserver); a test checks that both sides agree.
 var specs = []Spec{
+	{Name: "backup.list", Role: RoleUser, Read: true, Input: &MeInput{}, Summary: "View your Crew backups and schedules."},
+	{Name: "backup.configure", Role: RoleUser, MCP: true, Input: &BackupPolicyInput{}, Summary: "Enable or disable daily Crew backups."},
+	{Name: "backup.create", Role: RoleUser, MCP: true, Input: &BackupAppInput{}, Summary: "Capture a Crew workspace backup."},
+	{Name: "backup.restore", Role: RoleUser, MCP: true, Input: &BackupRestoreInput{}, Summary: "Restore a backup into its original or a new Crew workspace."},
 	{Name: "catalog.list", Role: RoleUser, Input: &CatalogListInput{}, Read: true, Summary: "List current official workspace releases."},
 	{Name: "catalog.import_url", Role: RoleAdmin, Standalone: true, Input: &OfficialImportURL{}, Summary: "Download and check a catalog candidate from a public HTTPS URL."},
 	{Name: "catalog.upload", Role: RoleAdmin, Input: &OfficialUpload{}, OnceResult: true, Summary: "Upload a candidate for product and version checks."},
