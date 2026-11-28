@@ -239,8 +239,43 @@ Resources:
             Effect: Allow
             Action: [cloudwatch:GetMetricData, cloudwatch:GetMetricStatistics]
             Resource: '*'
+  # Node agents: read release objects and app secrets, nothing else. Each node
+  # has its own user and key (kept in that node's vault). Add each new node here.
+  NodeReader:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: pocketcontext-drop-ax41-node-reader
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ReleaseObjects
+            Effect: Allow
+            Action: s3:GetObject
+            Resource: !Sub 'arn:${AWS::Partition}:s3:::pocketcontext-drop-ax41-releases-${AWS::AccountId}/releases/*'
+          - Sid: ReleaseListing
+            Effect: Allow
+            Action: s3:ListBucket
+            Resource: !Sub 'arn:${AWS::Partition}:s3:::pocketcontext-drop-ax41-releases-${AWS::AccountId}'
+            Condition:
+              StringLike:
+                s3:prefix: ['releases/*']
+          - Sid: AppSecrets
+            Effect: Allow
+            Action: ssm:GetParameter
+            Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/drop-ax41/apps/*'
+  NodeSr24:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: drop-ax41-node-sr24
+      ManagedPolicyArns: [!Ref NodeReader]
+  NodeEx44:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: drop-ax41-node-ex44
+      ManagedPolicyArns: [!Ref NodeReader]
 Outputs:
   WorkspaceBackupBucket: {Value: !Ref WorkspaceBackups}
   WorkloadBoundary: {Value: !Ref WorkloadBoundary}
   CfnRole: {Value: !GetAtt CfnRole.Arn}
   DeployUser: {Value: !Ref DeployUser}
+  NodeReader: {Value: !Ref NodeReader}
