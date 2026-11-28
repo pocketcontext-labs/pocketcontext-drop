@@ -41,6 +41,7 @@ func main() {
 	var i struct {
 		Config struct {
 			HTTPPort int
+			Hooks    struct{ Port int }
 			Command  struct {
 				Program, WorkingDirectory string
 				Args                      []string
@@ -84,8 +85,16 @@ func main() {
 		unix.Sync()
 		_ = unix.Reboot(unix.LINUX_REBOOT_CMD_POWER_OFF)
 	})
-	serve(10000, func(f *os.File) {
-		conn, err := net.DialTimeout("tcp4", "127.0.0.1:"+strconv.Itoa(i.Config.HTTPPort), time.Second)
+	// Optional private hook bridge for guest backup rehearsals.
+	if port := i.Config.Hooks.Port; port != 0 {
+		go forwardHTTP(10003, port)
+	}
+	forwardHTTP(10000, i.Config.HTTPPort)
+}
+
+func forwardHTTP(vsockPort uint32, port int) {
+	serve(vsockPort, func(f *os.File) {
+		conn, err := net.DialTimeout("tcp4", "127.0.0.1:"+strconv.Itoa(port), time.Second)
 		if err != nil {
 			return
 		}

@@ -5,9 +5,12 @@ The fixture supplies guest init, a private vsock HTTP bridge, and a per-app ext4
 import contextlib
 import http.client
 import json
+import queue
+import re
 import shutil
 import socket
 import subprocess
+import threading
 import time
 from pathlib import Path
 
@@ -256,3 +259,80 @@ def public_gateway(root):
         proxy.shutdown()
         proxy.server_close()
         thread.join()
+
+
+def guest_request(
+    guest,
+    hostname,
+    method,
+    path,
+    body=None,
+    token="",
+    content_type="application/json",
+    expected=200,
+):
+    if isinstance(body, dict):
+        body = json.dumps(body).encode()
+    conn = http.client.HTTPConnection("127.0.0.1", timeout=15)
+    conn.sock = vsock(guest.path, 10000)
+    try:
+        conn.request(
+            method,
+            path,
+            body,
+            {
+                "Host": hostname,
+                "Authorization": token,
+                "Content-Type": content_type,
+                "X-Forwarded-For": "192.0.2.25",
+            },
+        )
+        response = conn.getresponse()
+        data = response.read()
+        assert response.status == expected, (
+            method,
+            path.split("?")[0],
+            response.status,
+            data[:150],
+        )
+        return data
+    finally:
+        conn.close()
+
+
+def login(guest, hostname, email):
+    # The release posts its six-digit code over the real guest-to-host vsock. Only the synthetic mailbox is replaced.
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as inbox:
+        inbox.bind(str(guest.path) + "_51006")
+        inbox.listen(1)
+        codes = queue.Queue()
+
+        def deliver():
+            with inbox.accept()[0] as conn, conn.makefile("rb") as stream:
+                code = json.loads(stream.readline(256))["code"]
+                assert re.fullmatch(r"[0-9]{6}", code)
+                conn.sendall(b'{"status":"accepted"}\n')
+                codes.put(code)
+
+        worker = threading.Thread(target=deliver, daemon=True)
+        worker.start()
+        otp = json.loads(
+            guest_request(
+                guest,
+                hostname,
+                "POST",
+                "/api/collections/users/request-otp",
+                {"email": email},
+            )
+        )
+        token = json.loads(
+            guest_request(
+                guest,
+                hostname,
+                "POST",
+                "/api/collections/users/auth-with-otp-code",
+                {"otpId": otp["otpId"], "code": codes.get(timeout=15)},
+            )
+        )["token"]
+        worker.join(2)
+        return token
